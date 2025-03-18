@@ -1,0 +1,41 @@
+[project]
+name = "unicon"
+version = "0.0.1"
+description = ""
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = []
+authors = [
+  {name = "Yunfeng Lin", email = "linyunfeng@sjtu.edu.cn" }
+]
+maintainers = [
+  {name = "Yunfeng Lin", email = "linyunfeng@sjtu.edu.cn" }
+]
+dependencies = [
+  "pyyaml",
+  "numpy<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "check-manifest",
+  "sim-web-visualizer",
+  "torch",
+]
+test = ["coverage"]
+
+[project.urls]
+"Homepage" = "https://github.com/creeperlin/unicon"
+"Bug Tracker" = "https://github.com/creeperlin/unicon/issues"
+
+[build-system]
+requires = ["setuptools>=43.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["unicon*"]
+
+[tool.yapf]
+based_on_style = "google"
+column_limit = 120
