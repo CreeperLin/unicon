@@ -1,5 +1,6 @@
 import os
 import time
+import types
 import numpy as np
 from threading import Event
 
@@ -17,11 +18,52 @@ def md5sum(path):
     return subprocess.run(['md5sum', path], capture_output=True).stdout.split()[0].decode()
 
 
+def register_obj(
+    obj,
+    spec=None,
+    default_name_prefix=None,
+    default_mod_prefix=None,
+):
+    mod = name = None
+    if spec is not None:
+        if isinstance(spec, str):
+            spec = spec.split(':')
+        if len(spec) == 1:
+            spec = spec[0]
+            mod = spec
+            name = spec
+        elif len(spec) == 2:
+            mod, name = spec
+        else:
+            raise ValueError
+    default_mod_prefix = None if (mod is not None and '.' in mod) else default_mod_prefix
+    path = [x for x in [default_mod_prefix, mod] if x is not None]
+    mod_path = '.'.join(path)
+    if isinstance(obj, types.ModuleType):
+        import sys
+        sys.modules[mod_path] = obj
+        return
+    try:
+        mod = __import__(mod_path, fromlist=[''])
+    except ImportError:
+        if default_mod_prefix is not None and name is not None:
+            print('import failed', mod_path)
+            mod = __import__(default_mod_prefix, fromlist=[''])
+        else:
+            raise
+    names = [x for x in [default_name_prefix, name] if x is not None]
+    obj_name = getattr(obj, '__name__', None)
+    full_name = '_'.join(names)
+    full_name = full_name if len(full_name) else obj_name
+    setattr(mod, full_name, obj)
+
+
 def import_obj(
     spec=None,
     default_name_prefix=None,
     default_mod_prefix=None,
 ):
+    mod = name = None
     if spec is not None:
         if isinstance(spec, str):
             spec = spec.split(':')
@@ -39,8 +81,8 @@ def import_obj(
     try:
         mod = __import__(mod_path, fromlist=[''])
     except ImportError:
-        print('import failed', mod_path)
-        if default_mod_prefix is not None:
+        if default_mod_prefix is not None and name is not None:
+            print('import failed', mod_path)
             mod = __import__(default_mod_prefix, fromlist=[''])
         else:
             raise
