@@ -177,6 +177,13 @@ def cb_mini_recv_send_close(
         from unicon.utils.fftai import \
             get_root_infos, set_control_param_imm, get_control_param_imm, servo_on_fsa, servo_off_fsa
         if set_control_params:
+            import yaml
+            if isinstance(motor_max_current, str):
+                motor_max_current = yaml.safe_load(motor_max_current)
+            if isinstance(motor_max_acceleration, str):
+                motor_max_acceleration = yaml.safe_load(motor_max_acceleration)
+            if isinstance(motor_max_speed, str):
+                motor_max_speed = yaml.safe_load(motor_max_speed)
             num_ips = len(fsa_ips)
             mms = _default_mms if motor_max_speed is None else motor_max_speed
             mma = _default_mma if motor_max_acceleration is None else motor_max_acceleration

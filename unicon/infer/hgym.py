@@ -95,6 +95,7 @@ def cb_infer_hgym(
         nonlocal gait_step
         gait_step = 0
         last_actions[:] = 0.
-        policy_reset_fn()
+        if policy_reset_fn is not None:
+            policy_reset_fn()
 
     return step_fn, reset_fn

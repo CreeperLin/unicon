@@ -93,3 +93,53 @@ def cb_viz_swv(
                 proc.kill()
 
     return cb_cls()
+
+
+def run_viz(viz_type='swv', robot_type=None, **kwds):
+    import os
+    from unicon.utils import import_obj
+    _default_urdf_root = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
+    _default_urdf_root = os.environ.get('UNICON_URDF_ROOT', _default_urdf_root)
+    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
+    DOF_NAMES = getattr(robot_def, 'DOF_NAMES', None)
+    urdf_path = getattr(robot_def, 'URDF')
+    urdf_path = os.path.join(_default_urdf_root, urdf_path)
+    assert os.path.exists(urdf_path)
+    from unicon.states import states_get
+    from unicon.states import states_init
+    states_init(use_shm=True, load=True, reuse=True)
+    states_props = {
+        'states_rpy': states_get('rpy'),
+        'states_ang_vel': states_get('ang_vel'),
+        'states_quat': states_get('quat'),
+        'states_q': states_get('q'),
+        'states_qd': states_get('qd'),
+    }
+    states_q = states_props['states_q']
+    states_quat = states_props['states_quat']
+    states_rpy = states_props['states_rpy']
+    states_pos = states_get('pos')
+    cb_viz_cls = import_obj(viz_type, default_name_prefix='cb_viz', default_mod_prefix='unicon.viz')
+    dof_names = DOF_NAMES
+    # dof_names = DOF_NAMES_2
+    cb_viz = cb_viz_cls(
+        states_q=states_q,
+        states_quat=states_quat,
+        states_rpy=states_rpy,
+        states_pos=states_pos,
+        dof_names=dof_names,
+        urdf_path=urdf_path,
+        **kwds,
+    )
+    from unicon.utils import loop_timed
+    dt = 0.02
+    loop_timed(cb_viz, dt=dt, sleep_fn='sleep_block')
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-rt', '--robot_type', default='gr1t2')
+    parser.add_argument('-vt', '--viz_type', default='swv')
+    args = parser.parse_args()
+    run_viz(**vars(args))

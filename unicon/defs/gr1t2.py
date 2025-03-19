@@ -50,14 +50,6 @@ _gr1t2_joint_limit_upper2 = [
     1.92, 3.27, 2.97, 2.27, 2.97, 0.61, 0.61,
     1.92, 0.57, 2.97, 2.27, 2.97, 0.61, 0.61,
 ]
-_gr1t2_joint_default_pos = [
-    0.0, 0.0, -0.4, 0.8, -0.4, 0.0,
-    0.0, 0.0, -0.4, 0.8, -0.4, 0.0,
-    0.0, -0.0, 0.0,
-    0.0, -0.0, 0.0,
-    0.0, 0.2, 0.0, -0.3, 0.0, 0.0, 0.0,
-    0.0, -0.2, 0.0, -0.3, 0.0, 0.0, 0.0,
-]
 _gr1t2_joint_reset_pos = [
     0.0, 0.0, -0.4, 0.8, -0.4, 0.0,
     0.0, 0.0, -0.4, 0.8, -0.4, 0.0,
@@ -162,7 +154,6 @@ _gr1t2_joint_names_2 = [
 
 Q_CTRL_MIN = np.array(_gr1t2_joint_limit_lower)
 Q_CTRL_MAX = np.array(_gr1t2_joint_limit_upper)
-Q_CTRL_INIT = np.array(_gr1t2_joint_default_pos)
 Q_RESET = np.array(_gr1t2_joint_reset_pos)
 QD_LIMIT = np.array(_gr1t2_joint_velocity_limit)
 TAU_LIMIT = np.array(_gr1t2_joint_torque_limit)
@@ -231,6 +222,7 @@ DOF_PRESETS = {
     ],
 }
 
+URDF = 'gr1/urdf/GR1T2.urdf'
 
 FSA_IPS = [
     # left leg

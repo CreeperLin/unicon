@@ -86,7 +86,7 @@ def cb_fftai_recv_send_close(
     fse2fsa = getattr(robot_def, 'FSE2FSA', None)
     default_position_kp = getattr(robot_def, 'FSA_POSITION_KP', None)
     default_velocity_kp = getattr(robot_def, 'FSA_VELOCITY_KP', None)
-    actuator_types = getattr(robot_def, 'FSA_ACTUATOR_TYPES', None)
+    # actuator_types = getattr(robot_def, 'FSA_ACTUATOR_TYPES', None)
 
     if reboot:
         from unicon.utils.fftai import reboot_fsa, fsa_broadcast
@@ -208,7 +208,7 @@ def cb_fftai_recv_send_close(
         s.sendto(msg, (server_ip, fsa_port_fast))
 
     get_pvc_msg = struct.pack('>B', 0x1a)
-    # get_pvct_msg = struct.pack('>B', 0x1d)
+    get_pvct_msg = struct.pack('>B', 0x1d)
 
     def fast_get_pvc(server_ip):
         s.sendto(get_pvc_msg, (server_ip, fsa_port_fast))
@@ -219,6 +219,16 @@ def cb_fftai_recv_send_close(
             return position, velocity, current
         except Exception:
             return 0, 0, 0
+
+    def fast_get_pvct(server_ip):
+        s.sendto(get_pvct_msg, (server_ip, fsa_port_fast))
+        try:
+            data, address = s.recvfrom(buf_size)
+            assert address[0] == server_ip
+            feedback, position, velocity, current, torque = struct.unpack_from('>Bffff', data)
+            return position, velocity, current, torque
+        except Exception:
+            return 0, 0, 0, 0
 
     positions = np.zeros(len(states_q))
     velocities = np.zeros(len(states_qd))
@@ -368,6 +378,13 @@ def cb_fftai_recv_send_close(
     q_ctrl_max = np.array(q_ctrl_max, dtype=dtype)
 
     if set_control_params:
+        import yaml
+        if isinstance(motor_max_current, str):
+            motor_max_current = yaml.safe_load(motor_max_current)
+        if isinstance(motor_max_acceleration, str):
+            motor_max_acceleration = yaml.safe_load(motor_max_acceleration)
+        if isinstance(motor_max_speed, str):
+            motor_max_speed = yaml.safe_load(motor_max_speed)
         num_ips = len(fsa_ips)
         mms = _default_mms if motor_max_speed is None else motor_max_speed
         mma = _default_mma if motor_max_acceleration is None else motor_max_acceleration

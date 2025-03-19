@@ -17,20 +17,39 @@ def md5sum(path):
     return subprocess.run(['md5sum', path], capture_output=True).stdout.split()[0].decode()
 
 
-def import_obj(spec, default_name_prefix=None, default_mod_prefix=None):
-    spec = spec.split(':')
-    if len(spec) == 1:
-        mod = None
-        name = spec[0]
-    elif len(spec) == 2:
-        mod, name = spec
-    else:
-        raise ValueError
-    default_mod_prefix = None if '.' in mod else default_mod_prefix
+def import_obj(
+    spec=None,
+    default_name_prefix=None,
+    default_mod_prefix=None,
+):
+    if spec is not None:
+        if isinstance(spec, str):
+            spec = spec.split(':')
+        if len(spec) == 1:
+            spec = spec[0]
+            mod = spec
+            name = spec
+        elif len(spec) == 2:
+            mod, name = spec
+        else:
+            raise ValueError
+    default_mod_prefix = None if (mod is not None and '.' in mod) else default_mod_prefix
     path = [x for x in [default_mod_prefix, mod] if x is not None]
-    mod = '.'.join(path)
-    mod = __import__(mod, fromlist=[''])
-    name = ('' if default_name_prefix is None else default_name_prefix) + name
+    mod_path = '.'.join(path)
+    try:
+        mod = __import__(mod_path, fromlist=[''])
+    except ImportError:
+        print('import failed', mod_path)
+        if default_mod_prefix is not None:
+            mod = __import__(default_mod_prefix, fromlist=[''])
+        else:
+            raise
+    names = [x for x in [default_name_prefix, name] if x is not None]
+    full_name = '_'.join(names)
+    if not len(full_name):
+        return mod
+    if hasattr(mod, full_name):
+        return getattr(mod, full_name)
     return getattr(mod, name)
 
 

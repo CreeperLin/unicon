@@ -1,4 +1,4 @@
-def cb_output_foxglove(**states,):
+def cb_send_foxglove(**states,):
     import threading
     import asyncio
     import json

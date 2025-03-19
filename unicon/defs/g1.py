@@ -82,8 +82,6 @@ DOF_NAMES = [
 
 Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
-# Q_CTRL_INIT = np.array(Q_CTRL_INIT)
-# Q_RESET = np.array(Q_RESET)
 QD_LIMIT = np.array(QD_LIMIT)
 TAU_LIMIT = np.array(TAU_LIMIT)
 KP_DEFAULT = np.array(KP_DEFAULT)

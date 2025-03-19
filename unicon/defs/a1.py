@@ -26,7 +26,6 @@ TAU_LIMIT = [20.0, 55.0, 55.0, 20.0, 55.0, 55.0, 20.0, 55.0, 55.0, 20.0, 55.0, 5
 
 Q_BOOT = np.array(Q_BOOT)
 Q_RESET = np.array(Q_RESET)
-Q_ZERO = np.zeros(NUM_DOFS)
 Q_LIMIT = np.array([Q_CTRL_MIN, Q_CTRL_MAX])
 TAU_LIMIT = np.array(TAU_LIMIT)
 TAU_LIMIT = np.array([-TAU_LIMIT, TAU_LIMIT])

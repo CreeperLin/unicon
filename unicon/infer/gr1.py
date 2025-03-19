@@ -258,6 +258,7 @@ def cb_infer_gr1(
         if stack_history_obs:
             hist[:] = 0.
         last_actions[:] = 0.
-        policy_reset_fn()
+        if policy_reset_fn is not None:
+            policy_reset_fn()
 
     return step_fn, reset_fn

@@ -1,47 +1,9 @@
-import numpy as np
+import os
 import time
-
-
-def run_viz(robot_type=None, **kwds):
-    import os
-    _default_urdf_prefix = f'{__import__("os").environ["HOME"]}/GitRepo/GR1/resources/robots/'
-    robot_def = __import__(f'unicon.defs.{robot_type}', fromlist=[''])
-    DOF_NAMES = getattr(robot_def, 'DOF_NAMES', None)
-    urdf_path = getattr(robot_def, 'URDF', None)
-    urdf_path = os.path.join(_default_urdf_prefix, urdf_path)
-    from unicon.states import states_get
-    from unicon.states import states_init
-    states_init(use_shm=True, load=True, reuse=True)
-    states_props = {
-        'states_rpy': states_get('rpy'),
-        'states_ang_vel': states_get('ang_vel'),
-        'states_quat': states_get('quat'),
-        'states_q': states_get('q'),
-        'states_qd': states_get('qd'),
-    }
-    states_q = states_props['states_q']
-    states_quat = states_props['states_quat']
-    states_rpy = states_props['states_rpy']
-    states_pos = states_get('pos')
-    from unicon.viz import cb_viz_swv
-    dof_names = DOF_NAMES
-    # dof_names = DOF_NAMES_2
-    cb_viz = cb_viz_swv(
-        states_q=states_q,
-        states_quat=states_quat,
-        states_rpy=states_rpy,
-        states_pos=states_pos,
-        dof_names=dof_names,
-        urdf_path=urdf_path,
-        **kwds,
-    )
-    from unicon.utils import loop_timed
-    dt = 0.02
-    loop_timed(cb_viz, dt=dt, sleep_fn='sleep_block')
+import numpy as np
 
 
 def run():
-    import os
     try:
         import isaacgym
         del isaacgym
@@ -114,16 +76,12 @@ def run():
     parser.add_argument('-dofs', '--dofs', default=None)
     parser.add_argument('-lrpt', '--lerp_time', type=float, default=5)
     parser.add_argument('-rv', '--run_viz', action='store_true')
-    parser.add_argument('-rvm', '--run_viz_main', action='store_true')
     parser.add_argument('-shm', '--shm', action='store_true')
     parser.add_argument('-rt', '--robot_type', default='gr1t2')
     parser.add_argument('-vr', '--verify_recv', action='store_true')
     parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
     parser.add_argument('-ff', '--fast', action='store_true')
     parser.add_argument('-sqm', '--safety_q_margin', type=float, default=0.)
-    parser.add_argument('-mmc', '--motor_max_current', type=str, default=None)
-    parser.add_argument('-mma', '--motor_max_acceleration', type=str, default=None)
-    parser.add_argument('-mms', '--motor_max_speed', type=str, default=None)
     parser.add_argument('-iis', '--inner_input_stop', action='store_true')
     parser.add_argument('-cms', '--cmd_max_steps', type=int, default=None)
     parser.add_argument('-sd', '--seed', type=int, default=None)
@@ -159,17 +117,12 @@ def run():
     from unicon.states import states_init, states_news, states_new, states_get, states_destroy
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
-    from unicon.utils import set_nice2, set_cpu_affinity2, sampler_uniform, list2slice, pp_arr, set_seed
+    from unicon.utils import set_nice2, set_cpu_affinity2, sampler_uniform, list2slice, pp_arr, set_seed, \
+        import_obj
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
     args = parser.parse_args()
     robot_type = args.robot_type
-    viz_kwds = {
-        'robot_type': robot_type,
-    }
-    if args.run_viz_main:
-        run_viz(**viz_kwds)
-        return
 
     if args.sudo:
         os.system('sudo -v')
@@ -198,7 +151,7 @@ def run():
     if args.seed is not None:
         set_seed(args.seed)
 
-    robot_def = __import__(f'unicon.defs.{robot_type}', fromlist=[''])
+    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
     KP_DEFAULT = getattr(robot_def, 'KP_DEFAULT', None)
     KD_DEFAULT = getattr(robot_def, 'KD_DEFAULT', None)
     Q_CTRL_MIN = getattr(robot_def, 'Q_CTRL_MIN', None)
@@ -248,7 +201,7 @@ def run():
         ])
     states_news(specs)
     states_new('q_target', NUM_DOFS)
-    input_keys = __import__('unicon.inputs', fromlist=[''])._default_input_keys
+    input_keys = import_obj('unicon.inputs:_default_input_keys')
     num_inputs = len(input_keys)
     states_new('input', num_inputs)
     num_commands = args.num_commands
@@ -260,6 +213,10 @@ def run():
 
     proc = None
     if args.run_viz:
+        viz_kwds = {
+            'robot_type': robot_type,
+        }
+        from unicon.viz import run_viz
         import multiprocessing
         ctx = multiprocessing.get_context('spawn')
         proc = ctx.Process(target=run_viz, kwargs=viz_kwds, daemon=True)
@@ -312,7 +269,9 @@ def run():
     infer_load_run = args.infer_load_run
     infer_model_path = args.infer_model_path
     if infer_load_run is not None:
-        root = f'{__import__("os").environ["HOME"]}/GitRepo/GR1/logs/{infer_load_run}'
+        _default_infer_root = f'{os.environ["HOME"]}/GitRepo/GR1/logs/'
+        _default_infer_root = os.environ.get('UNICON_INFER_ROOT', _default_infer_root)
+        root = os.path.join(_default_infer_root, infer_load_run)
         model_file_pat = 'policy_1.pt'
         model_file = None
         for r, _, fs in os.walk(root):
@@ -460,6 +419,18 @@ def run():
     if rec_path is not None:
         print('rec_path', rec_path)
         loaded_rec = np.load(rec_path, allow_pickle=True).item()
+    data_path = args.data_path
+    if data_path is not None:
+        _, ext = os.path.splitext(data_path)
+        data_type = ext[1:]
+        print('data_type', data_type)
+        mod = import_obj((data_type, None), default_mod_prefix='unicon.data')
+        print('data_path', data_path)
+        loaded_rec = mod.load(
+            data_path,
+            robot_def=robot_def,
+        )
+    if loaded_rec is not None:
         rec_type = loaded_rec.get('type')
         if rec_type == 'legged':
             rec_states = loaded_rec['states'][0]
@@ -471,18 +442,6 @@ def run():
             rec_q_ctrl = loaded_rec.get('states_q_ctrl')
             rec_q = loaded_rec.get('states_q')
             print('rec_q_ctrl', rec_q_ctrl.shape)
-    data_path = args.data_path
-    if data_path is not None:
-        _, ext = os.path.splitext(data_path)
-        data_type = ext[1:]
-        print('data_type', data_type)
-        mod = __import__(f'unicon.data.{data_type}', fromlist=[''])
-        print('data_path', data_path)
-        loaded_rec = mod.load(
-            data_path,
-            robot_def=robot_def,
-        )
-    if loaded_rec is not None:
         loaded_rec_args = loaded_rec.get('args', {})
         print('loaded_rec_args', loaded_rec_args)
 
@@ -665,8 +624,7 @@ def run():
         elif modes['infer']:
             infer_type = args.infer_type
             print('infer_type', infer_type)
-            mod = __import__(f'unicon.infer.{infer_type}', fromlist=[''])
-            cb_infer_cls = getattr(mod, f'cb_infer_{infer_type}')
+            cb_infer_cls = import_obj(infer_type, default_name_prefix='cb_infer', default_mod_prefix='unicon.infer')
             import torch
             from unicon.utils.torch import torch_load_jit, torch_no_grad, torch_no_profiling
             torch_no_grad()
@@ -680,8 +638,8 @@ def run():
             if policy_type == 'gr1':
                 policy_reset_fn = policy.reset_memory
                 policy_fn = lambda obs: policy(obs)[0]
-            elif policy_type == 'none':
-                policy_reset_fn = lambda: None
+            else:
+                policy_reset_fn = None
                 policy_fn = policy
 
             infer_kwds = yaml.safe_load(args.infer_kwargs or '') or {}
@@ -855,11 +813,13 @@ def run():
             from_q_ctrl=False,
             t_fn='exp',
         )
-        cb_lerp2 = cb_ctrl_q_from_target_lerp(**states_ctrls,
-                                              states_q_target=q_reset,
-                                              states_q=states_q,
-                                              max_steps=max(1, lerp_steps // 4),
-                                              cycle=False)
+        cb_lerp2 = cb_ctrl_q_from_target_lerp(
+            **states_ctrls,
+            states_q_target=q_reset,
+            states_q=states_q,
+            max_steps=max(1, lerp_steps // 4),
+            cycle=False,
+        )
         cb_lerp3 = cb_ctrl_q_from_target_lerp(
             **states_ctrls,
             states_q_target=q_boot,
@@ -1016,22 +976,6 @@ def run():
 
     sys_kwds = yaml.safe_load(args.system_kwargs or '') or {}
     sys_clip_q_ctrl = (not clip_q_ctrl)
-
-    if fft_sys:
-        motor_max_current = args.motor_max_current
-        motor_max_acceleration = args.motor_max_acceleration
-        motor_max_speed = args.motor_max_speed
-        if isinstance(motor_max_current, str):
-            motor_max_current = yaml.safe_load(motor_max_current)
-        if isinstance(motor_max_acceleration, str):
-            motor_max_acceleration = yaml.safe_load(motor_max_acceleration)
-        if isinstance(motor_max_speed, str):
-            motor_max_speed = yaml.safe_load(motor_max_speed)
-        sys_kwds.update({
-            'motor_max_current': motor_max_current,
-            'motor_max_acceleration': motor_max_acceleration,
-            'motor_max_speed': motor_max_speed,
-        })
 
     cb_recv, cb_send, cb_close = None, None, None
     if systems['none']:
@@ -1299,8 +1243,7 @@ def run():
     cb_ctrl_tau = args.cb_ctrl_tau
     if cb_ctrl_tau is not None:
         print('cb_ctrl_tau', cb_ctrl_tau)
-        mod = __import__('unicon.ctrl', fromlist=[''])
-        cb_ctrl_tau_cls = getattr(mod, f'cb_ctrl_tau_{cb_ctrl_tau}')
+        cb_ctrl_tau_cls = import_obj(cb_ctrl_tau, default_name_prefix='cb_ctrl_tau', default_mod_prefix='unicon.ctrl')
         seq.extend([
             cb_ctrl_tau_cls(
                 **states_ctrls,
@@ -1347,8 +1290,7 @@ def run():
     )
     for output_type in outputs:
         print('output_type', output_type)
-        mod = __import__(f'unicon.io.{output_type}', fromlist=[''])
-        cb_output_cls = getattr(mod, f'cb_output_{output_type}')
+        cb_output_cls = import_obj(output_type, default_name_prefix='cb_send', default_mod_prefix='unicon.io')
         cb = cb_output_cls(**states_out)
         seq.append(cb)
 
@@ -1359,11 +1301,10 @@ def run():
         seq.append(cb_print())
 
     if input_type:
-        print('input_type', input_type)
         fallback_input_types = ['term']
         for t in [input_type] + fallback_input_types:
-            mod = __import__(f'unicon.inputs.{t}', fromlist=[''])
-            cb_input_cls = getattr(mod, f'cb_input_{t}')
+            print('input_type', t)
+            cb_input_cls = import_obj(t, default_name_prefix='cb_input', default_mod_prefix='unicon.inputs')
             cb_input = cb_input_cls(states_input=states_input)
             if cb_input is not None:
                 break
@@ -1376,8 +1317,7 @@ def run():
     cmd_type = args.cmd_type
     if cmd_type and cmd_type != 'none':
         print('cmd_type', cmd_type)
-        mod = __import__('unicon.cmd', fromlist=[''])
-        cb_cmd_cls = getattr(mod, f'cb_cmd_{cmd_type}')
+        cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.cmd')
         kwds = {}
         ccv = args.cmd_const_v
         if ccv is not None:

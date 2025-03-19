@@ -26,11 +26,6 @@ Q_CTRL_MAX = [
     1.1, 1., 0.74, 1.1,
     0.35, 1., 0.74, 1.1,
 ]
-Q_CTRL_INIT = [
-    0.0, -0., 0., -0.,
-    0.0, -0., 0., -0.,
-]
-Q_RESET = Q_CTRL_INIT
 QD_LIMIT = [
     14.738, 12.356, 12.356, 16.747,
     14.738, 12.356, 12.356, 16.747,
@@ -64,8 +59,6 @@ DOF_NAMES_2 = [
 
 Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
-Q_CTRL_INIT = np.array(Q_CTRL_INIT)
-Q_RESET = np.array(Q_RESET)
 QD_LIMIT = np.array(QD_LIMIT)
 TAU_LIMIT = np.array(TAU_LIMIT)
 KP_DEFAULT = np.array(KP_DEFAULT)
