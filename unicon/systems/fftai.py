@@ -83,10 +83,10 @@ def cb_fftai_recv_send_close(
     fsa_sign = robot_def.FSA_SIGN
     fsa_ips = robot_def.FSA_IPS
     fse_ips = robot_def.FSE_IPS
-    fse2fsa = getattr(robot_def, 'FSE2FSA', None)
-    default_position_kp = getattr(robot_def, 'FSA_POSITION_KP', None)
-    default_velocity_kp = getattr(robot_def, 'FSA_VELOCITY_KP', None)
-    # actuator_types = getattr(robot_def, 'FSA_ACTUATOR_TYPES', None)
+    fse2fsa = robot_def.get('FSE2FSA', None)
+    default_position_kp = robot_def.get('FSA_POSITION_KP', None)
+    default_velocity_kp = robot_def.get('FSA_VELOCITY_KP', None)
+    # actuator_types = robot_def.get('FSA_ACTUATOR_TYPES', None)
 
     if reboot:
         from unicon.utils.fftai import reboot_fsa, fsa_broadcast

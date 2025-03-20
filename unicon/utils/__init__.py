@@ -7,6 +7,99 @@ from threading import Event
 _default_time_fn = time.perf_counter
 
 
+def states_ts2dt(states_and_ts, dt=0.02):
+    states = {k: v for k, v in states_and_ts.items() if k + '.ts' in states_and_ts}
+    tss = {k: v for k, v in states_and_ts.items() if '.ts' in k}
+    t0 = min([np.min(ts) for ts in tss.values()])
+    t1 = max([np.max(ts) for ts in tss.values()])
+    dura = t1 - t0
+    num_frames = int(dura / dt)
+    print({k: (tss[k + '.ts'][-1] - tss[k + '.ts'][0]) / len(states[k]) for k in states.keys()})
+    print('t0', t0, 't1', t1)
+    print('dura', dura)
+    print('num_frames', num_frames)
+
+    tss = {k: v - t0 for k, v in tss.items()}
+    t0 = 0
+    import torch
+
+    states_new = {}
+    for k, states_ori in states.items():
+        ts = torch.from_numpy(tss[k + '.ts'])
+        ft = torch.arange(num_frames) * dt + t0
+        inds0 = torch.searchsorted(ts, ft, side='left').squeeze().numpy()
+        inds0[inds0 >= states_ori.shape[0]] = 0
+        s0 = states_ori[inds0]
+        inds1 = inds0 + 1
+        inds1[inds0 >= states_ori.shape[0]] = 0
+        s1 = states_ori[inds1]
+        ts0 = ts[inds0]
+        r = (ts0 - ft).numpy() / dt
+        print(np.all(r >= 0))
+        r = r.reshape(-1, 1)
+        s = s0 * (1 - r) + s1 * r
+        states_new[k] = s
+    return states_new
+
+
+def parse_urdf(
+    urdf_path,
+    default_kp=40.,
+    default_kd=2.,
+    default_q_min=-np.pi,
+    default_q_max=np.pi,
+    default_tau_limit=100.,
+    qd_limit=10.,
+):
+    from yourdfpy import URDF
+    urdf = URDF.load(urdf_path)
+    # links = urdf.robot.links
+    joints = urdf.robot.joints
+    joints = [j for j in joints if j.type != 'fixed']
+    dof_names = [j.name for j in joints]
+    joint_limits = [j.limit for j in joints]
+    joint_dynamics = [j.dynamics for j in joints]
+    q_min = [(default_q_min if m is None else m.lower) for m in joint_limits]
+    q_max = [(default_q_max if m is None else m.upper) for m in joint_limits]
+    tau_limit = [(default_tau_limit if m is None else m.effort) for m in joint_limits]
+    qd_limit = [(qd_limit if m is None else m.velocity) for m in joint_limits]
+    kps = [(default_kp if d is None else d.stiffness) for d in joint_dynamics]
+    kds = [(default_kd if d is None else d.damping) for d in joint_dynamics]
+    num_dofs = len(dof_names)
+    return {
+        'NUM_DOFS': num_dofs,
+        'DOF_NAMES': dof_names,
+        'Q_CTRL_MIN': q_min,
+        'Q_CTRL_MAX': q_max,
+        'TAU_LIMIT': tau_limit,
+        'QD_LIMIT': qd_limit,
+        'KP': kps,
+        'KD': kds,
+    }
+
+
+def parse_robot_def(robot_def):
+    if not isinstance(robot_def, dict):
+        robot_def = {k: v for k, v in vars(robot_def).items() if k.isupper()}
+    urdf_path = robot_def.get('URDF')
+    _default_urdf_root = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
+    _default_urdf_root = os.environ.get('UNICON_URDF_ROOT', _default_urdf_root)
+    urdf_path = urdf_path if urdf_path.startswith('/') else os.path.join(_default_urdf_root, urdf_path)
+    robot_def['URDF'] = urdf_path
+    if urdf_path is not None:
+        try:
+            urdf_def = parse_urdf(urdf_path)
+            urdf_def.update(robot_def)
+            robot_def = urdf_def
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    robot_def = {
+        k: np.array(v) if isinstance(v, list) and isinstance(v[0], (float, int)) else v for k, v in robot_def.items()
+    }
+    return robot_def
+
+
 def force_quit():
     import os
     import signal
@@ -42,6 +135,7 @@ def register_obj(
     if isinstance(obj, types.ModuleType):
         import sys
         sys.modules[mod_path] = obj
+        print('register_obj mod', mod_path, obj)
         return
     try:
         mod = __import__(mod_path, fromlist=[''])
@@ -56,6 +150,7 @@ def register_obj(
     full_name = '_'.join(names)
     full_name = full_name if len(full_name) else obj_name
     setattr(mod, full_name, obj)
+    print('register_obj', mod, full_name, obj)
 
 
 def import_obj(
@@ -93,6 +188,13 @@ def import_obj(
     if hasattr(mod, full_name):
         return getattr(mod, full_name)
     return getattr(mod, name)
+
+
+def dict2mod(dct, name=None):
+    import types
+    mod = types.ModuleType(name)
+    mod.__dict__.update(dct)
+    return mod
 
 
 def list2slice(lst):
@@ -203,6 +305,7 @@ def set_seed(seed):
 
 
 def sampler_uniform(low, high, rng=None, num_samples=100, seed=1):
+    num_samples = 2**15 if num_samples is None else num_samples
     rng = np.random.RandomState(seed) if rng is None else rng
     low = np.array(low)
     high = np.array(high)

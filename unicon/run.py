@@ -3,7 +3,118 @@ import time
 import numpy as np
 
 
-def run(args):
+def get_args():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-ca', '--cpu_affinity', default=None)
+    parser.add_argument('-c', '--close', action='store_true')
+    parser.add_argument('-m', '--mode', action='append')
+    parser.add_argument('-dt', '--dt', type=float, default=0.02)
+    parser.add_argument('-n', '--num_steps', type=int, default=1024)
+    parser.add_argument('-s', '--system', default='f')
+    parser.add_argument('-ro', '--rec_output', default=None)
+    parser.add_argument('-I', '--infer_type', default='gr1')
+    parser.add_argument('-i', '--input_type', default='js')
+    parser.add_argument('-p', '--policy_type', default='none')
+    parser.add_argument('-cmd', '--cmd_type', default='vel')
+    parser.add_argument('-ccv', '--cmd_const_v', default=None)
+    parser.add_argument('-cir', '--cmd_init_range', default=None)
+    parser.add_argument('-d', '--dry', action='store_true')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-nowrp', '--no_wrap', action='store_true')
+    parser.add_argument('-w', '--wait', type=float, default=0)
+    parser.add_argument('-kpr', '--kp_ratio', type=float, default=1.0)
+    parser.add_argument('-kdr', '--kd_ratio', type=float, default=1.0)
+    parser.add_argument('-kpd', '--kpd_ratio', type=float, default=1.0)
+    parser.add_argument('-spr', '--sample_r', type=str, default=None)
+    parser.add_argument('-spd', '--sample_dofs', default=None)
+    parser.add_argument('-spl', '--sample_lerp', type=int, default=0)
+    parser.add_argument('-spw', '--sample_wait', type=int, default=100)
+    parser.add_argument('-spn', '--num_samples', type=int, default=None)
+    parser.add_argument('-sprp', '--sample_repeats', type=int, default=None)
+    parser.add_argument('-sprg', '--sample_repeat_group', type=int, default=2)
+    parser.add_argument('-rps', '--replay_scale', type=float, default=None)
+    parser.add_argument('-rpr', '--replay_repeats', type=int, default=None)
+    parser.add_argument('-rppt', '--replay_pt', type=int, default=None)
+    parser.add_argument('-rplen', '--replay_len', type=int, default=None)
+    parser.add_argument('-rpl', '--replay_loop', action='store_true')
+    parser.add_argument('-rni', '--replay_no_interp', action='store_true')
+    parser.add_argument('-rpsk', '--replay_states_key', default='q_ctrl')
+    parser.add_argument('-rpfk', '--replay_frame_key', default='states_q_ctrl')
+    parser.add_argument('-qcdm', '--q_ctrl_default_mask', action='store_true')
+    parser.add_argument('-qcm', '--q_ctrl_mask', default=None)
+    parser.add_argument('-qcc', '--q_ctrl_clr', type=float, default=0)
+    parser.add_argument('-iv', '--infer_verify', action='store_true')
+    parser.add_argument('-imp', '--infer_model_path', default=None)
+    parser.add_argument('-ikwds', '--infer_kwargs', default=None)
+    parser.add_argument('-sfuq', '--use_qdd', action='store_true')
+    parser.add_argument('-wi', '--wait_input', action='store_true')
+    parser.add_argument('-rp', '--rec_path', default=None)
+    parser.add_argument('-rap', '--action_path', default='actions_all.pt')
+    parser.add_argument('-rop', '--obs_path', default='obs_all.pt')
+    parser.add_argument('-ecp', '--env_cfg_path', default=None)
+    parser.add_argument('-eco', '--env_cfg_override', default=None)
+    parser.add_argument('-ssc', '--sims_config', default='ig.yaml')
+    parser.add_argument('-sso', '--sims_override', default=None)
+    parser.add_argument('-ssnr', '--sims_no_reset', action='store_true')
+    parser.add_argument('-sswc', '--sims_wrapper_config', action='append')
+    parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
+    parser.add_argument('-ssh', '--sims_headless', action='store_true')
+    parser.add_argument('-ssfb', '--sims_fixed_base', action='store_true')
+    parser.add_argument('-sspd', '--sims_pd', action='store_true')
+    parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
+    parser.add_argument('-skwds', '--system_kwargs', default=None)
+    parser.add_argument('-cqc', '--clip_q_ctrl', action='store_true')
+    parser.add_argument('-sfts', '--safety_states', action='store_true')
+    parser.add_argument('-sftc', '--safety_ctrl', action='store_true')
+    parser.add_argument('-dofs', '--dofs', default=None)
+    parser.add_argument('-lrpt', '--lerp_time', type=float, default=5)
+    parser.add_argument('-rv', '--run_viz', action='store_true')
+    parser.add_argument('-shm', '--shm', action='store_true')
+    parser.add_argument('-rt', '--robot_type', default='gr1t2')
+    parser.add_argument('-vr', '--verify_recv', action='store_true')
+    parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
+    parser.add_argument('-ff', '--fast', action='store_true')
+    parser.add_argument('-sqm', '--safety_q_margin', type=float, default=0.)
+    parser.add_argument('-iis', '--inner_input_stop', action='store_true')
+    parser.add_argument('-cms', '--cmd_max_steps', type=int, default=None)
+    parser.add_argument('-sd', '--seed', type=int, default=None)
+    parser.add_argument('-inp', '--infer_no_profile', action='store_true')
+    parser.add_argument('-id', '--infer_device', default='cpu')
+    parser.add_argument('-fl', '--fixed_lat', type=float, default=None)
+    parser.add_argument('-fw', '--fixed_wait', type=float, default=None)
+    parser.add_argument('-lsb', '--loop_sleep_block', action='store_true')
+    parser.add_argument('-ldo', '--loop_dt_ofs', type=float, default=None)
+    parser.add_argument('-ldt', '--loop_dt', type=float, default=None)
+    parser.add_argument('-sqe', '--states_q_extras', action='store_true')
+    parser.add_argument('-sxe', '--states_x_extras', action='store_true')
+    parser.add_argument('-tc', '--tau_ctrl', action='store_true')
+    parser.add_argument('-cct', '--cb_ctrl_tau', default=None)
+    parser.add_argument('-cdt', '--ctrl_dt', type=float, default=0.02)
+    parser.add_argument('-ilr', '--infer_load_run', default=None)
+    parser.add_argument('-rcps', '--rec_post_send', action='store_true')
+    parser.add_argument('-ofg', '--output_foxglove', action='store_true')
+    parser.add_argument('-o', '--outputs', default=[], action='append')
+    parser.add_argument('-itf', '--imu_transform', action='store_true')
+    parser.add_argument('-sic', '--safety_integrity_check', action='store_true')
+    parser.add_argument('-uspd', '--use_sim_pd', action='store_true')
+    parser.add_argument('-dn2', '--dof_names_2', action='store_true')
+    parser.add_argument('-dnr', '--dof_names_remap', default=None)
+    parser.add_argument('-dns', '--dof_names_sub', default=None)
+    parser.add_argument('-dp', '--data_path', default=None)
+    parser.add_argument('-dkwds', '--data_kwds', default=None)
+    parser.add_argument('-ncmd', '--num_commands', type=int, default=3)
+    parser.add_argument('-nice', '--nice', type=int, default=None)
+    parser.add_argument('-su', '--sudo', action='store_true')
+    parser.add_argument('-qtf', '--q_transform', default=None)
+    parser.add_argument('-sie', '--states_infer_extras', action='store_true')
+    args, _ = parser.parse_known_args()
+    return args
+
+
+def run(args=None):
+    if args is None:
+        args = get_args()
     try:
         import isaacgym
         del isaacgym
@@ -14,7 +125,7 @@ def run(args):
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
     from unicon.utils import set_nice2, set_cpu_affinity2, sampler_uniform, list2slice, pp_arr, set_seed, \
-        import_obj
+        import_obj, parse_robot_def
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
     if args.sudo:
@@ -46,19 +157,20 @@ def run(args):
 
     robot_type = args.robot_type
     robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
-    KP_DEFAULT = getattr(robot_def, 'KP_DEFAULT', None)
-    KD_DEFAULT = getattr(robot_def, 'KD_DEFAULT', None)
-    Q_CTRL_MIN = getattr(robot_def, 'Q_CTRL_MIN', None)
-    Q_CTRL_MAX = getattr(robot_def, 'Q_CTRL_MAX', None)
-    DOF_NAMES = getattr(robot_def, 'DOF_NAMES', None)
-    DOF_PRESETS = getattr(robot_def, 'DOF_PRESETS', None)
-    NUM_DOFS = getattr(robot_def, 'NUM_DOFS', None)
-    DOF_MAPS = getattr(robot_def, 'DOF_MAPS', None)
-    TAU_LIMIT = getattr(robot_def, 'TAU_LIMIT', None)
-    QD_LIMIT = getattr(robot_def, 'QD_LIMIT', None)
-    Q_BOOT = getattr(robot_def, 'Q_BOOT', None)
-    Q_RESET = getattr(robot_def, 'Q_RESET', None)
-    DOF_NAMES_2 = getattr(robot_def, 'DOF_NAMES_2', None)
+    robot_def = parse_robot_def(robot_def)
+    KP = robot_def.get('KP', None)
+    KD = robot_def.get('KD', None)
+    Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
+    Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
+    DOF_NAMES = robot_def.get('DOF_NAMES', None)
+    DOF_PRESETS = robot_def.get('DOF_PRESETS', None)
+    NUM_DOFS = robot_def.get('NUM_DOFS', None)
+    DOF_MAPS = robot_def.get('DOF_MAPS', None)
+    TAU_LIMIT = robot_def.get('TAU_LIMIT', None)
+    QD_LIMIT = robot_def.get('QD_LIMIT', None)
+    Q_BOOT = robot_def.get('Q_BOOT', None)
+    Q_RESET = robot_def.get('Q_RESET', None)
+    DOF_NAMES_2 = robot_def.get('DOF_NAMES_2', None)
 
     q_reset = np.zeros(NUM_DOFS) if Q_RESET is None else Q_RESET
     q_boot = q_reset if Q_BOOT is None else Q_BOOT
@@ -320,9 +432,11 @@ def run(args):
         print('data_type', data_type)
         mod = import_obj((data_type, None), default_mod_prefix='unicon.data')
         print('data_path', data_path)
+        kwds = args.data_kwds
         loaded_rec = mod.load(
             data_path,
             robot_def=robot_def,
+            **(kwds or {}),
         )
     if loaded_rec is not None:
         rec_type = loaded_rec.get('type')
@@ -385,6 +499,7 @@ def run(args):
                 q_smpl_min = q_min + q_rng * rng_l
                 q_smpl_max = q_min + q_rng * rng_r
             num_samples = args.num_samples
+            print('num_samples', num_samples)
             frames = sampler_uniform(low=q_smpl_min, high=q_smpl_max, num_samples=num_samples)
             frames = np.array(list(frames))
             sample_repeats = args.sample_repeats
@@ -764,8 +879,8 @@ def run(args):
     kd_r *= args.kpd_ratio
     print('kp_r', kp_r)
     print('kd_r', kd_r)
-    kp = KP_DEFAULT
-    kd = KD_DEFAULT
+    kp = KP
+    kd = KD
     sim_kps = None
     sim_kds = None
     kpd_ctrl_only = True
@@ -933,7 +1048,7 @@ def run(args):
         system_config = yaml.safe_load(open(args.sims_config, 'r'))
         sim_dof_names = DOF_NAMES
         if args.sims_dof_names_2:
-            sim_dof_names = getattr(robot_def, 'DOF_NAMES_2')
+            sim_dof_names = robot_def.get('DOF_NAMES_2')
         system_config['realtime'] = False
         fix_base_link = system_config.get('fix_base_link', False) or args.sims_fixed_base
         fix_base_link = fix_base_link or modes['sample']
@@ -1185,7 +1300,7 @@ def run(args):
     for output_type in outputs:
         print('output_type', output_type)
         cb_output_cls = import_obj(output_type, default_name_prefix='cb_send', default_mod_prefix='unicon.io')
-        cb = cb_output_cls(**states_out)
+        cb = cb_output_cls(**states_out, robot_def=robot_def)
         seq.append(cb)
 
     if rec_post_send and rec_output is not None:
@@ -1328,109 +1443,4 @@ def run(args):
 
 
 if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-ca', '--cpu_affinity', default=None)
-    parser.add_argument('-c', '--close', action='store_true')
-    parser.add_argument('-m', '--mode', action='append')
-    parser.add_argument('-dt', '--dt', type=float, default=0.02)
-    parser.add_argument('-n', '--num_steps', type=int, default=1024)
-    parser.add_argument('-s', '--system', default='f')
-    parser.add_argument('-ro', '--rec_output', default=None)
-    parser.add_argument('-I', '--infer_type', default='gr1')
-    parser.add_argument('-i', '--input_type', default='js')
-    parser.add_argument('-p', '--policy_type', default='none')
-    parser.add_argument('-cmd', '--cmd_type', default='vel')
-    parser.add_argument('-ccv', '--cmd_const_v', default=None)
-    parser.add_argument('-cir', '--cmd_init_range', default=None)
-    parser.add_argument('-d', '--dry', action='store_true')
-    parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('-nowrp', '--no_wrap', action='store_true')
-    parser.add_argument('-w', '--wait', type=float, default=0)
-    parser.add_argument('-kpr', '--kp_ratio', type=float, default=1.0)
-    parser.add_argument('-kdr', '--kd_ratio', type=float, default=1.0)
-    parser.add_argument('-kpd', '--kpd_ratio', type=float, default=1.0)
-    parser.add_argument('-spr', '--sample_r', type=str, default=None)
-    parser.add_argument('-spd', '--sample_dofs', default=None)
-    parser.add_argument('-spl', '--sample_lerp', type=int, default=0)
-    parser.add_argument('-spw', '--sample_wait', type=int, default=100)
-    parser.add_argument('-spn', '--num_samples', type=int, default=None)
-    parser.add_argument('-sprp', '--sample_repeats', type=int, default=None)
-    parser.add_argument('-sprg', '--sample_repeat_group', type=int, default=2)
-    parser.add_argument('-rps', '--replay_scale', type=float, default=None)
-    parser.add_argument('-rpr', '--replay_repeats', type=int, default=None)
-    parser.add_argument('-rppt', '--replay_pt', type=int, default=None)
-    parser.add_argument('-rplen', '--replay_len', type=int, default=None)
-    parser.add_argument('-rpl', '--replay_loop', action='store_true')
-    parser.add_argument('-rni', '--replay_no_interp', action='store_true')
-    parser.add_argument('-rpsk', '--replay_states_key', default='q_ctrl')
-    parser.add_argument('-rpfk', '--replay_frame_key', default='states_q_ctrl')
-    parser.add_argument('-qcdm', '--q_ctrl_default_mask', action='store_true')
-    parser.add_argument('-qcm', '--q_ctrl_mask', default=None)
-    parser.add_argument('-qcc', '--q_ctrl_clr', type=float, default=0)
-    parser.add_argument('-iv', '--infer_verify', action='store_true')
-    parser.add_argument('-imp', '--infer_model_path', default=None)
-    parser.add_argument('-ikwds', '--infer_kwargs', default=None)
-    parser.add_argument('-sfuq', '--use_qdd', action='store_true')
-    parser.add_argument('-wi', '--wait_input', action='store_true')
-    parser.add_argument('-rp', '--rec_path', default=None)
-    parser.add_argument('-rap', '--action_path', default='actions_all.pt')
-    parser.add_argument('-rop', '--obs_path', default='obs_all.pt')
-    parser.add_argument('-ecp', '--env_cfg_path', default=None)
-    parser.add_argument('-eco', '--env_cfg_override', default=None)
-    parser.add_argument('-ssc', '--sims_config', default='ig.yaml')
-    parser.add_argument('-sso', '--sims_override', default=None)
-    parser.add_argument('-ssnr', '--sims_no_reset', action='store_true')
-    parser.add_argument('-sswc', '--sims_wrapper_config', action='append')
-    parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
-    parser.add_argument('-ssh', '--sims_headless', action='store_true')
-    parser.add_argument('-ssfb', '--sims_fixed_base', action='store_true')
-    parser.add_argument('-sspd', '--sims_pd', action='store_true')
-    parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
-    parser.add_argument('-skwds', '--system_kwargs', default=None)
-    parser.add_argument('-cqc', '--clip_q_ctrl', action='store_true')
-    parser.add_argument('-sfts', '--safety_states', action='store_true')
-    parser.add_argument('-sftc', '--safety_ctrl', action='store_true')
-    parser.add_argument('-dofs', '--dofs', default=None)
-    parser.add_argument('-lrpt', '--lerp_time', type=float, default=5)
-    parser.add_argument('-rv', '--run_viz', action='store_true')
-    parser.add_argument('-shm', '--shm', action='store_true')
-    parser.add_argument('-rt', '--robot_type', default='gr1t2')
-    parser.add_argument('-vr', '--verify_recv', action='store_true')
-    parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
-    parser.add_argument('-ff', '--fast', action='store_true')
-    parser.add_argument('-sqm', '--safety_q_margin', type=float, default=0.)
-    parser.add_argument('-iis', '--inner_input_stop', action='store_true')
-    parser.add_argument('-cms', '--cmd_max_steps', type=int, default=None)
-    parser.add_argument('-sd', '--seed', type=int, default=None)
-    parser.add_argument('-inp', '--infer_no_profile', action='store_true')
-    parser.add_argument('-id', '--infer_device', default='cpu')
-    parser.add_argument('-fl', '--fixed_lat', type=float, default=None)
-    parser.add_argument('-fw', '--fixed_wait', type=float, default=None)
-    parser.add_argument('-lsb', '--loop_sleep_block', action='store_true')
-    parser.add_argument('-ldo', '--loop_dt_ofs', type=float, default=None)
-    parser.add_argument('-ldt', '--loop_dt', type=float, default=None)
-    parser.add_argument('-sqe', '--states_q_extras', action='store_true')
-    parser.add_argument('-sxe', '--states_x_extras', action='store_true')
-    parser.add_argument('-tc', '--tau_ctrl', action='store_true')
-    parser.add_argument('-cct', '--cb_ctrl_tau', default=None)
-    parser.add_argument('-cdt', '--ctrl_dt', type=float, default=0.02)
-    parser.add_argument('-ilr', '--infer_load_run', default=None)
-    parser.add_argument('-rcps', '--rec_post_send', action='store_true')
-    parser.add_argument('-ofg', '--output_foxglove', action='store_true')
-    parser.add_argument('-o', '--outputs', default=[], action='append')
-    parser.add_argument('-itf', '--imu_transform', action='store_true')
-    parser.add_argument('-sic', '--safety_integrity_check', action='store_true')
-    parser.add_argument('-uspd', '--use_sim_pd', action='store_true')
-    parser.add_argument('-dn2', '--dof_names_2', action='store_true')
-    parser.add_argument('-dnr', '--dof_names_remap', default=None)
-    parser.add_argument('-dns', '--dof_names_sub', default=None)
-    parser.add_argument('-dp', '--data_path', default=None)
-    parser.add_argument('-ncmd', '--num_commands', type=int, default=3)
-    parser.add_argument('-nice', '--nice', type=int, default=None)
-    parser.add_argument('-su', '--sudo', action='store_true')
-    parser.add_argument('-qtf', '--q_transform', default=None)
-    parser.add_argument('-sie', '--states_infer_extras', action='store_true')
-    args = parser.parse_args()
-
-    run(args)
+    run()

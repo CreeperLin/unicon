@@ -32,10 +32,10 @@ TAU_LIMIT = np.array([-TAU_LIMIT, TAU_LIMIT])
 Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
 
-KP_DEFAULT = [28.] * NUM_DOFS
-KD_DEFAULT = [1.] * NUM_DOFS
-KP_DEFAULT = np.array(KP_DEFAULT)
-KD_DEFAULT = np.array(KD_DEFAULT)
+KP = [28.] * NUM_DOFS
+KD = [1.] * NUM_DOFS
+KP = np.array(KP)
+KD = np.array(KD)
 
 DOF_NAMES_2 = [
     'FR_hip', 'FR_thigh', 'FR_calf',

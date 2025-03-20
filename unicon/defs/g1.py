@@ -2,14 +2,14 @@
 import numpy as np
 
 
-KP_DEFAULT = [
+KP = [
     150.0, 150.0, 150.0, 300.0, 40.0, 40.0,
     150.0, 150.0, 150.0, 300.0, 40.0, 40.0,
     300.0, 300.0, 300.0,
     20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
     20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0,
 ]
-KD_DEFAULT = [
+KD = [
     2., 2., 2., 4., 2., 2.,
     2., 2., 2., 4., 2., 2.,
     4., 4., 4.,
@@ -84,8 +84,8 @@ Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
 QD_LIMIT = np.array(QD_LIMIT)
 TAU_LIMIT = np.array(TAU_LIMIT)
-KP_DEFAULT = np.array(KP_DEFAULT)
-KD_DEFAULT = np.array(KD_DEFAULT)
+KP = np.array(KP)
+KD = np.array(KD)
 NUM_DOFS = len(DOF_NAMES)
 DOF_MAPS = {
     'left_leg': range(0, 6),

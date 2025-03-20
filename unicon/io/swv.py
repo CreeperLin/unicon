@@ -1,16 +1,18 @@
-def cb_viz_swv(
+def cb_send_swv(
     states_q,
     states_quat=None,
     states_rpy=None,
     states_pos=None,
-    urdf_path=None,
     host='localhost',
     port=6000,
-    dof_names=None,
+    robot_def=None,
     start_server=True,
     init_z=1.0,
     use_rpy=False,
+    **states,
 ):
+    dof_names = robot_def.get('DOF_NAMES')
+    urdf_path = robot_def.get('URDF')
     import numpy as np
     from sim_web_visualizer import MeshCatVisualizerBase
     from sim_web_visualizer.parser.yourdfpy import URDF
@@ -38,7 +40,7 @@ def cb_viz_swv(
     viz = MeshCatVisualizerBase(port=port, host=host)
 
     num_states_dofs = len(states_q)
-    robot = URDF.load(str(urdf_path), build_tree=True)
+    robot = URDF.load(urdf_path, build_tree=True)
     num_dofs = robot.num_dofs
     urdf_dof_names = robot.actuated_joint_names
     print('urdf_dof_names', len(urdf_dof_names), urdf_dof_names)
@@ -51,10 +53,9 @@ def cb_viz_swv(
     print('viz dof_map', dof_map)
 
     viz.viz['/URDF'].delete()
-    asset_resource = viz.dry_load_asset(str(urdf_path), collapse_fixed_joints=False)
+    asset_resource = viz.dry_load_asset(urdf_path, collapse_fixed_joints=False)
     viz.load_asset_resources(asset_resource, '/URDF', scale=1.0)
     urdf_viz = viz.viz['/URDF']
-    # print(dir(urdf_viz))
     tf = np.array([[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., init_z], [0., 0., 0., 1.]])
     urdf_viz.set_transform(tf)
     qpos = np.zeros(num_dofs)
@@ -93,53 +94,3 @@ def cb_viz_swv(
                 proc.kill()
 
     return cb_cls()
-
-
-def run_viz(viz_type='swv', robot_type=None, **kwds):
-    import os
-    from unicon.utils import import_obj
-    _default_urdf_root = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
-    _default_urdf_root = os.environ.get('UNICON_URDF_ROOT', _default_urdf_root)
-    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
-    DOF_NAMES = getattr(robot_def, 'DOF_NAMES', None)
-    urdf_path = getattr(robot_def, 'URDF')
-    urdf_path = os.path.join(_default_urdf_root, urdf_path)
-    assert os.path.exists(urdf_path)
-    from unicon.states import states_get
-    from unicon.states import states_init
-    states_init(use_shm=True, load=True, reuse=True)
-    states_props = {
-        'states_rpy': states_get('rpy'),
-        'states_ang_vel': states_get('ang_vel'),
-        'states_quat': states_get('quat'),
-        'states_q': states_get('q'),
-        'states_qd': states_get('qd'),
-    }
-    states_q = states_props['states_q']
-    states_quat = states_props['states_quat']
-    states_rpy = states_props['states_rpy']
-    states_pos = states_get('pos')
-    cb_viz_cls = import_obj(viz_type, default_name_prefix='cb_viz', default_mod_prefix='unicon.viz')
-    dof_names = DOF_NAMES
-    # dof_names = DOF_NAMES_2
-    cb_viz = cb_viz_cls(
-        states_q=states_q,
-        states_quat=states_quat,
-        states_rpy=states_rpy,
-        states_pos=states_pos,
-        dof_names=dof_names,
-        urdf_path=urdf_path,
-        **kwds,
-    )
-    from unicon.utils import loop_timed
-    dt = 0.02
-    loop_timed(cb_viz, dt=dt, sleep_fn='sleep_block')
-
-
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-rt', '--robot_type', default='gr1t2')
-    parser.add_argument('-vt', '--viz_type', default='swv')
-    args = parser.parse_args()
-    run_viz(**vars(args))

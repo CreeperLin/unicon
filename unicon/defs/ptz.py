@@ -2,11 +2,11 @@
 import numpy as np
 
 
-KP_DEFAULT = [
+KP = [
     185.256, 185.256, 185.256, 55.958,  # left leg
     185.256, 185.256, 185.256, 55.958,  # right leg
 ]
-KD_DEFAULT = [
+KD = [
     9.2628, 9.2628, 9.2628, 2.7979,  # left leg
     9.2628, 9.2628, 9.2628, 2.7979,  # right leg
 ]
@@ -61,8 +61,8 @@ Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
 QD_LIMIT = np.array(QD_LIMIT)
 TAU_LIMIT = np.array(TAU_LIMIT)
-KP_DEFAULT = np.array(KP_DEFAULT)
-KD_DEFAULT = np.array(KD_DEFAULT)
+KP = np.array(KP)
+KD = np.array(KD)
 NUM_DOFS = 8
 
 DOF_PRESETS = {

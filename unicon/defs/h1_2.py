@@ -62,14 +62,14 @@ DOF_NAMES_2 = [
 ]
 NUM_DOFS = 27
 
-KP_DEFAULT = [
+KP = [
     200., 200., 200., 300., 40., 40.,
     200., 200., 200., 300., 40., 40.,
     300.,  # waist
     20., 20., 20., 20., 20., 20., 20.,
     20., 20., 20., 20., 20., 20., 20.,
 ]
-KD_DEFAULT = [
+KD = [
     5., 5., 5., 6., 2., 2.,
     5., 5., 5., 6., 2., 2.,
     6.,  # waist
@@ -108,5 +108,5 @@ Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
 QD_LIMIT = np.array(QD_LIMIT)
 TAU_LIMIT = np.array(TAU_LIMIT)
-KP_DEFAULT = np.array(KP_DEFAULT)
-KD_DEFAULT = np.array(KD_DEFAULT)
+KP = np.array(KP)
+KD = np.array(KD)

@@ -1,4 +1,4 @@
-def cb_send_foxglove(**states,):
+def cb_send_foxglove(robot_def=None, **states):
     import threading
     import asyncio
     import json

@@ -51,18 +51,20 @@ def run_plot():
     no_plot = args.no_plot
     do_plot = not args.no_plot
     robot_type = args.robot_type
-    robot_def = __import__(f'unicon.defs.{robot_type}', fromlist=[''])
-    Q_CTRL_INIT = getattr(robot_def, 'Q_CTRL_INIT', None)
-    Q_CTRL_MIN = getattr(robot_def, 'Q_CTRL_MIN', None)
-    Q_CTRL_MAX = getattr(robot_def, 'Q_CTRL_MAX', None)
-    DOF_NAMES = getattr(robot_def, 'DOF_NAMES', None)
-    NUM_DOFS = getattr(robot_def, 'NUM_DOFS', None)
-    TAU_LIMIT = getattr(robot_def, 'TAU_LIMIT', None)
-    QD_LIMIT = getattr(robot_def, 'QD_LIMIT', None)
-    KP_DEFAULT = getattr(robot_def, 'KP_DEFAULT', None)
-    KD_DEFAULT = getattr(robot_def, 'KD_DEFAULT', None)
-    KP_2 = getattr(robot_def, 'KP_2', KP_DEFAULT)
-    KD_2 = getattr(robot_def, 'KD_2', KD_DEFAULT)
+    from unicon.utils import import_obj, parse_robot_def
+    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
+    robot_def = parse_robot_def(robot_def)
+    Q_CTRL_INIT = robot_def.get('Q_CTRL_INIT', None)
+    Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
+    Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
+    DOF_NAMES = robot_def.get('DOF_NAMES', None)
+    NUM_DOFS = robot_def.get('NUM_DOFS', None)
+    TAU_LIMIT = robot_def.get('TAU_LIMIT', None)
+    QD_LIMIT = robot_def.get('QD_LIMIT', None)
+    KP = robot_def.get('KP', None)
+    KD = robot_def.get('KD', None)
+    KP_2 = robot_def.get('KP_2', KP)
+    KD_2 = robot_def.get('KD_2', KD)
     Q_CTRL_INIT = np.zeros(NUM_DOFS) if Q_CTRL_INIT is None else Q_CTRL_INIT
     tau_max = max(TAU_LIMIT) * 1.2
     recs = args.recs or []
@@ -512,8 +514,8 @@ def run_plot():
                 # q_rel = q_ctrl - q
                 # ax1.plot(t, q_rel)
 
-                # kp = KP_DEFAULT[d]
-                # kd = KD_DEFAULT[d]
+                # kp = KP[d]
+                # kd = KD[d]
                 kp = KP_2[d]
                 kd = KD_2[d]
 

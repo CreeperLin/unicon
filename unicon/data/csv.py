@@ -65,9 +65,9 @@ def load(
     csv_path=None,
     robot_def=None,
 ):
-    dof_names = getattr(robot_def, 'DOF_NAMES')
-    q_min = getattr(robot_def, 'Q_CTRL_MIN')
-    q_max = getattr(robot_def, 'Q_CTRL_MAX')
+    dof_names = robot_def.get('DOF_NAMES')
+    q_min = robot_def.get('Q_CTRL_MIN')
+    q_max = robot_def.get('Q_CTRL_MAX')
     import numpy as np
     csv_dof_names = csv_dof_names_g1
     csv_dof_remap = {
