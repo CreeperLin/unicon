@@ -49,14 +49,13 @@ def get_args():
     parser.add_argument('-ikwds', '--infer_kwargs', default=None)
     parser.add_argument('-sfuq', '--use_qdd', action='store_true')
     parser.add_argument('-wi', '--wait_input', action='store_true')
-    parser.add_argument('-rp', '--rec_path', default=None)
     parser.add_argument('-rap', '--action_path', default='actions_all.pt')
     parser.add_argument('-rop', '--obs_path', default='obs_all.pt')
     parser.add_argument('-ecp', '--env_cfg_path', default=None)
     parser.add_argument('-eco', '--env_cfg_override', default=None)
     parser.add_argument('-ssc', '--sims_config', default='ig.yaml')
     parser.add_argument('-sso', '--sims_override', default=None)
-    parser.add_argument('-ssnr', '--sims_no_reset', action='store_true')
+    parser.add_argument('-ssar', '--sims_auto_reset', action='store_true')
     parser.add_argument('-sswc', '--sims_wrapper_config', action='append')
     parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
     parser.add_argument('-ssh', '--sims_headless', action='store_true')
@@ -69,7 +68,6 @@ def get_args():
     parser.add_argument('-sftc', '--safety_ctrl', action='store_true')
     parser.add_argument('-dofs', '--dofs', default=None)
     parser.add_argument('-lrpt', '--lerp_time', type=float, default=5)
-    parser.add_argument('-rv', '--run_viz', action='store_true')
     parser.add_argument('-shm', '--shm', action='store_true')
     parser.add_argument('-rt', '--robot_type', default='gr1t2')
     parser.add_argument('-vr', '--verify_recv', action='store_true')
@@ -90,7 +88,7 @@ def get_args():
     parser.add_argument('-sxe', '--states_x_extras', action='store_true')
     parser.add_argument('-tc', '--tau_ctrl', action='store_true')
     parser.add_argument('-cct', '--cb_ctrl_tau', default=None)
-    parser.add_argument('-cdt', '--ctrl_dt', type=float, default=0.02)
+    parser.add_argument('-cdt', '--ctrl_dt', type=float, default=None)
     parser.add_argument('-ilr', '--infer_load_run', default=None)
     parser.add_argument('-rcps', '--rec_post_send', action='store_true')
     parser.add_argument('-ofg', '--output_foxglove', action='store_true')
@@ -101,8 +99,10 @@ def get_args():
     parser.add_argument('-dn2', '--dof_names_2', action='store_true')
     parser.add_argument('-dnr', '--dof_names_remap', default=None)
     parser.add_argument('-dns', '--dof_names_sub', default=None)
-    parser.add_argument('-dp', '--data_path', default=None)
-    parser.add_argument('-dkwds', '--data_kwds', default=None)
+    parser.add_argument('-rp', '--rec_path', default=None)
+    parser.add_argument('-rtp', '--rec_type', default=None)
+    parser.add_argument('-rpt', '--rec_pt', type=int, default=None)
+    parser.add_argument('-rkwds', '--rec_kwds', default=None)
     parser.add_argument('-ncmd', '--num_commands', type=int, default=3)
     parser.add_argument('-nice', '--nice', type=int, default=None)
     parser.add_argument('-su', '--sudo', action='store_true')
@@ -218,15 +218,6 @@ def run(args=None):
     states_init(use_shm=use_shm, reuse=reuse, clear=True)
 
     proc = None
-    if args.run_viz:
-        viz_kwds = {
-            'robot_type': robot_type,
-        }
-        from unicon.viz import run_viz
-        import multiprocessing
-        ctx = multiprocessing.get_context('spawn')
-        proc = ctx.Process(target=run_viz, kwargs=viz_kwds, daemon=True)
-        proc.start()
 
     states_q_ctrl = states_get('q_ctrl')
     states_tau_ctrl = states_get('tau_ctrl')
@@ -317,8 +308,11 @@ def run(args=None):
         init_joint_angles = env_cfg['init_state']['default_joint_angles']
         dof_names = env_cfg.get('dof_names', list(init_joint_angles.keys()))
         default_dof_pos = np.array([init_joint_angles[n] for n in dof_names])
+        ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
         env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
         print('env_cfg_args', env_cfg_args)
+
+    print('dt', dt, 'ctrl_dt', ctrl_dt)
 
     states_infer_extras = {}
     inf_extras = args.states_infer_extras
@@ -418,40 +412,33 @@ def run(args=None):
 
     replay_loop = args.replay_loop
     rec_path = args.rec_path
+    rec_type = args.rec_type
     actions_all = None
     rec_q_ctrl = None
     rec_q = None
     loaded_rec = None
     if rec_path is not None:
+        _, ext = os.path.splitext(rec_path)
+        rec_type = ext[1:] if rec_type is None else rec_type
+        print('rec_type', rec_type)
+        mod = import_obj((rec_type, None), default_mod_prefix='unicon.data')
         print('rec_path', rec_path)
-        loaded_rec = np.load(rec_path, allow_pickle=True).item()
-    data_path = args.data_path
-    if data_path is not None:
-        _, ext = os.path.splitext(data_path)
-        data_type = ext[1:]
-        print('data_type', data_type)
-        mod = import_obj((data_type, None), default_mod_prefix='unicon.data')
-        print('data_path', data_path)
-        kwds = args.data_kwds
+        kwds = args.rec_kwds
         loaded_rec = mod.load(
-            data_path,
+            rec_path,
             robot_def=robot_def,
             **(kwds or {}),
         )
     if loaded_rec is not None:
-        rec_type = loaded_rec.get('type')
-        if rec_type == 'legged':
-            rec_states = loaded_rec['states'][0]
-            rec_actions = loaded_rec['actions'][0]
-            num_dofs = (rec_states.shape[-1] - 13 - 6) // 2
-            rec_q = rec_states[:, 13:13 + num_dofs]
-            actions_all = rec_actions
-        else:
-            rec_q_ctrl = loaded_rec.get('states_q_ctrl')
-            rec_q = loaded_rec.get('states_q')
-            print('rec_q_ctrl', rec_q_ctrl.shape)
+        rec_q_ctrl = loaded_rec.get('states_q_ctrl')
+        rec_q = loaded_rec.get('states_q')
+        print('rec_q_ctrl', rec_q_ctrl.shape)
         loaded_rec_args = loaded_rec.get('args', {})
         print('loaded_rec_args', loaded_rec_args)
+        rec_pt = args.rec_pt
+        if rec_pt is not None:
+            print('rec_pt', rec_pt)
+            loaded_rec = {k: (v[rec_pt:] if isinstance(v, np.ndarray) else v) for k, v in loaded_rec.items()}
 
     seq = []
     mode = args.mode or []
@@ -1065,7 +1052,7 @@ def run(args=None):
                 default_dof_pos[n] = Q_BOOT[i]
         default_root_states = system_config.get('default_root_states')
         if fix_base_link and default_root_states is not None:
-            default_root_states[2] = 1.5
+            default_root_states[2] += 0.5
         if args.sims_headless:
             system_config['headless'] = True
         if args.sims_pd:
@@ -1091,7 +1078,7 @@ def run(args=None):
         obj_update(system_config, sims_override)
         # system_config.update(sims_override)
         wrapper_config = []
-        if not args.sims_no_reset:
+        if args.sims_auto_reset:
             wrapper_config.append('sims.wrappers.autoreset:AutoResetWrapper')
         sims_wrapper_config = args.sims_wrapper_config
         if sims_wrapper_config is not None:
@@ -1163,7 +1150,12 @@ def run(args=None):
                 }
                 data.update({k: v[:rec_len] for k, v in rec.items() if isinstance(v, np.ndarray)})
                 data.update(saved_info)
-                np.save(save_path, data, allow_pickle=True)
+                _, ext = os.path.splitext(save_path)
+                save_type = ext[1:]
+                print('save_type', save_type)
+                print('save_path', save_path)
+                mod = import_obj((save_type, None), default_mod_prefix='unicon.data')
+                mod.save(save_path, data)
         if not reuse:
             states_destroy(force=True)
         if proc is not None:

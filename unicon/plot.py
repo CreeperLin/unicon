@@ -1,6 +1,4 @@
-def run_plot():
-    import os
-    import numpy as np
+def get_plot_args(args=None):
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', '--recs', action='append')
@@ -28,26 +26,32 @@ def run_plot():
     parser.add_argument('-nci', '--no_check_int', action='store_true')
     parser.add_argument('-nrs', '--no_root_states', action='store_true')
     parser.add_argument('-mo', '--motion_output', default=None)
+    args, _ = parser.parse_known_args(args)
+    return args
 
-    args = parser.parse_args()
+
+def plot(args=None):
+    if args is None:
+        args = get_plot_args()
+    import os
+    import numpy as np
     motion_output = args.motion_output
     states_i_extras = args.states_i_extras
     states_q_extras = args.states_q_extras
     states_x_extras = args.states_x_extras
     eval_loss = args.eval_loss
     if eval_loss:
-        import losses
+        import unicon.losses
         loss_names = [
             'chamfer_loss',
-            'rmse_loss',
-            'chamfer_shifted_loss',
             'unfolded_mse_loss',
-            'f_mse_loss',
+            'mse_loss',
+            # 'rmse_loss',
             # 'kldiv_loss',
             # 'rot_loss',
             # 'soft_dtw_loss',
         ]
-        loss_fns = [getattr(losses, n) for n in loss_names]
+        loss_fns = {n: getattr(unicon.losses, n) for n in loss_names}
     no_plot = args.no_plot
     do_plot = not args.no_plot
     robot_type = args.robot_type
@@ -95,6 +99,7 @@ def run_plot():
             states_qd = rec_states[:, 13 + num_dofs:13 + num_dofs * 2]
             rec['states_qd'] = states_qd[:, dof_map]
     rec = recs[0]
+    dt = rec['dt']
     num_recs = len(recs)
     for n, r in zip(rec_names, recs):
         print(n)
@@ -318,7 +323,6 @@ def run_plot():
         d_axes = axes[0]
         print('axes', axes.shape)
         t = list(range(st, ed))
-        dt = 0.02
         ax1, ax2, ax3, ax4, ax5, ax6 = d_axes
         # g = -9.81
         # g = -9.83
@@ -500,7 +504,6 @@ def run_plot():
         axes = axes.reshape(-1, nplts)
         print('axes', axes.shape)
         t = list(range(st, ed))
-        dt = 0.02
         for k, (d, d_axes) in enumerate(zip(dofs, axes)):
             ax1, ax2, ax3 = d_axes
             for i, rec in enumerate(recs):
@@ -648,7 +651,138 @@ def run_plot():
                 print('max', _max)
                 print('med', _med)
         return
-    # axes = axes.flatten().tolist()
+    if num_recs > 1 and eval_loss:
+        import torch
+        trajs = []
+        for rec in recs:
+            states_qd = rec['states_qd']
+            states_q = rec['states_q']
+            states_q_ctrl = rec['states_q_ctrl']
+            q = states_q[st:ed, dofs]
+            qd = states_qd[st:ed, dofs]
+            qc = states_q_ctrl[st:ed, dofs]
+            # s = np.concatenate([q, qd], axis=-1)
+            # traj = q
+            # traj = np.concatenate([q, 2 * dt * qd, qc], axis=-1)
+            traj = np.concatenate([q, 2 * dt * qd], axis=-1)
+            trajs.append(traj)
+        trajs = np.stack(trajs, axis=0)
+        trajs = torch.from_numpy(trajs)
+        print('trajs', trajs.shape)
+        traj_len = 2**7
+        num_segs = trajs.shape[1] // traj_len
+        print('traj_len', traj_len)
+        print('num_segs', num_segs)
+        trajs = trajs[:, :num_segs * traj_len, :].reshape(num_recs, num_segs, traj_len, -1)
+        print('trajs', trajs.shape)
+        plot_dir = f'{plot_root}/'
+        import torch
+        unicon.losses.DEBUG = True
+        loss_scale = traj_len * trajs[0].shape[-1]
+        print('loss_scale', loss_scale)
+        for i1, i2 in zip(inds0, inds1):
+            print('traj loss', i1, i2, rec_names[i1], rec_names[i2])
+            s0 = trajs[i1]
+            s1 = trajs[i2]
+            loss_all = []
+            for k, loss_fn in loss_fns.items():
+                loss = loss_fn(s0, s1)
+                loss *= loss_scale
+                std, mean = torch.std_mean(loss)
+                print(k, std.item(), mean.item())
+                loss_all.append(loss)
+            nplts = len(loss_all)
+            fig, axes = plt.subplots(1, nplts, figsize=(10 * nplts, 10 * 1))
+            axes = axes.flatten().tolist() if nplts > 1 else [axes]
+            for i, k in enumerate(loss_fns):
+                ax = axes[i]
+                loss = loss_all[i]
+                print(loss.shape, loss.tolist())
+                t = list(range(len(loss)))
+                ax.plot(t, loss, marker='.')
+                ax.set_ylim([-0.01, loss.max() * 1.5 + 0.1])
+                ax.set_title(k)
+            fig.tight_layout()
+            plt.subplots_adjust(top=0.92)
+            plot_prefix = plot_dir
+            plt.suptitle(f'traj loss {rec_names[i1], rec_names[i2]}')
+            plt.savefig(plot_prefix + f'loss_traj_{i1}_{i2}.png')
+            plt.close()
+        unicon.losses.DEBUG = False
+
+        unicon.losses.plot_unfolded_mse_loss()
+        unicon.losses.plot_chamfer_loss()
+
+        if num_recs == 2:
+            print('element-wise')
+            dof_names = [DOF_NAMES[i] for i in dofs]
+            elm_names = sum([[f'{t}_{n}' for n in dof_names] for t in ['q', 'qd', 'qc']], [])
+            s0 = trajs[0]
+            s1 = trajs[1]
+            num_elms = s0.shape[-1]
+            loss_scale = traj_len
+            loss_all = {k: [] for k in loss_fns}
+            for i in range(num_elms):
+                # print(elm_names[i])
+                for k, loss_fn in loss_fns.items():
+                    loss = loss_fn(s0[..., i:i + 1], s1[..., i:i + 1])
+                    loss *= loss_scale
+                    traj_std, mean = [v.item() for v in torch.std_mean(loss)]
+                    # print(name, traj_std, std, mean)
+                    loss_all[k].append([traj_std, mean])
+            for name in loss_fns:
+                print(name, [x[-1] for x in loss_all[name]])
+            nplts = len(loss_fns)
+            figsize = (15 * nplts, 20)
+            fig, axes = plt.subplots(1, nplts, figsize=figsize, layout='constrained')
+            axes = axes.flatten().tolist() if nplts > 1 else [axes]
+            x = np.arange(num_elms) * 1.1
+            width = 0.3  # the width of the bars
+            # multiplier = 0
+            labels = elm_names[:num_elms]
+            COLORS_5 = [
+                # '#000000',
+                '#E69F00',
+                '#56B4E9',
+                '#009E73',
+                '#F0E442',
+                '#0072B2',
+                '#D55E00',
+                '#CC79A7',
+            ]
+
+            def hex_to_rgb(hexes):
+                return [list(int(color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)) for color in hexes]
+
+            colors = hex_to_rgb(COLORS_5)
+            for i, k in enumerate(loss_all):
+                ax = axes[i]
+                loss = loss_all[k]
+                loss = np.array(loss)
+                traj_std, mean = loss.T
+                # offset = width * multiplier
+                offset = 0
+                # rects = ax.bar(x + offset, mean, width, label=k, yerr=traj_std)
+                rects = ax.barh(x + offset,
+                                mean,
+                                height=width,
+                                label=k,
+                                xerr=traj_std,
+                                tick_label=labels,
+                                color=colors[i])
+                ax.bar_label(rects, padding=5)
+                # multiplier += 1
+                ax.set_yticks(x)
+                ax.set_yticklabels(labels, fontsize='xx-large')
+                ax.set_title(k)
+                ax.set_xlim(0, max(0.5, np.max(mean + traj_std) + 0.5))
+            # ax.legend(loc='upper left', ncols=3)
+            # fig.tight_layout()
+            plot_prefix = plot_dir
+            plt.suptitle(f'elm loss {rec_names[i1], rec_names[i2]}')
+            plt.savefig(plot_prefix + f'loss_elm_{i1}_{i2}.png')
+            plt.close()
+        return
     check_int = not args.no_check_int
     plot_root_states = not args.no_root_states
     plot_root_states = do_plot and plot_root_states
@@ -727,11 +861,12 @@ def run_plot():
             ax7.plot(t, qd[:, :h_num_dofs], marker='.')
             ax7.legend(dof_names[:h_num_dofs], loc="lower right")
             ax7.set_title(name + 'qd_1')
-            ax7.set_ylim([-40, 40])
+            qd_limit = max(min(10, np.max(QD_LIMIT)), np.max(np.abs(qd)) + 1)
+            ax7.set_ylim([-qd_limit, qd_limit])
             ax8.plot(t, qd[:, h_num_dofs:], marker='.')
             ax8.legend(dof_names[h_num_dofs:], loc="lower right")
             ax8.set_title(name + 'qd_2')
-            ax8.set_ylim([-40, 40])
+            ax8.set_ylim([-qd_limit, qd_limit])
 
             if check_int:
                 # _t = t[1:]
@@ -805,72 +940,6 @@ def run_plot():
     print('plot_rel', plot_rel)
     single_plot = args.single_plot
     auto_lim = args.auto_lim
-    if num_recs > 1 and eval_loss:
-        import torch
-        trajs = []
-        for rec in recs:
-            states_qd = rec['states_qd']
-            states_q = rec['states_q']
-            states_q_ctrl = rec['states_q_ctrl']
-            q = states_q[st:ed, dofs]
-            qd = states_qd[st:ed, dofs]
-            qc = states_q_ctrl[st:ed, dofs]
-            # s = np.concatenate([q, qd], axis=-1)
-            # traj = q
-            # traj = np.concatenate([q, 0.02 * qd], axis=-1)
-            traj = np.concatenate([q, 0.05 * qd, qc], axis=-1)
-            trajs.append(traj)
-        trajs = np.stack(trajs, axis=0)
-        trajs = torch.from_numpy(trajs)
-        print('trajs', trajs.shape)
-        # traj_len = trajs.shape[1]
-        traj_len = 2**7
-        # traj_len = 2**8
-        num_segs = trajs.shape[1] // traj_len
-        print('traj_len', traj_len)
-        print('num_segs', num_segs)
-        trajs = trajs[:, :num_segs * traj_len, :].reshape(num_recs, num_segs, traj_len, -1)
-        print('trajs', trajs.shape)
-        import torch
-        for i1, i2 in zip(inds0, inds1):
-            print('eval', i1, i2, rec_names[i1], rec_names[i2])
-            s0 = trajs[i1]
-            s1 = trajs[i2]
-            # print(s0.shape, s1.shape)
-            for loss_fn in loss_fns:
-                loss = loss_fn(s0, s1).mean()
-                print(loss_fn, loss)
-
-        loss1 = getattr(losses.unfolded_mse_loss, 'loss1', None)
-        if loss1 is not None:
-            from matplotlib import pyplot as plt
-            print('loss1', loss1.shape)
-            loss1 = loss1.cpu().numpy()
-            x = range(loss1.shape[-1])
-            fig = plt.figure()
-            for i in range(len(loss1)):
-                plt.plot(x, loss1[i])
-            fig.tight_layout()
-            # plt.plot(loss1)
-            plt.savefig(f'loss1.png')
-
-        argmins = getattr(losses, 'argmins', None)
-        if argmins is not None:
-            # print('argmins', argmins)
-            from matplotlib import pyplot as plt
-            for i, argmin in enumerate(argmins):
-                L = argmin.shape[1]
-                # data = torch.zeros(L, L)
-                data = torch.ones(L, L)
-                for d in argmin:
-                    data[torch.arange(0, L), d] = data[torch.arange(0, L), d] + 1
-                data = torch.log10(data)
-                # print(data)
-                fig = plt.figure()
-                plt.imshow(data, interpolation='nearest', cmap='hot')
-                plt.colorbar()
-                fig.tight_layout()
-                plt.savefig(f'argmin_{i}.png')
     if args.no_dof_states:
         return
     nplts = 4
@@ -995,6 +1064,10 @@ def run_plot():
             ax3.axhline(y=q_max, color='k', linestyle='--')
             ax3.axhline(y=q_min, color='k', linestyle='--')
         qd_limit = QD_LIMIT[idx] * qd_scale
+        ax1.set_title('qd - q')
+        ax2.set_title('q - q_ctrl')
+        ax3.set_title('q - t')
+        ax4.set_title('q_tau - t')
         ax1.set_xlim([q_min_lim, q_max_lim])
         ax1.set_ylim([-qd_limit, qd_limit])
         ax2.set_xlim([q_min_lim, q_max_lim])
@@ -1006,7 +1079,7 @@ def run_plot():
             'ref',
         ] + rec_names, loc="lower right")
         if not single_plot:
-            plt.title(DOF_NAMES[idx])
+            plt.suptitle(DOF_NAMES[idx])
             plt.savefig(plot_prefix + '.png')
             plt.close()
 
@@ -1018,4 +1091,4 @@ def run_plot():
 
 
 if __name__ == '__main__':
-    run_plot()
+    plot()

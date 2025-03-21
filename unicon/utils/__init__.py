@@ -7,16 +7,18 @@ from threading import Event
 _default_time_fn = time.perf_counter
 
 
-def states_ts2dt(states_and_ts, dt=0.02):
-    states = {k: v for k, v in states_and_ts.items() if k + '.ts' in states_and_ts}
-    tss = {k: v for k, v in states_and_ts.items() if '.ts' in k}
+def states_ts2dt(states_and_ts=None, states=None, tss=None, dt=0.02):
+    if states_and_ts is not None:
+        states = {k: v for k, v in states_and_ts.items() if k + '.ts' in states_and_ts}
+        tss = {k[:-3]: v for k, v in states_and_ts.items() if '.ts' in k}
     t0 = min([np.min(ts) for ts in tss.values()])
     t1 = max([np.max(ts) for ts in tss.values()])
     dura = t1 - t0
     num_frames = int(dura / dt)
-    print({k: (tss[k + '.ts'][-1] - tss[k + '.ts'][0]) / len(states[k]) for k in states.keys()})
+    print('mean intv', {k: (tss[k][-1] - tss[k][0]) / len(states[k]) for k in states.keys()})
     print('t0', t0, 't1', t1)
     print('dura', dura)
+    print('shapes', {k: v.shape for k, v in states.items()})
     print('num_frames', num_frames)
 
     tss = {k: v - t0 for k, v in tss.items()}
@@ -25,7 +27,7 @@ def states_ts2dt(states_and_ts, dt=0.02):
 
     states_new = {}
     for k, states_ori in states.items():
-        ts = torch.from_numpy(tss[k + '.ts'])
+        ts = torch.from_numpy(tss[k])
         ft = torch.arange(num_frames) * dt + t0
         inds0 = torch.searchsorted(ts, ft, side='left').squeeze().numpy()
         inds0[inds0 >= states_ori.shape[0]] = 0
@@ -35,7 +37,7 @@ def states_ts2dt(states_and_ts, dt=0.02):
         s1 = states_ori[inds1]
         ts0 = ts[inds0]
         r = (ts0 - ft).numpy() / dt
-        print(np.all(r >= 0))
+        assert np.all(r >= 0)
         r = r.reshape(-1, 1)
         s = s0 * (1 - r) + s1 * r
         states_new[k] = s
@@ -48,8 +50,8 @@ def parse_urdf(
     default_kd=2.,
     default_q_min=-np.pi,
     default_q_max=np.pi,
-    default_tau_limit=100.,
-    qd_limit=10.,
+    default_tau_limit=1000.,
+    qd_limit=30.,
 ):
     from yourdfpy import URDF
     urdf = URDF.load(urdf_path)
@@ -66,7 +68,7 @@ def parse_urdf(
     kps = [(default_kp if d is None else d.stiffness) for d in joint_dynamics]
     kds = [(default_kd if d is None else d.damping) for d in joint_dynamics]
     num_dofs = len(dof_names)
-    return {
+    robot_def = {
         'NUM_DOFS': num_dofs,
         'DOF_NAMES': dof_names,
         'Q_CTRL_MIN': q_min,
@@ -76,6 +78,8 @@ def parse_urdf(
         'KP': kps,
         'KD': kds,
     }
+    print('parse_urdf', robot_def)
+    return robot_def
 
 
 def parse_robot_def(robot_def):
@@ -94,6 +98,12 @@ def parse_robot_def(robot_def):
         except Exception:
             import traceback
             traceback.print_exc()
+    num_dofs = robot_def['NUM_DOFS']
+    for k in ['QD_LIMIT', 'TAU_LIMIT']:
+        v = robot_def.get(k)
+        if v is None:
+            continue
+        robot_def[k] = [v] * num_dofs if isinstance(v, (float, int)) else v
     robot_def = {
         k: np.array(v) if isinstance(v, list) and isinstance(v[0], (float, int)) else v for k, v in robot_def.items()
     }

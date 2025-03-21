@@ -9,6 +9,7 @@ def cb_send_swv(
     start_server=True,
     init_z=1.0,
     use_rpy=False,
+    verbose=False,
     **states,
 ):
     dof_names = robot_def.get('DOF_NAMES')
@@ -70,7 +71,7 @@ def cb_send_swv(
             if last_h == h:
                 return
             last_h = h
-            if pt % 10 == 0:
+            if verbose and pt % 50 == 0:
                 print('states_q', pt)
             pt += 1
 

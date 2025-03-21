@@ -474,29 +474,15 @@ def cb_fftai_recv_send_close(
         if len(seg) < 82:
             return
         d = struct.unpack(fmt, seg)
-        # v2 = d[17]
         v2 = d[-1]
         if v2 != 5023066:
             print('imu failed', v2)
             return
-        # if seg[-1] != 24:
-        # print('imu failed', seg[-1])
-        # return
-        # t1 = d[0]
         if states_lin_acc is not None:
             acc = d[1:4]
             states_lin_acc[:] = acc
         ang_vel = d[4:7]
-        # v1 = d[7:10]
-        # rpy = list(d[10:13])
-        # rpy = d[7:10]
         rpy = [d[8], d[7], d[9]]
-        # rpy = list(d[7:10])
-        # rpy[0] = math.fmod(rpy[0] + 180, 180)
-        # print(rpy)
-        # r = rpy[0]
-        # rpy[0] = r + 180 if r < 0 else r - 180
-        # rot = d[10:13]
         states_rpy[:] = [x * deg2rad for x in rpy]
         states_ang_vel[:] = [x * deg2rad for x in ang_vel]
         states_quat[3] = d[10]
@@ -532,8 +518,6 @@ def cb_fftai_recv_send_close(
         q_ctrl_clip = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max) if clip_q_ctrl else states_q_ctrl
         q_ctrl_send = q_ctrl_clip * q2a_scale + q2a_bias
         # print('q_ctrl_send', q_ctrl_send.tolist())
-        # return
-        # q_ctrl_send[:] = 0.
         if unique_send and _last_q_ctrl is not None:
             qcd = np.abs(q_ctrl_clip - _last_q_ctrl) > 1e-3
             _send_inds = np.where(qcd)[0]
@@ -544,10 +528,6 @@ def cb_fftai_recv_send_close(
                 q_ctrl_fn(fsa_ips[i], q_ctrl_send[i])
         except TimeoutError:
             print('send timeout', i, fsa_ips[i])
-        # if enable_imu:
-        # w = ser.inWaiting()
-        # if w:
-        # ser.read(w)
         if not unique_send:
             return
         if _last_q_ctrl is None:
