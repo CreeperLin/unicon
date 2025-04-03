@@ -2,9 +2,56 @@ import os
 import time
 import types
 import numpy as np
+import re
 from threading import Event
 
 _default_time_fn = time.perf_counter
+
+
+def match_keys(pats, keys, substr=True, regex=False):
+    if not isinstance(pats, (tuple, list)):
+        pats = [pats]
+    inds = []
+    for i, k in enumerate(keys):
+        for pat in pats:
+            assert isinstance(pat, str)
+            if pat == k:
+                inds.append(i)
+                break
+            if substr:
+                if pat in k:
+                    inds.append(i)
+                    break
+            if regex:
+                match = re.match(pat, k)
+                if match is not None:
+                    inds.append(i)
+                    break
+    return inds
+
+
+def load_rec(rec_path, rec_type=None, load_kwds=None, robot_def=None):
+    rec_type = None if rec_type == '' else rec_type
+    _, ext = os.path.splitext(rec_path)
+    rec_type = ext[1:] if rec_type is None else rec_type
+    print('rec_type', rec_type)
+    mod = import_obj((rec_type, None), default_mod_prefix='unicon.data')
+    print('rec_path', rec_path)
+    return mod.load(
+        rec_path,
+        robot_def=robot_def,
+        **(load_kwds or {}),
+    )
+
+
+def load_obj(obj):
+    import yaml
+    # yaml.add_multi_constructor('tag:', lambda *_: None, Loader=yaml.SafeLoader)
+    if isinstance(obj, str):
+        if os.path.exists(obj):
+            with open(obj, 'r') as f:
+                obj = f.read()
+    return yaml.safe_load(obj)
 
 
 def states_ts2dt(states_and_ts=None, states=None, tss=None, dt=0.02):
@@ -54,7 +101,7 @@ def parse_urdf(
     qd_limit=30.,
 ):
     from yourdfpy import URDF
-    urdf = URDF.load(urdf_path)
+    urdf = URDF.load(urdf_path, load_meshes=False, build_scene_graph=False)
     # links = urdf.robot.links
     joints = urdf.robot.joints
     joints = [j for j in joints if j.type != 'fixed']
@@ -86,11 +133,11 @@ def parse_robot_def(robot_def):
     if not isinstance(robot_def, dict):
         robot_def = {k: v for k, v in vars(robot_def).items() if k.isupper()}
     urdf_path = robot_def.get('URDF')
-    _default_urdf_root = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
-    _default_urdf_root = os.environ.get('UNICON_URDF_ROOT', _default_urdf_root)
-    urdf_path = urdf_path if urdf_path.startswith('/') else os.path.join(_default_urdf_root, urdf_path)
-    robot_def['URDF'] = urdf_path
     if urdf_path is not None:
+        _default_urdf_root = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
+        _default_urdf_root = os.environ.get('UNICON_URDF_ROOT', _default_urdf_root)
+        urdf_path = urdf_path if urdf_path.startswith('/') else os.path.join(_default_urdf_root, urdf_path)
+        robot_def['URDF'] = urdf_path
         try:
             urdf_def = parse_urdf(urdf_path)
             urdf_def.update(robot_def)
@@ -768,7 +815,7 @@ def obj_update(obj, updates):
         elif isinstance(obj, (list, tuple)):
             src = obj[key]
         else:
-            src = getattr(src, key, None)
+            src = getattr(obj, key, None)
         if isinstance(val, dict) and src is not None:
             ret = obj_update(src, val)
         else:

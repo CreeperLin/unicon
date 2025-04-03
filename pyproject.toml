@@ -21,6 +21,7 @@ dev = [
   "check-manifest",
   "sim-web-visualizer",
   "torch",
+  "yourdfpy",
 ]
 test = ["coverage"]
 
@@ -29,7 +30,7 @@ test = ["coverage"]
 "Bug Tracker" = "https://github.com/creeperlin/unicon/issues"
 
 [build-system]
-requires = ["setuptools>=43.0.0", "wheel"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

@@ -7,20 +7,24 @@ def cb_input_ev(
     blocking=False,
     remap_pedals=True,
     abs_type=0,
+    dev_path='/dev/input',
 ):
     import os
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
 
     input_states = {}
 
+    if not os.path.exists(dev_path):
+        print(f'{dev_path} not exist')
+        return None
     if device is None:
-        dev_root = '/dev/input/by-path/'
+        dev_root = os.path.join(dev_path, 'by-path')
         devices = sorted(filter(lambda x: 'event' in x and 'joystick' in x, os.listdir(dev_root)))
         if len(devices):
-            device = dev_root + devices[0]
+            device = os.path.join(dev_root, devices[0])
     if device is None:
-        dev_root = '/dev/input/'
-        device = dev_root + sorted(filter(lambda x: 'event' in x, os.listdir(dev_root)))[-1]
+        dev_root = dev_path
+        device = os.path.join(dev_root, sorted(filter(lambda x: 'event' in x, os.listdir(dev_root)))[-1])
 
     import evdev
     kbs = {}

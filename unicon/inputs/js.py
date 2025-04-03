@@ -7,6 +7,7 @@ def cb_input_js(
     min_num_axes=2,
     min_num_buttons=2,
     blocking=False,
+    dev_path='/dev/input',
 ):
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     # Released by rdb under the Unlicense (unlicense.org)
@@ -143,9 +144,11 @@ def cb_input_js(
     axis_map = []
     button_map = []
 
-    path = '/dev/input/'
-    devices = list(filter(lambda x: 'js' in x, map(lambda x: path + x,
-                                                   os.listdir(path)))) if device is None else [device]
+    if not os.path.exists(dev_path):
+        print(f'{dev_path} not exist')
+        return None
+    devices = list(filter(lambda x: 'js' in x, map(lambda x: os.path.join(dev_path, x),
+                                                   os.listdir(dev_path)))) if device is None else [device]
     jsdev = None
     for device in devices:
         # Open the joystick device.

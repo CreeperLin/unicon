@@ -10,13 +10,13 @@ def get_args():
     parser.add_argument('-c', '--close', action='store_true')
     parser.add_argument('-m', '--mode', action='append')
     parser.add_argument('-dt', '--dt', type=float, default=0.02)
-    parser.add_argument('-n', '--num_steps', type=int, default=1024)
+    parser.add_argument('-n', '--num_steps', type=int, default=0)
     parser.add_argument('-s', '--system', default='f')
     parser.add_argument('-ro', '--rec_output', default=None)
-    parser.add_argument('-I', '--infer_type', default='gr1')
-    parser.add_argument('-i', '--input_type', default='js')
+    parser.add_argument('-it', '--infer_type', default='gr1')
+    parser.add_argument('-di', '--input_dev_type', default='js')
     parser.add_argument('-p', '--policy_type', default='none')
-    parser.add_argument('-cmd', '--cmd_type', default='vel')
+    parser.add_argument('-cmd', '--cmd', default='vel')
     parser.add_argument('-ccv', '--cmd_const_v', default=None)
     parser.add_argument('-cir', '--cmd_init_range', default=None)
     parser.add_argument('-d', '--dry', action='store_true')
@@ -47,13 +47,12 @@ def get_args():
     parser.add_argument('-iv', '--infer_verify', action='store_true')
     parser.add_argument('-imp', '--infer_model_path', default=None)
     parser.add_argument('-ikwds', '--infer_kwargs', default=None)
-    parser.add_argument('-sfuq', '--use_qdd', action='store_true')
     parser.add_argument('-wi', '--wait_input', action='store_true')
     parser.add_argument('-rap', '--action_path', default='actions_all.pt')
     parser.add_argument('-rop', '--obs_path', default='obs_all.pt')
     parser.add_argument('-ecp', '--env_cfg_path', default=None)
     parser.add_argument('-eco', '--env_cfg_override', default=None)
-    parser.add_argument('-ssc', '--sims_config', default='ig.yaml')
+    parser.add_argument('-ssc', '--sims_config', default=None)
     parser.add_argument('-sso', '--sims_override', default=None)
     parser.add_argument('-ssar', '--sims_auto_reset', action='store_true')
     parser.add_argument('-sswc', '--sims_wrapper_config', action='append')
@@ -92,8 +91,8 @@ def get_args():
     parser.add_argument('-ilr', '--infer_load_run', default=None)
     parser.add_argument('-rcps', '--rec_post_send', action='store_true')
     parser.add_argument('-ofg', '--output_foxglove', action='store_true')
+    parser.add_argument('-i', '--inputs', default=[], action='append')
     parser.add_argument('-o', '--outputs', default=[], action='append')
-    parser.add_argument('-itf', '--imu_transform', action='store_true')
     parser.add_argument('-sic', '--safety_integrity_check', action='store_true')
     parser.add_argument('-uspd', '--use_sim_pd', action='store_true')
     parser.add_argument('-dn2', '--dof_names_2', action='store_true')
@@ -107,6 +106,8 @@ def get_args():
     parser.add_argument('-nice', '--nice', type=int, default=None)
     parser.add_argument('-su', '--sudo', action='store_true')
     parser.add_argument('-qtf', '--q_transform', default=None)
+    parser.add_argument('-itf', '--imu_transform', default=None)
+    parser.add_argument('-tf', '--transforms', default=[], action='append')
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
     args, _ = parser.parse_known_args()
     return args
@@ -125,7 +126,7 @@ def run(args=None):
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
     from unicon.utils import set_nice2, set_cpu_affinity2, sampler_uniform, list2slice, pp_arr, set_seed, \
-        import_obj, parse_robot_def
+        import_obj, parse_robot_def, load_obj, match_keys
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
     if args.sudo:
@@ -179,6 +180,19 @@ def run(args=None):
         DOF_NAMES = DOF_NAMES_2
 
     saved_info = {}
+    dt = args.dt
+    ctrl_dt = args.ctrl_dt
+    ctrl_dt = dt if ctrl_dt is None else ctrl_dt
+    ctx = {
+        'args': vars(args),
+        'argv': argv,
+        'dt': dt,
+        'ctrl_dt': ctrl_dt,
+        'robot_def': robot_def,
+        'dof_names': DOF_NAMES,
+        'hostname': __import__('platform').node(),
+        'saved_info': saved_info,
+    }
 
     tau_ctrl = args.tau_ctrl
     specs = [
@@ -253,10 +267,6 @@ def run(args=None):
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
-    dt = args.dt
-    ctrl_dt = args.ctrl_dt
-    ctrl_dt = dt if ctrl_dt is None else ctrl_dt
-
     dof_names = None
     default_dof_pos = None
 
@@ -293,13 +303,11 @@ def run(args=None):
     env_cfg_args = None
     if env_cfg_path is not None and os.path.exists(env_cfg_path):
         print('env_cfg_path', env_cfg_path)
-        yaml.add_multi_constructor('tag:', lambda *_: None, Loader=yaml.SafeLoader)
-        with open(env_cfg_path, 'r') as f:
-            env_cfg = yaml.safe_load(f)
+        env_cfg = load_obj(env_cfg_path)
     if env_cfg is not None:
         env_cfg_override = args.env_cfg_override
         if env_cfg_override is not None:
-            env_cfg_override = yaml.safe_load(env_cfg_override)
+            env_cfg_override = load_obj(env_cfg_override)
             from unicon.utils import obj_update
             obj_update(env_cfg, env_cfg_override)
         env_cfg_env = env_cfg['env']
@@ -327,7 +335,7 @@ def run(args=None):
 
     dofs = args.dofs
     if dofs is not None:
-        dofs = yaml.safe_load(dofs)
+        dofs = load_obj(dofs)
         if isinstance(dofs, str):
             dof_names = DOF_PRESETS[dofs]
         elif isinstance(dofs, (list, tuple)):
@@ -337,11 +345,12 @@ def run(args=None):
 
     dof_names = DOF_NAMES if dof_names is None else dof_names
 
-    print('dof_names', len(dof_names), dof_names)
+    dof_names_ori = dof_names[:]
+    print('dof_names_ori', len(dof_names_ori), dof_names_ori)
 
     dof_names_sub = args.dof_names_sub
     if dof_names_sub is not None:
-        sub = yaml.safe_load(dof_names_sub)
+        sub = load_obj(dof_names_sub)
 
         def sub_name(x):
             for t1, t2 in sub:
@@ -352,12 +361,14 @@ def run(args=None):
 
     dof_names_remap = args.dof_names_remap
     if dof_names_remap is not None:
-        remap = yaml.safe_load(dof_names_remap)
+        remap = load_obj(dof_names_remap)
         dof_names = [remap.get(n, n) for n in dof_names]
 
+    dof_names_map = {k: nk for k, nk in zip(dof_names_ori, dof_names)}
     print('DOF_NAMES', len(DOF_NAMES), DOF_NAMES)
     print('dof_names', len(dof_names), dof_names)
     dof_names_extra = [n for n in dof_names if n not in DOF_NAMES]
+    DOF_NAMES_extra = [n for n in DOF_NAMES if n not in dof_names]
     dof_states_padded = len(dof_names_extra) > 0
     dof_src_map = [i for i, n in enumerate(dof_names) if n in DOF_NAMES]
     if dof_states_padded:
@@ -365,6 +376,7 @@ def run(args=None):
         dof_map_padded = [(DOF_NAMES.index(n) if n in DOF_NAMES else -1) for n in dof_names]
         print('dof_states_padded', dof_states_padded)
         print('dof_names_extra', len(dof_names_extra), dof_names_extra)
+        print('DOF_NAMES_extra', len(DOF_NAMES_extra), DOF_NAMES_extra)
         print('dof_map_padded', dof_map_padded)
     else:
         dof_map = [DOF_NAMES.index(n) for n in dof_names]
@@ -433,6 +445,7 @@ def run(args=None):
         rec_q_ctrl = loaded_rec.get('states_q_ctrl')
         rec_q = loaded_rec.get('states_q')
         print('rec_q_ctrl', rec_q_ctrl.shape)
+        print('loaded_rec argv', ' '.join(loaded_rec.get('argv', [])))
         loaded_rec_args = loaded_rec.get('args', {})
         print('loaded_rec_args', loaded_rec_args)
         rec_pt = args.rec_pt
@@ -440,6 +453,7 @@ def run(args=None):
             print('rec_pt', rec_pt)
             loaded_rec = {k: (v[rec_pt:] if isinstance(v, np.ndarray) else v) for k, v in loaded_rec.items()}
 
+    num_steps = args.num_steps
     seq = []
     mode = args.mode or []
     print('mode', mode)
@@ -458,15 +472,16 @@ def run(args=None):
 
             cb = cb_const
         elif modes['sample']:
+            num_steps = 1024 if num_steps == 0 else num_steps
             states_q_target[:] = q_reset
             smpl_dof_map = args.sample_dofs
             if smpl_dof_map is not None:
-                smpl_dof_map = yaml.safe_load(smpl_dof_map)
+                smpl_dof_map = load_obj(smpl_dof_map)
             if isinstance(smpl_dof_map, int):
                 smpl_dof_map = [int(smpl_dof_map)]
             elif isinstance(smpl_dof_map, str):
                 smpl_dof_map = DOF_MAPS[smpl_dof_map]
-            smpl_r = 0.3 if args.sample_r is None else yaml.safe_load(args.sample_r)
+            smpl_r = 0.3 if args.sample_r is None else load_obj(args.sample_r)
             if isinstance(smpl_r, float):
                 print('mean', Q_CTRL_MAX + Q_CTRL_MIN)
                 print('range', Q_CTRL_MAX - Q_CTRL_MIN)
@@ -546,7 +561,7 @@ def run(args=None):
                 states_input=states_input,
             )
         elif modes['replay']:
-            rep_dt = 0.02
+            rep_dof_map = dof_map
             replay_states_key = args.replay_states_key
             states_dest = states_get(replay_states_key)
             if loaded_rec is None:
@@ -582,11 +597,24 @@ def run(args=None):
             else:
                 replay_frame_key = args.replay_frame_key
                 rec_frames = loaded_rec.get(replay_frame_key)
-                frames = rec_frames[:, dof_map]
-                rep_dt = loaded_rec_args.get('ctrl_dt', loaded_rec_args.get('dt', ctrl_dt))
-            print('frames min', np.min(frames, axis=0))
-            print('frames max', np.max(frames, axis=0))
-            print('frames rng', np.max(frames, axis=0) - np.min(frames, axis=0))
+                rec_dof_names = loaded_rec.get('dof_names', dof_names)
+                print('rec_dof_names', rec_dof_names)
+                rec_dof_names = [dof_names_map.get(k, k) for k in rec_dof_names]
+                rep_dof_map = [DOF_NAMES.index(n) for n in rec_dof_names if n in DOF_NAMES]
+                rep_dof_map = list2slice(rep_dof_map)
+                rec_dof_src_map = [i for i, n in enumerate(rec_dof_names) if n in DOF_NAMES]
+                rep_dt = loaded_rec.get('rec_dt')
+                rep_dt = loaded_rec_args.get('ctrl_dt') if rep_dt is None else rep_dt
+                rep_dt = loaded_rec_args.get('dt', ctrl_dt) if rep_dt is None else rep_dt
+                frames = rec_frames[:, rec_dof_src_map]
+                # frames = rec_frames
+            print('rep_dt', rep_dt)
+            print('rep_dof_map', rep_dof_map)
+            frames_min = np.min(frames, axis=0).astype(np.float64)
+            frames_max = np.max(frames, axis=0).astype(np.float64)
+            print('frames min', np.round(frames_min, decimals=3).tolist())
+            print('frames max', np.round(frames_max, decimals=3).tolist())
+            print('frames rng', np.round((frames_max - frames_min), decimals=3).tolist())
             scale = args.replay_scale
             if scale is not None:
                 frames *= scale
@@ -613,7 +641,7 @@ def run(args=None):
             cb = cb_replay(
                 states_dest,
                 frames=frames,
-                inds=dof_map,
+                inds=rep_dof_map,
                 repeats=repeats,
                 loop=replay_loop,
             )
@@ -638,7 +666,7 @@ def run(args=None):
                 policy_reset_fn = None
                 policy_fn = policy
 
-            infer_kwds = yaml.safe_load(args.infer_kwargs or '') or {}
+            infer_kwds = load_obj(args.infer_kwargs or '') or {}
             cb_infer, reset_fn = cb_infer_cls(
                 **states_props_inf,
                 # states_q_ctrl=states_q_ctrl,
@@ -704,6 +732,7 @@ def run(args=None):
                 **states_extras,
                 frames=loaded_rec,
                 inds=dof_map,
+                use_tqdm=True,
             )
         seq.append(cb)
 
@@ -716,11 +745,10 @@ def run(args=None):
     if q_ctrl_mask is not None:
         ctrl_mask = np.zeros(len(states_q_ctrl), dtype=bool)
         import yaml
-        q_ctrl_mask = yaml.safe_load(q_ctrl_mask)
+        q_ctrl_mask = load_obj(q_ctrl_mask)
         q_ctrl_mask = [q_ctrl_mask] if not isinstance(q_ctrl_mask, (tuple, list)) else q_ctrl_mask
         for mask in q_ctrl_mask:
             if isinstance(mask, str):
-                # inds = DOF_MAPS[mask]
                 idx = DOF_NAMES.index(mask)
             else:
                 idx = mask
@@ -755,12 +783,6 @@ def run(args=None):
     print('safety_q_margin', safety_q_margin)
     print('q_ctrl_min', q_ctrl_min)
     print('q_ctrl_max', q_ctrl_max)
-    if clip_q_ctrl:
-
-        def cb_ctrl_q_clip():
-            states_q_ctrl[:] = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max)
-
-        seq.append(cb_ctrl_q_clip)
 
     rec_output = args.rec_output
     rec_post_send = args.rec_post_send
@@ -778,7 +800,6 @@ def run(args=None):
         if not rec_post_send:
             seq.append(_cb_rec)
 
-    num_steps = args.num_steps
     if num_steps is not None and num_steps > 0:
         cb = cb_timeout(num_steps)
         seq.append(cb)
@@ -799,7 +820,7 @@ def run(args=None):
         # q_reset[:] = rec_q_ctrl[0]
         if rec_q is not None:
             q_reset[:] = rec_q[0]
-        lerp_steps = int((args.lerp_time + 0.01) // dt)
+        lerp_steps = int((args.lerp_time + 0.01) // ctrl_dt)
         cb_lerp = cb_ctrl_q_from_target_lerp(
             **states_ctrls,
             states_q_target=q_reset,
@@ -837,8 +858,8 @@ def run(args=None):
     else:
         states_q_ctrl[:NUM_DOFS] = q_reset
 
-    input_type = args.input_type
-    input_type = None if input_type == 'none' else input_type
+    input_dev_type = args.input_dev_type
+    input_dev_type = None if input_dev_type == 'none' else input_dev_type
     wait_input = args.wait_input
     if wait_input:
         key = 'BTN_TL'
@@ -870,32 +891,31 @@ def run(args=None):
     kd = KD
     sim_kps = None
     sim_kds = None
-    kpd_ctrl_only = True
     use_sim_pd = args.use_sim_pd
     if env_cfg is not None and use_sim_pd:
         sim_kps = env_cfg['control']['stiffness']
         sim_kds = env_cfg['control']['damping']
         sim_torque_limits = env_cfg['control'].get('torque_limits', None)
+        sim_kps = {k: v * kp_r for k, v in sim_kps.items()}
+        sim_kds = {k: v * kd_r for k, v in sim_kds.items()}
+        nxs = []
+        for x in [sim_kps, sim_kds, sim_torque_limits]:
+            nx = {dof_names_map.get(k, k): v for k, v in x.items()}
+            nxs.append(nx)
+        sim_kps, sim_kds, sim_torque_limits = nxs
         print('sim_kps', sim_kps)
         print('sim_kds', sim_kds)
         print('sim_torque_limits', sim_torque_limits)
-        if kpd_ctrl_only:
-            sim_kps = {k: v * (kp_r if any([k in n for n in dof_names]) else 1.) for k, v in sim_kps.items()}
-            sim_kds = {k: v * (kd_r if any([k in n for n in dof_names]) else 1.) for k, v in sim_kds.items()}
-        else:
-            sim_kps = {k: v * kp_r for k, v in sim_kps.items()}
-            sim_kds = {k: v * kd_r for k, v in sim_kds.items()}
         kp = [([v for k, v in sim_kps.items() if k in n] or [kp[i]])[0] for i, n in enumerate(DOF_NAMES)]
         kd = [([v for k, v in sim_kds.items() if k in n] or [kd[i]])[0] for i, n in enumerate(DOF_NAMES)]
         assert len(kp) == len(kd) == NUM_DOFS
         kp = np.array(kp)
         kd = np.array(kd)
     elif kp is not None:
-        kpd_inds = dof_map if kpd_ctrl_only else None
         kp = np.array(kp)
         kd = np.array(kd)
-        kp[kpd_inds] *= kp_r
-        kd[kpd_inds] *= kd_r
+        kp[:] *= kp_r
+        kd[:] *= kd_r
     if kp is not None:
         print('kp', pp_arr(kp))
         print('kd', pp_arr(kd))
@@ -905,13 +925,14 @@ def run(args=None):
 
     q_transform = args.q_transform
     if q_transform is not None:
-        q_transform = yaml.safe_load(q_transform)
-        # q_transform = [1, {'right_hip_roll_joint': -0.15,}]
+        q_transform = load_obj(q_transform)
+        qtf_recv = False
         print('q_transform', q_transform)
-        # sys q to states q
+        # states q to sys q
         if isinstance(q_transform, dict):
             w = q_transform.get('w')
             b = q_transform.get('b')
+            qtf_recv = q_transform.get('qtf_recv', qtf_recv)
         elif isinstance(q_transform, (list, tuple)):
             w, b = q_transform
         wb = []
@@ -924,7 +945,7 @@ def run(args=None):
                 y = np.zeros(NUM_DOFS)
                 y[:] = def_y
                 for k, v in x.items():
-                    y[DOF_NAMES.index(k)] = v
+                    y[match_keys(k, DOF_NAMES)] = v
             else:
                 y = x
             wb.append(y)
@@ -935,19 +956,21 @@ def run(args=None):
         print('qtf_b', qtf_b)
 
         dtype = states_q_ctrl.dtype
-        states_q_ctrl_sys = np.zeros(NUM_DOFS, dtype=dtype)
-        states_q_sys = np.zeros(NUM_DOFS, dtype=dtype)
+        # states_q_ctrl_sys = np.zeros(NUM_DOFS, dtype=dtype)
+        # states_q_sys = np.zeros(NUM_DOFS, dtype=dtype)
+        states_q_ctrl_sys = states_q_ctrl
+        states_q_sys = states_q
         states_props_sys = states_props.copy()
         states_props_sys['states_q'] = states_q_sys
         states_ctrls_sys = states_ctrls.copy()
         states_ctrls_sys['states_q_ctrl'] = states_q_ctrl_sys
 
         def cb_qtf_recv():
-            states_q[:] = states_q_sys * qtf_w + qtf_b
-            # states_qd[:] = states_qd
+            states_q[:] = (states_q_sys - qtf_b) * qtf_w_inv
+            states_qd[:] = states_qd * qtf_w_inv
 
         def cb_qtf_send():
-            states_q_ctrl_sys[:] = (states_q_ctrl - qtf_b) * qtf_w_inv
+            states_q_ctrl_sys[:] = states_q_ctrl * qtf_w + qtf_b
 
     systems = {
         k: False for k in ['consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none']
@@ -964,13 +987,7 @@ def run(args=None):
         print('bat', bat)
         saved_info['battery'] = bat
 
-    kp_c, kd_c = None, None
-    if sim_kps is not None and robot_type == 'gr1t2' and fft_sys:
-        from unicon.defs.gr1t2 import compute_gains
-        kp_c, kd_c = compute_gains(sim_kps, sim_kds)
-        assert len(kp_c) == len(kd_c) == NUM_DOFS
-
-    sys_kwds = yaml.safe_load(args.system_kwargs or '') or {}
+    sys_kwds = load_obj(args.system_kwargs or '') or {}
     sys_clip_q_ctrl = (not clip_q_ctrl)
 
     cb_recv, cb_send, cb_close = None, None, None
@@ -978,16 +995,15 @@ def run(args=None):
         pass
     elif systems['fake']:
         from unicon.systems.fake import cb_fake_recv_send_close
-        use_qdd = args.use_qdd
         cb_recv, cb_send, cb_close = cb_fake_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
-            q_min=q_ctrl_min,
-            q_max=q_ctrl_max,
+            q_ctrl_min=q_ctrl_min,
+            q_ctrl_max=q_ctrl_max,
             kp=kp,
             kd=kd,
-            use_qdd=use_qdd,
-            inv_mass=1.0,
+            robot_def=robot_def,
+            dt=dt,
             **sys_kwds,
         )
     elif systems['mini']:
@@ -1015,8 +1031,8 @@ def run(args=None):
             **states_ctrls_sys,
             states_q_tau=states_q_tau,
             states_q_cur=states_q_cur,
-            kp=kp_c,
-            kd=kd_c,
+            kp=kp,
+            kd=kd,
             q_ctrl_min=q_ctrl_min,
             q_ctrl_max=q_ctrl_max,
             clip_q_ctrl=sys_clip_q_ctrl,
@@ -1032,7 +1048,16 @@ def run(args=None):
             **sys_kwds,
         )
     elif systems['sims']:
-        system_config = yaml.safe_load(open(args.sims_config, 'r'))
+        sims_config = args.sims_config
+        if sims_config is None:
+            system_config = {
+                'type': 'sims.systems.ig',
+                'urdf_path': robot_def.get('URDF'),
+                'default_root_states': [0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
+                'decimation': 20,
+            }
+        else:
+            system_config = load_obj(sims_config)
         sim_dof_names = DOF_NAMES
         if args.sims_dof_names_2:
             sim_dof_names = robot_def.get('DOF_NAMES_2')
@@ -1044,9 +1069,9 @@ def run(args=None):
         if rec_q is not None:
             # init_q = rec_q_ctrl[0]
             init_q = rec_q[0]
-            def_dof_pos = {k: init_q[[i for i, n in enumerate(sim_dof_names) if k in n][0]] for k in default_dof_pos}
+            def_dof_pos = {n: init_q[i] for i, n in enumerate(sim_dof_names)}
             system_config['default_dof_pos'] = def_dof_pos
-            print('sims init_q', init_q)
+            print('sims init_q', def_dof_pos)
         if Q_BOOT is not None and wrapped:
             for i, n in enumerate(sim_dof_names):
                 default_dof_pos[n] = Q_BOOT[i]
@@ -1073,7 +1098,7 @@ def run(args=None):
             system_config['Kd'] = {k: v for k, v in zip(sim_dof_names, kd)}
         system_config['dt'] = dt
         sims_override = args.sims_override
-        sims_override = yaml.safe_load(sims_override or '') or {}
+        sims_override = load_obj(sims_override or '') or {}
         from unicon.utils import obj_update
         obj_update(system_config, sims_override)
         # system_config.update(sims_override)
@@ -1082,7 +1107,7 @@ def run(args=None):
             wrapper_config.append('sims.wrappers.autoreset:AutoResetWrapper')
         sims_wrapper_config = args.sims_wrapper_config
         if sims_wrapper_config is not None:
-            wrapper_config.extend([yaml.safe_load(c) for c in sims_wrapper_config])
+            wrapper_config.extend([load_obj(c) for c in sims_wrapper_config])
         from unicon.systems.sims import cb_sims_recv_send_close
         cb_recv, cb_send, cb_close = cb_sims_recv_send_close(
             **states_props_sys,
@@ -1101,7 +1126,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_a1_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
-            states_input=(None if input_type else states_input),
+            states_input=states_input,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
@@ -1118,7 +1143,7 @@ def run(args=None):
             states_q_cur=states_q_cur,
             states_lin_vel=states_lin_vel,
             states_lin_acc=states_lin_acc,
-            states_input=(None if input_type else states_input),
+            states_input=states_input,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
@@ -1142,14 +1167,11 @@ def run(args=None):
             if rec_len:
                 data = {
                     'type': 'unicon',
-                    'args': vars(args),
                     'env_cfg_args': env_cfg_args,
-                    'argv': argv,
-                    'dt': dt,
-                    'hostname': __import__('platform').node(),
+                    'rec_dt': dt if rec_post_send else ctrl_dt,
                 }
+                data.update(ctx)
                 data.update({k: v[:rec_len] for k, v in rec.items() if isinstance(v, np.ndarray)})
-                data.update(saved_info)
                 _, ext = os.path.splitext(save_path)
                 save_type = ext[1:]
                 print('save_type', save_type)
@@ -1268,11 +1290,50 @@ def run(args=None):
     seq = [cb_recv] + seq + [cb_send]
     seq = [c for c in seq if c is not None]
 
+    transforms = args.transforms
+    for i, tf in enumerate(transforms):
+        tf_kwds = load_obj(tf)
+        tf_type = tf_kwds.pop('type')
+        tf_cls = import_obj(tf_type, default_name_prefix='cb_tf', default_mod_prefix='unicon.transforms')
+        cb = tf_cls(**states_props, **tf_kwds)
+        seq.insert(1+i, cb)
+
+    imu_transform = args.imu_transform
+    if imu_transform is not None:
+        states_rpy = states_props['states_rpy']
+        states_ang_vel = states_props['states_ang_vel']
+        print('imu_transform', imu_transform)
+        imu_transform = load_obj(imu_transform)
+        if isinstance(imu_transform, dict):
+            rpy_tf, ang_vel_tf = [imu_transform[k] for k in ['rpy', 'ang_vel']]
+        elif isinstance(imu_transform, (list, tuple)):
+            rpy_tf, ang_vel_tf = imu_transform
+        else:
+            raise ValueError('imu_transform')
+
+        print('rpy_tf', rpy_tf)
+        print('ang_vel_tf', ang_vel_tf)
+        rpy_w, rpy_b = rpy_tf
+        ang_vel_w, ang_vel_b = ang_vel_tf
+
+        def cb_itf_recv():
+            states_rpy[:] = states_rpy * rpy_w + rpy_b
+            states_ang_vel[:] = states_ang_vel * ang_vel_w + ang_vel_b
+
+        seq.insert(1, cb_itf_recv)
+
     if q_transform is not None:
-        cb_qtf_recv()
+        if qtf_recv:
+            cb_qtf_recv()
+            seq.insert(1, cb_qtf_recv)
         cb_qtf_send()
-        seq.insert(1, cb_qtf_recv)
         seq.insert(-1, cb_qtf_send)
+
+    if clip_q_ctrl:
+        def cb_ctrl_q_clip():
+            states_q_ctrl[:] = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max)
+
+        seq.insert(-1, cb_ctrl_q_clip)
 
     fixed_wait = args.fixed_wait
     if fixed_wait is not None:
@@ -1282,17 +1343,29 @@ def run(args=None):
         seq.insert(0, cb0)
         seq.insert(-1, cb1)
 
+    inputs = args.inputs
     outputs = args.outputs
-    states_out = dict(
+    states_io = dict(
         **states_ctrls,
         states_input=states_input,
         **states_props,
         **states_extras,
     )
-    for output_type in outputs:
+    for output_kwds in outputs:
+        output_kwds = load_obj(output_kwds)
+        output_kwds = {'type': output_kwds} if isinstance(output_kwds, str) else output_kwds
+        output_type = output_kwds.pop('type')
         print('output_type', output_type)
         cb_output_cls = import_obj(output_type, default_name_prefix='cb_send', default_mod_prefix='unicon.io')
-        cb = cb_output_cls(**states_out, robot_def=robot_def)
+        cb = cb_output_cls(**states_io, robot_def=robot_def, **output_kwds)
+        seq.append(cb)
+    for input_kwds in inputs:
+        input_kwds = load_obj(input_kwds)
+        input_kwds = {'type': input_kwds} if isinstance(input_kwds, str) else input_kwds
+        input_type = input_kwds.pop('type')
+        print('input_type', input_type)
+        cb_input_cls = import_obj(input_type, default_name_prefix='cb_recv', default_mod_prefix='unicon.io')
+        cb = cb_input_cls(**states_io, robot_def=robot_def, **input_kwds)
         seq.append(cb)
 
     if rec_post_send and rec_output is not None:
@@ -1301,10 +1374,10 @@ def run(args=None):
     if verbose:
         seq.append(cb_print())
 
-    if input_type:
+    if input_dev_type:
         fallback_input_types = ['term']
-        for t in [input_type] + fallback_input_types:
-            print('input_type', t)
+        for t in [input_dev_type] + fallback_input_types:
+            print('input_dev_type', t)
             cb_input_cls = import_obj(t, default_name_prefix='cb_input', default_mod_prefix='unicon.inputs')
             cb_input = cb_input_cls(states_input=states_input)
             if cb_input is not None:
@@ -1315,14 +1388,16 @@ def run(args=None):
 
     seq.append(cb_wait_input(states_input=states_input, keys=outer_stop_keys))
 
-    cmd_type = args.cmd_type
-    if cmd_type and cmd_type != 'none':
+    cmd = args.cmd
+    if cmd and cmd != 'none':
+        cmd_kwds = load_obj(cmd)
+        cmd_kwds = {'type': cmd_kwds} if isinstance(cmd_kwds, str) else cmd_kwds
+        cmd_type = cmd_kwds.pop('type')
         print('cmd_type', cmd_type)
         cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.cmd')
-        kwds = {}
         ccv = args.cmd_const_v
         if ccv is not None:
-            ccv = yaml.safe_load(ccv)
+            ccv = load_obj(ccv)
             ccv = [ccv] if isinstance(ccv, (float, int)) else ccv
             kwds['cmd'] = ccv
         cir = args.cmd_init_range
@@ -1330,14 +1405,11 @@ def run(args=None):
             cir = int(cir)
             kwds['init_range_pt'] = cir
         if cmd_type == 'vel' and env_cfg is not None:
-            ranges = env_cfg['commands']['ranges']
-            print('env_cfg cmd ranges', ranges)
-            kwds['lin_vel_x'] = ranges['lin_vel_x']
-            kwds['lin_vel_y'] = ranges['lin_vel_y']
-            kwds['ang_vel_yaw'] = ranges['ang_vel_yaw']
+            kwds['env_cfg'] = env_cfg
         if cmd_type == 'replay':
             rec_cmd = loaded_rec.get('states_cmd')
             kwds['frames'] = rec_cmd
+        kwds.update(cmd_kwds)
         if cb_cmd_cls is not None:
             cb_cmd = cb_cmd_cls(states_input=states_input, states_cmd=states_cmd, input_keys=input_keys, **kwds)
             cb_cmd()

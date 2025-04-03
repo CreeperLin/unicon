@@ -22,8 +22,15 @@ def cb_cmd_vel(
     ang_vel_yaw=None,
     num_modes=5,
     init_mode=0,
+    env_cfg=None,
     # init_mode=-1,
 ):
+    if lin_vel_x is None and env_cfg is not None:
+        ranges = env_cfg['commands']['ranges']
+        print('env_cfg cmd ranges', ranges)
+        lin_vel_x = ranges['lin_vel_x']
+        lin_vel_y = ranges['lin_vel_y']
+        ang_vel_yaw = ranges['ang_vel_yaw']
     import numpy as np
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     used_keys = ['ABS_X', 'ABS_Y', 'ABS_RX', 'BTN_A', 'BTN_B', 'BTN_X', 'BTN_Y', 'BTN_TL', 'BTN_TR']
@@ -31,15 +38,15 @@ def cb_cmd_vel(
         input_keys.index(k) for k in used_keys
     ]
 
-    if lin_vel_x is not None:
-        lin_vel_x = np.array(lin_vel_x).astype(np.float64)
-        lin_vel_y = np.array(lin_vel_y).astype(np.float64)
-        ang_vel_yaw = np.array(ang_vel_yaw).astype(np.float64)
-        # scales = [(i+2)/(num_ranges+1) for i in range(num_ranges)]
-        scales = [max_scale * (i + 1) / num_ranges for i in range(num_ranges)]
-        range_lin_vel_x = [[s * x for x in lin_vel_x] for s in scales]
-        range_lin_vel_y = [[s * x for x in lin_vel_y] for s in scales]
-        range_ang_vel_yaw = [[s * x for x in ang_vel_yaw] for s in scales]
+    assert lin_vel_x is not None
+    lin_vel_x = np.array(lin_vel_x).astype(np.float64)
+    lin_vel_y = np.array(lin_vel_y).astype(np.float64)
+    ang_vel_yaw = np.array(ang_vel_yaw).astype(np.float64)
+    # scales = [(i+2)/(num_ranges+1) for i in range(num_ranges)]
+    scales = [max_scale * (i + 1) / num_ranges for i in range(num_ranges)]
+    range_lin_vel_x = [[s * x for x in lin_vel_x] for s in scales]
+    range_lin_vel_y = [[s * x for x in lin_vel_y] for s in scales]
+    range_ang_vel_yaw = [[s * x for x in ang_vel_yaw] for s in scales]
 
     print('range_lin_vel_x', range_lin_vel_x)
     print('range_lin_vel_y', range_lin_vel_y)

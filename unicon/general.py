@@ -35,7 +35,7 @@ def cb_zip(*cbs, return_on=[True], verbose=False):
     return cb
 
 
-def cb_loop(_cb=None, pred=None, max_steps=100, returns=True, recycle=False, verbose=True):
+def cb_loop(_cb=None, pred=None, max_steps=100, ret_val=True, recycle=False, verbose=True):
     i = -1
 
     def cb():
@@ -45,12 +45,12 @@ def cb_loop(_cb=None, pred=None, max_steps=100, returns=True, recycle=False, ver
             if verbose:
                 print('cb_loop pred', i)
             i = -1 if recycle else i
-            return returns
+            return ret_val
         if max_steps > 0 and i >= max_steps:
             if verbose:
                 print('cb_loop max_steps', i)
             i = -1 if recycle else i
-            return returns
+            return ret_val
         if _cb is not None:
             return _cb()
 
@@ -170,6 +170,7 @@ def cb_replay(
     inds=None,
     repeats=1,
     loop=False,
+    use_tqdm=False,
     **states,
 ):
     if dest is not None:
@@ -183,7 +184,11 @@ def cb_replay(
     rec_len = len(frames[keys[0]])
     num_frames = (rec_len - init_pt) if num_frames is None else num_frames
     end_pt = min(init_pt + num_frames, rec_len)
-    print('cb_replay', num_frames, keys, dof_keys, non_dof_keys)
+    print('cb_replay', num_frames, keys, dof_keys, non_dof_keys, inds)
+    if use_tqdm:
+        from tqdm import tqdm
+        pbar = tqdm(total=end_pt)
+        pbar.update(init_pt)
 
     pt = init_pt - 1
     rep = 0
@@ -193,18 +198,26 @@ def cb_replay(
         if rep == 0:
             pt += 1
             rep = repeats
+            if use_tqdm:
+                pbar.update()
         rep -= 1
         if pt >= end_pt:
             print('end of play', end_pt)
             if not loop:
+                if use_tqdm:
+                    pbar.close()
                 return True
             pt = init_pt
+            if use_tqdm:
+                pbar.reset()
+                pbar.update(init_pt)
         if verbose:
             if (pt + 1) % (num_frames // 10) == 0:
                 print('rec pt', pt)
         if inds is not None:
             for k in dof_keys:
-                states[k][inds] = frames[k][pt][inds]
+                # states[k][inds] = frames[k][pt][inds]
+                states[k][inds] = frames[k][pt]
             for k in non_dof_keys:
                 states[k][:] = frames[k][pt]
         else:

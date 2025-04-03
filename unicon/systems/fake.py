@@ -10,63 +10,52 @@ def cb_fake_recv_send_close(
     states_qd,
     kp=None,
     kd=None,
-    inv_mass=5.0,
-    use_qdd=True,
-    mean=[
-        0.,
-        0.,
-        0.,
-        0.,
-        0.,
-        0.,
-        0.,
-        0.,
-        0.,
-        1.,
-    ],
-    std=[0.001] * 10,
-    std_dof=0.001,
-    q_min=-3.0,
-    q_max=3.0,
-    qd_min=-10.0,
-    qd_max=10.0,
-    q_ctrl_mix=0.8,
+    qdd_coef=5.0,
+    use_qdd=False,
+    q_ctrl_min=-3.0,
+    q_ctrl_max=3.0,
+    qd_limit=10.0,
+    q_ctrl_mix=0.6,
+    robot_def=None,
+    dt=None,
 ):
+    qd_limit = robot_def.get('QD_LIMIT', qd_limit)
     import time
-    mean = np.array(mean)
+    from unicon.utils import rpy2quat_np
     num_dofs = len(states_q)
     _send_ts = time.time()
     _states_q = np.zeros(num_dofs)
     _states_qd = np.zeros(num_dofs)
     _states_q_ctrl = np.zeros(num_dofs)
-    _qdd = None
+    _states_rpy = np.zeros(3)
+    _states_ang_vel = np.zeros(3)
+    _qdd = np.zeros(num_dofs) if use_qdd else None
+    print('fake sys', use_qdd, qdd_coef, q_ctrl_mix)
 
     def cb_send():
         nonlocal _send_ts, _qdd
-        _send_ts = time.time()
+        _send_ts = time.monotonic()
         _states_q_ctrl[:] = states_q_ctrl
         if use_qdd:
-            _qdd = inv_mass * ((_states_q_ctrl - _states_q) * kp + (-_states_qd) * kd)
+            _qdd = qdd_coef * ((_states_q_ctrl - _states_q) * kp + (-_states_qd) * kd)
 
     def cb_recv():
-        ts = time.time()
-        dt = ts - _send_ts
-        if _qdd is not None:
+        ts = time.monotonic()
+        _dt = ts - _send_ts if dt is None else dt
+        if use_qdd:
             _states_q[:] = _states_q + _states_qd * dt
             _states_qd[:] = _states_qd + _qdd * dt
         else:
             q_new = _states_q * (1 - q_ctrl_mix) + _states_q_ctrl * q_ctrl_mix
             _states_qd[:] = (q_new - _states_q) / dt
             _states_q[:] = q_new
-        _states_qd[:] = np.clip(_states_qd, qd_min, qd_max)
-        _states_q[:] = np.clip(_states_q, q_min, q_max)
-        noise = np.random.randn(num_dofs * 2 + 10)
-        states_q[:] = _states_q + noise[:num_dofs] * std_dof
-        states_qd[:] = _states_qd + noise[num_dofs:num_dofs * 2] * std_dof
-        states_rpy[:] = mean[:3] + noise[num_dofs * 2:num_dofs * 2 + 3] * std[:3]
-        states_ang_vel[:] = mean[3:6] + noise[num_dofs * 2 + 3:num_dofs * 2 + 6] * std[3:6]
-        quat = mean[6:10] + noise[num_dofs * 2 + 6:num_dofs * 2 + 10] * std[6:10]
-        quat = quat / (np.linalg.norm(quat) + 1e-6)
+        _states_qd[:] = np.clip(_states_qd, -qd_limit, qd_limit)
+        _states_q[:] = np.clip(_states_q, q_ctrl_min, q_ctrl_max)
+        states_q[:] = _states_q
+        states_qd[:] = _states_qd
+        states_rpy[:] = _states_rpy
+        states_ang_vel[:] = _states_ang_vel
+        quat = rpy2quat_np(states_rpy)
         states_quat[:] = quat
 
     return cb_recv, cb_send, None

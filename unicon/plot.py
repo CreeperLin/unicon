@@ -1,8 +1,8 @@
 def get_plot_args(args=None):
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-r', '--recs', action='append')
-    parser.add_argument('-p', '--pcaps', action='append')
+    parser.add_argument('-rp', '--rec_paths', action='append')
+    parser.add_argument('-rtp', '--rec_types', action='append')
     parser.add_argument('-d', '--dofs', default='range(12)')
     parser.add_argument('-s', '--subdir', action='store_true')
     parser.add_argument('-n', '--num_steps', type=int, default=None)
@@ -14,7 +14,7 @@ def get_plot_args(args=None):
     parser.add_argument('-al', '--auto_lim', action='store_true')
     parser.add_argument('-np', '--no_plot', action='store_true')
     parser.add_argument('-el', '--eval_loss', action='store_true')
-    parser.add_argument('-fi', '--fixed_inds0', action='store_true')
+    parser.add_argument('-fi', '--fixed_inds0', type=int, default=None)
     parser.add_argument('-simu', '--states_imu', action='store_true')
     parser.add_argument('-sie', '--states_i_extras', action='store_true')
     parser.add_argument('-sqe', '--states_q_extras', action='store_true')
@@ -22,10 +22,12 @@ def get_plot_args(args=None):
     parser.add_argument('-awf', '--acc_world_frame', action='store_true')
     parser.add_argument('-nd', '--no_dof_states', action='store_true')
     parser.add_argument('-g', '--g', type=float, default=-9.85)
-    parser.add_argument('-pdt', '--pdt', type=float, default=0.02)
-    parser.add_argument('-nci', '--no_check_int', action='store_true')
+    parser.add_argument('-dt', '--dt', type=float, default=None)
+    parser.add_argument('-ci', '--check_int', action='store_true')
     parser.add_argument('-nrs', '--no_root_states', action='store_true')
     parser.add_argument('-mo', '--motion_output', default=None)
+    parser.add_argument('-l', '--loss_fns', default=None, action='append')
+    parser.add_argument('-e', '--ext', default='png')
     args, _ = parser.parse_known_args(args)
     return args
 
@@ -51,6 +53,8 @@ def plot(args=None):
             # 'rot_loss',
             # 'soft_dtw_loss',
         ]
+        if args.loss_fns is not None:
+            loss_names = args.loss_fns
         loss_fns = {n: getattr(unicon.losses, n) for n in loss_names}
     no_plot = args.no_plot
     do_plot = not args.no_plot
@@ -71,52 +75,45 @@ def plot(args=None):
     KD_2 = robot_def.get('KD_2', KD)
     Q_CTRL_INIT = np.zeros(NUM_DOFS) if Q_CTRL_INIT is None else Q_CTRL_INIT
     tau_max = max(TAU_LIMIT) * 1.2
-    recs = args.recs or []
-    pcaps = args.pcaps or []
-    rec_names = list(map(os.path.basename, recs + pcaps))
-    recs = [np.load(rec, allow_pickle=True).item() for rec in recs]
-    pdt = args.pdt
-    if pcaps:
-        from unicon.utils.fftai import pcap2rec
-    recs.extend([pcap2rec(p, pdt) for p in pcaps])
-    for rec in recs:
-        rec_type = rec.get('type')
-        if rec_type == 'legged':
-            print(rec_type, rec.keys())
-            dof_map = [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8]
-            rec_states = rec['states'][0]
-            rec_actions = rec['actions'][0]
-            num_dofs = (rec_states.shape[-1] - 13 - 6) // 2
-            states_rpy = rec_states[:, 3:6]
-            rec['states_rpy'] = states_rpy
-            states_ang_vel = rec_states[:, 10:13]
-            rec['states_ang_vel'] = states_ang_vel
-            action_scale = 0.25
-            states_q_ctrl = rec_actions[:, dof_map] * action_scale + Q_CTRL_INIT
-            rec['states_q_ctrl'] = states_q_ctrl
-            states_q = rec_states[:, 13:13 + num_dofs]
-            rec['states_q'] = states_q[:, dof_map]
-            states_qd = rec_states[:, 13 + num_dofs:13 + num_dofs * 2]
-            rec['states_qd'] = states_qd[:, dof_map]
+    rec_paths = args.rec_paths or []
+    rec_types = args.rec_types or []
+    rec_types = rec_types + [None] * (len(rec_paths) - len(rec_types))
+    rec_names = list(map(os.path.basename, rec_paths))
+
+    def load_rec(rec_path, rec_type=None, load_kwds=None):
+        rec_type = None if rec_type == '' else rec_type
+        _, ext = os.path.splitext(rec_path)
+        rec_type = ext[1:] if rec_type is None else rec_type
+        print('rec_type', rec_type)
+        mod = import_obj((rec_type, None), default_mod_prefix='unicon.data')
+        print('rec_path', rec_path)
+        return mod.load(
+            rec_path,
+            robot_def=robot_def,
+            **(load_kwds or {}),
+        )
+
+    recs = [load_rec(p, t) for p, t in zip(rec_paths, rec_types)]
     rec = recs[0]
-    dt = rec['dt']
+    dt = rec.get('dt', args.dt)
+    # assert all([r.get('dt', dt) == dt for r in recs])
     num_recs = len(recs)
     for n, r in zip(rec_names, recs):
         print(n)
         print(' '.join(r.get('argv', [])))
         print(r.get('env_cfg_args'))
-        # print(r['args'])
     rec_args = [rec.get('args', {}) for rec in recs]
     if num_recs == 1:
-        print(rec['args'])
-    rec_arg_keys = [ra.keys() for ra in rec_args if len(ra) == max(map(len, rec_args))][0]
-    for k in rec_arg_keys:
-        # v = rec[k]
-        vs = [r.get(k) for r in rec_args]
-        v = vs[0]
-        if all([vv == v for vv in vs]):
-            continue
-        print('diff arg', k, vs)
+        print('rec_args', rec_args[0])
+    if min([len(ra) for ra in rec_args]) > 0:
+        rec_arg_keys = [ra.keys() for ra in rec_args if len(ra) == max(map(len, rec_args))][0]
+        for k in rec_arg_keys:
+            # v = rec[k]
+            vs = [r.get(k) for r in rec_args]
+            v = vs[0]
+            if all([vv == v for vv in vs]):
+                continue
+            print('diff arg', k, vs)
     print({k: v.shape for k, v in rec.items() if k.startswith('states')})
     offsets = args.offsets
     offsets = [] if offsets is None else offsets
@@ -143,8 +140,8 @@ def plot(args=None):
         cond = diff > eps
         dofs = np.where(cond)[0].tolist()
         print('auto dofs', len(dofs), dofs)
-    dofs = list(range(num_dofs)) if dofs is None else dofs
     dofs = eval(dofs) if isinstance(dofs, str) else dofs
+    dofs = list(range(num_dofs)) if dofs is None else dofs
     dofs = list(dofs) if isinstance(dofs, (slice, range)) else dofs
     dofs = [dofs] if not isinstance(dofs, (list, tuple)) else dofs
     dofs = dofs[:len(DOF_NAMES)]
@@ -152,8 +149,9 @@ def plot(args=None):
     print('DOF_NAMES', [DOF_NAMES[i] for i in dofs])
     diff_qc = 0
     if num_recs > 1:
-        if args.fixed_inds0:
-            inds0 = [0 for _ in range(num_recs)]
+        fixed_inds0 = args.fixed_inds0
+        if fixed_inds0 is not None:
+            inds0 = [fixed_inds0 for _ in range(num_recs)]
             inds1 = list(range(num_recs))
         else:
             import itertools
@@ -183,6 +181,7 @@ def plot(args=None):
         for n, r in zip(rec_names, recs):
             rec2motion(rec, name=n, dofs=dofs, save_dir=save_dir)
         return
+    ext = args.ext
     from matplotlib import pyplot as plt
     plot_root = 'plots2'
     os.makedirs(plot_root, exist_ok=True)
@@ -226,7 +225,7 @@ def plot(args=None):
         fig.tight_layout()
         plot_dir = f'{plot_root}/'
         plot_prefix = plot_dir
-        plt.savefig(plot_prefix + 'sie.png')
+        plt.savefig(plot_prefix + f'sie.{ext}')
         plt.close()
         return
     from unicon.utils import quat_rotate_inverse_np, quat_rotate_inverse_np2, rpy2quat_np, quat2rpy_np3
@@ -301,7 +300,7 @@ def plot(args=None):
         fig.tight_layout()
         plot_dir = f'{plot_root}/'
         plot_prefix = plot_dir
-        plt.savefig(plot_prefix + 'simu.png')
+        plt.savefig(plot_prefix + f'simu.{ext}')
         plt.close()
         return
     if states_x_extras:
@@ -468,7 +467,7 @@ def plot(args=None):
         fig.tight_layout()
         plot_dir = f'{plot_root}/'
         plot_prefix = plot_dir
-        plt.savefig(plot_prefix + 'sxe.png')
+        plt.savefig(plot_prefix + f'sxe.{ext}')
         plt.close()
         return
     if states_q_extras:
@@ -573,7 +572,7 @@ def plot(args=None):
         fig.tight_layout()
         plot_dir = f'{plot_root}/'
         plot_prefix = plot_dir
-        plt.savefig(plot_prefix + 'sqe.png')
+        plt.savefig(plot_prefix + f'sqe.{ext}')
         plt.close()
         return
     if args.info:
@@ -679,7 +678,7 @@ def plot(args=None):
         import torch
         unicon.losses.DEBUG = True
         loss_scale = traj_len * trajs[0].shape[-1]
-        print('loss_scale', loss_scale)
+        print('loss_scale', loss_scale, st, ed)
         for i1, i2 in zip(inds0, inds1):
             print('traj loss', i1, i2, rec_names[i1], rec_names[i2])
             s0 = trajs[i1]
@@ -697,7 +696,7 @@ def plot(args=None):
             for i, k in enumerate(loss_fns):
                 ax = axes[i]
                 loss = loss_all[i]
-                print(loss.shape, loss.tolist())
+                # print(loss.shape, loss.tolist())
                 t = list(range(len(loss)))
                 ax.plot(t, loss, marker='.')
                 ax.set_ylim([-0.01, loss.max() * 1.5 + 0.1])
@@ -706,19 +705,20 @@ def plot(args=None):
             plt.subplots_adjust(top=0.92)
             plot_prefix = plot_dir
             plt.suptitle(f'traj loss {rec_names[i1], rec_names[i2]}')
-            plt.savefig(plot_prefix + f'loss_traj_{i1}_{i2}.png')
+            plt.savefig(plot_prefix + f'loss_traj_{i1}_{i2}.{ext}')
             plt.close()
         unicon.losses.DEBUG = False
 
-        unicon.losses.plot_unfolded_mse_loss()
-        unicon.losses.plot_chamfer_loss()
-
         if num_recs == 2:
-            print('element-wise')
-            dof_names = [DOF_NAMES[i] for i in dofs]
-            elm_names = sum([[f'{t}_{n}' for n in dof_names] for t in ['q', 'qd', 'qc']], [])
-            s0 = trajs[0]
-            s1 = trajs[1]
+            unicon.losses.plot_unfolded_mse_loss()
+            unicon.losses.plot_chamfer_loss()
+
+        dof_names = [DOF_NAMES[i] for i in dofs]
+        elm_names = sum([[f'{t}_{n}' for n in dof_names] for t in ['q', 'qd', 'qc']], [])
+        for i1, i2 in zip(inds0, inds1):
+            print('element loss', i1, i2, rec_names[i1], rec_names[i2])
+            s0 = trajs[i1]
+            s1 = trajs[i2]
             num_elms = s0.shape[-1]
             loss_scale = traj_len
             loss_all = {k: [] for k in loss_fns}
@@ -780,10 +780,10 @@ def plot(args=None):
             # fig.tight_layout()
             plot_prefix = plot_dir
             plt.suptitle(f'elm loss {rec_names[i1], rec_names[i2]}')
-            plt.savefig(plot_prefix + f'loss_elm_{i1}_{i2}.png')
+            plt.savefig(plot_prefix + f'loss_elm_{i1}_{i2}.{ext}')
             plt.close()
         return
-    check_int = not args.no_check_int
+    check_int = args.check_int
     plot_root_states = not args.no_root_states
     plot_root_states = do_plot and plot_root_states
     if plot_root_states:
@@ -794,6 +794,8 @@ def plot(args=None):
         axes = axes.T
         h_num_dofs = (len(dofs) + 1) // 2
         dof_names = [DOF_NAMES[i] for i in dofs]
+        max_rp = None
+        max_q = None
         for axs, rec, name in zip(axes, recs, rec_names):
             ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12 = axs
             t = list(range(st, ed))
@@ -811,6 +813,8 @@ def plot(args=None):
             qc = states_q_ctrl[st:ed, dofs]
             q = states_q[st:ed, dofs]
             qd = states_qd[st:ed, dofs]
+            if max_q is None:
+                max_q = max(np.max(np.abs(qc))+0.1, 2)
             if states_quat is not None:
                 quat = states_quat[st:ed]
                 rpy = states_rpy[st:ed, :2]
@@ -823,16 +827,14 @@ def plot(args=None):
                 # ax1.plot(t, yaw, marker='.')
                 # ax1.set_ylim([-3, 3])
                 legends = ['er', 'ep', 'qr', 'qp']
-                states_rpy2 = rec.get('states_rpy2')
-                if states_rpy2 is not None:
-                    rpy2 = states_rpy2[st:ed, :2]
-                    ax1.plot(t, rpy2)
-                    legends.extend(['r2', 'p2'])
-                ax1.set_ylim([-0.8, 0.8])
+                if max_rp is None:
+                    max_rp = max(np.max(np.abs(rpy))+0.05, 0.1)
+                    max_ang_vel = max(np.max(np.abs(ang_vel))+0.2, 1.5)
+                ax1.set_ylim([-max_rp, max_rp])
                 ax1.legend(legends)
                 ax1.set_title(name + 'rpy')
                 ax2.plot(t, ang_vel, marker='.')
-                ax2.set_ylim([-2, 2])
+                ax2.set_ylim([-max_ang_vel, max_ang_vel])
                 ax2.legend(['ang_vel_r', 'ang_vel_p', 'ang_vel_y'])
                 ax2.set_title(name + 'ang_vel')
             elif recv_ts is not None:
@@ -845,19 +847,19 @@ def plot(args=None):
             ax3.plot(t, qc[:, :h_num_dofs], marker='.')
             ax3.legend(dof_names[:h_num_dofs], loc="lower right")
             ax3.set_title(name + 'q_ctrl_1')
-            ax3.set_ylim([-2, 2])
+            ax3.set_ylim([-max_q, max_q])
             ax4.plot(t, qc[:, h_num_dofs:], marker='.')
             ax4.legend(dof_names[h_num_dofs:], loc="lower right")
             ax4.set_title(name + 'q_ctrl_2')
-            ax4.set_ylim([-2, 2])
+            ax4.set_ylim([-max_q, max_q])
             ax5.plot(t, q[:, :h_num_dofs], marker='.')
             ax5.legend(dof_names[:h_num_dofs], loc="lower right")
             ax5.set_title(name + 'q_1')
-            ax5.set_ylim([-2, 2])
+            ax5.set_ylim([-max_q, max_q])
             ax6.plot(t, q[:, h_num_dofs:], marker='.')
             ax6.legend(dof_names[h_num_dofs:], loc="lower right")
             ax6.set_title(name + 'q_2')
-            ax6.set_ylim([-2, 2])
+            ax6.set_ylim([-max_q, max_q])
             ax7.plot(t, qd[:, :h_num_dofs], marker='.')
             ax7.legend(dof_names[:h_num_dofs], loc="lower right")
             ax7.set_title(name + 'qd_1')
@@ -869,14 +871,11 @@ def plot(args=None):
             ax8.set_ylim([-qd_limit, qd_limit])
 
             if check_int:
-                # _t = t[1:]
                 _t = t
                 eps = 1e-7
                 int_span = 1
                 int_span = 2
-                # q1 = q[:, :h_num_dofs]
                 q1 = qd[:, :h_num_dofs]
-                # df = q1[1:] - q1[:-1]
                 df = (np.pad(q1, ((0, int_span),
                                   (0, 0)), 'edge')[int_span:] - np.pad(q1, ((int_span, 0), (0, 0)), 'edge')[:-int_span])
                 cond = (np.abs(df) < eps).astype(np.float32)
@@ -885,9 +884,7 @@ def plot(args=None):
                 ax9.legend(dof_names[:h_num_dofs], loc="lower right")
                 ax9.set_title(name + 'int_1')
                 ax9.set_ylim([0, q1.shape[1] + 1])
-                # q2 = q[:, h_num_dofs:]
                 q2 = qd[:, h_num_dofs:]
-                # df = q2[1:] - q2[:-1]
                 df = (np.pad(q2, ((0, int_span),
                                   (0, 0)), 'edge')[int_span:] - np.pad(q2, ((int_span, 0), (0, 0)), 'edge')[:-int_span])
                 cond = (np.abs(df) < eps).astype(np.float32)
@@ -901,13 +898,15 @@ def plot(args=None):
                 roll = states_rpy[st:ed, 0]
                 pitch = states_rpy[st:ed, 1]
                 ax9.plot(roll, pitch)
-                ax9.set_xlim([-0.4, 0.4])
-                ax9.set_ylim([-0.4, 0.4])
+                ax9.set_xlim([-max_rp, max_rp])
+                ax9.set_ylim([-max_rp, max_rp])
+                ax9.set_title(name + 'pitch - roll')
                 roll_vel = states_ang_vel[st:ed, 0]
                 pitch_vel = states_ang_vel[st:ed, 1]
                 ax10.plot(roll_vel, pitch_vel)
-                ax10.set_xlim([-2, 2])
-                ax10.set_ylim([-2, 2])
+                ax10.set_xlim([-max_ang_vel, max_ang_vel])
+                ax10.set_ylim([-max_ang_vel, max_ang_vel])
+                ax10.set_title(name + 'pitch_vel - roll_vel')
 
             if states_q_tau is not None and np.sum(np.abs(states_q_tau)) > 1e-3:
                 q_tau = states_q_tau[st:ed, dofs]
@@ -932,8 +931,7 @@ def plot(args=None):
         fig.tight_layout()
         plot_dir = f'{plot_root}/'
         plot_prefix = plot_dir
-        plt.savefig(plot_prefix + 'root_states.png')
-        # plt.savefig(plot_prefix+'root_states.pdf')
+        plt.savefig(plot_prefix + f'root_states.{ext}')
         plt.close()
     plot_rel = True
     plot_rel = False
@@ -988,15 +986,17 @@ def plot(args=None):
                 continue
             print(len(q), len(qc))
             if first:
-                ax1.plot([Q_CTRL_INIT[idx]], [0], marker='o')
+                # ax1.plot([Q_CTRL_INIT[idx]], [0], marker='o')
+                qc_d_b = (np.pad(qc, (0, 1), 'edge')[1:] - np.pad(qc, (1, 0), 'edge')[:-1]) / (2 * dt)
+                ax1.plot(qc, qc_d_b, marker='.')
             ax1.plot(q, qd, marker='.')
-            # fig.savefig(plot_prefix+'qnqd.png')
+            # fig.savefig(plot_prefix+'qnqd.{ext}')
             # fig.close()
             # fig = plt.figure()
             if first:
                 ax2.plot(qc, qc)
             ax2.plot(qc, q, marker='.')
-            # fig.savefig(plot_prefix+'qcnq.png')
+            # fig.savefig(plot_prefix+'qcnq.{ext}')
             # fig.close()
             # fig = plt.figure(figsize=figsize)
             # qc = qc[:num_steps]
@@ -1013,7 +1013,7 @@ def plot(args=None):
 
             # ax3.set_xlim([Q_CTRL_MIN, Q_CTRL_MAX])
             # ax3.set_ylim([Q_CTRL_MIN[idx], Q_CTRL_MAX[idx]])
-            # fig.savefig(plot_prefix+'tnqcnq.png')
+            # fig.savefig(plot_prefix+'tnqcnq.{ext}')
             kp = KP_2[idx]
             kd = KD_2[idx]
             if first:
@@ -1080,13 +1080,13 @@ def plot(args=None):
         ] + rec_names, loc="lower right")
         if not single_plot:
             plt.suptitle(DOF_NAMES[idx])
-            plt.savefig(plot_prefix + '.png')
+            plt.savefig(plot_prefix + f'.{ext}')
             plt.close()
 
         # input()
     if do_plot and single_plot:
         plt.title('dofs')
-        plt.savefig(plot_prefix + 'dofs.png')
+        plt.savefig(plot_prefix + f'dofs.{ext}')
         plt.close()
 
 
