@@ -9,7 +9,7 @@ def get_args():
     parser.add_argument('-ca', '--cpu_affinity', default=None)
     parser.add_argument('-c', '--close', action='store_true')
     parser.add_argument('-m', '--mode', action='append')
-    parser.add_argument('-dt', '--dt', type=float, default=0.02)
+    parser.add_argument('-dt', '--dt', type=float, default=None)
     parser.add_argument('-n', '--num_steps', type=int, default=0)
     parser.add_argument('-s', '--system', default='f')
     parser.add_argument('-ro', '--rec_output', default=None)
@@ -23,9 +23,11 @@ def get_args():
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-nowrp', '--no_wrap', action='store_true')
     parser.add_argument('-w', '--wait', type=float, default=0)
+    parser.add_argument('-kp', '--kp', default=None)
+    parser.add_argument('-kd', '--kd', default=None)
+    parser.add_argument('-kpd', '--kpd', default=None)
     parser.add_argument('-kpr', '--kp_ratio', type=float, default=1.0)
     parser.add_argument('-kdr', '--kd_ratio', type=float, default=1.0)
-    parser.add_argument('-kpd', '--kpd_ratio', type=float, default=1.0)
     parser.add_argument('-spr', '--sample_r', type=str, default=None)
     parser.add_argument('-spd', '--sample_dofs', default=None)
     parser.add_argument('-spl', '--sample_lerp', type=int, default=0)
@@ -43,7 +45,6 @@ def get_args():
     parser.add_argument('-rpfk', '--replay_frame_key', default='states_q_ctrl')
     parser.add_argument('-qcdm', '--q_ctrl_default_mask', action='store_true')
     parser.add_argument('-qcm', '--q_ctrl_mask', default=None)
-    parser.add_argument('-qcc', '--q_ctrl_clr', type=float, default=0)
     parser.add_argument('-iv', '--infer_verify', action='store_true')
     parser.add_argument('-imp', '--infer_model_path', default=None)
     parser.add_argument('-ikwds', '--infer_kwargs', default=None)
@@ -108,7 +109,9 @@ def get_args():
     parser.add_argument('-qtf', '--q_transform', default=None)
     parser.add_argument('-itf', '--imu_transform', default=None)
     parser.add_argument('-tf', '--transforms', default=[], action='append')
+    parser.add_argument('-ptf', '--post_transforms', default=[], action='append')
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
+    parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     args, _ = parser.parse_known_args()
     return args
 
@@ -173,6 +176,9 @@ def run(args=None):
     Q_RESET = robot_def.get('Q_RESET', None)
     DOF_NAMES_2 = robot_def.get('DOF_NAMES_2', None)
 
+    if args.no_q_boot:
+        Q_BOOT = None
+
     q_reset = np.zeros(NUM_DOFS) if Q_RESET is None else Q_RESET
     q_boot = q_reset if Q_BOOT is None else Q_BOOT
 
@@ -182,7 +188,63 @@ def run(args=None):
     saved_info = {}
     dt = args.dt
     ctrl_dt = args.ctrl_dt
+
+    dof_names = None
+    default_dof_pos = None
+
+    env_cfg_path = args.env_cfg_path
+    infer_load_run = args.infer_load_run
+    infer_model_path = args.infer_model_path
+    if infer_load_run is not None:
+        _default_infer_root = f'{os.environ["HOME"]}/GitRepo/GR1/logs/'
+        _default_infer_root = os.environ.get('UNICON_INFER_ROOT', _default_infer_root)
+        root = os.path.join(_default_infer_root, infer_load_run)
+        model_file_pat = 'policy_1.pt'
+        model_file = None
+        for r, _, fs in os.walk(root):
+            for f in fs:
+                if model_file_pat in f:
+                    model_file = os.path.join(r, f)
+                    break
+        if model_file is None:
+            raise ValueError('model_file not found')
+        infer_model_path = os.path.join(root, model_file)
+        from unicon.utils import md5sum
+        infer_model_md5sum = md5sum(infer_model_path)
+        saved_info['infer_model_md5sum'] = infer_model_md5sum
+        print('infer_load_run', infer_load_run, infer_model_path, infer_model_md5sum)
+    if env_cfg_path is None and infer_model_path is not None:
+        for ext in ['.json', '.yaml']:
+            env_cfg_path = os.path.join(os.path.dirname(infer_model_path), 'env_cfg' + ext)
+            if os.path.exists(env_cfg_path):
+                break
+
+    env_cfg = None
+    env_cfg_args = None
+    if env_cfg_path is not None and os.path.exists(env_cfg_path):
+        print('env_cfg_path', env_cfg_path)
+        env_cfg = load_obj(env_cfg_path)
+    if env_cfg is not None:
+        env_cfg_override = args.env_cfg_override
+        if env_cfg_override is not None:
+            env_cfg_override = load_obj(env_cfg_override)
+            from unicon.utils import obj_update
+            obj_update(env_cfg, env_cfg_override)
+        env_cfg_env = env_cfg['env']
+        num_acts = env_cfg_env['num_actions']
+        num_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_observations'))
+        init_joint_angles = env_cfg['init_state']['default_joint_angles']
+        dof_names = env_cfg.get('dof_names', list(init_joint_angles.keys()))
+        default_dof_pos = np.array([init_joint_angles[n] for n in dof_names])
+        ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
+        env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
+        print('env_cfg_args', env_cfg_args)
+
     ctrl_dt = dt if ctrl_dt is None else ctrl_dt
+    dt = ctrl_dt if dt is None else dt
+    print('dt', dt, 'ctrl_dt', ctrl_dt)
+    assert ctrl_dt is not None and dt is not None
+
     ctx = {
         'args': vars(args),
         'argv': argv,
@@ -267,60 +329,8 @@ def run(args=None):
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
-    dof_names = None
-    default_dof_pos = None
-
     actions_path = args.action_path
     obs_path = args.obs_path
-    env_cfg_path = args.env_cfg_path
-    infer_load_run = args.infer_load_run
-    infer_model_path = args.infer_model_path
-    if infer_load_run is not None:
-        _default_infer_root = f'{os.environ["HOME"]}/GitRepo/GR1/logs/'
-        _default_infer_root = os.environ.get('UNICON_INFER_ROOT', _default_infer_root)
-        root = os.path.join(_default_infer_root, infer_load_run)
-        model_file_pat = 'policy_1.pt'
-        model_file = None
-        for r, _, fs in os.walk(root):
-            for f in fs:
-                if model_file_pat in f:
-                    model_file = os.path.join(r, f)
-                    break
-        if model_file is None:
-            raise ValueError('model_file not found')
-        infer_model_path = os.path.join(root, model_file)
-        from unicon.utils import md5sum
-        infer_model_md5sum = md5sum(infer_model_path)
-        saved_info['infer_model_md5sum'] = infer_model_md5sum
-        print('infer_load_run', infer_load_run, infer_model_path, infer_model_md5sum)
-    if env_cfg_path is None and infer_model_path is not None:
-        for ext in ['.json', '.yaml']:
-            env_cfg_path = os.path.join(os.path.dirname(infer_model_path), 'env_cfg' + ext)
-            if os.path.exists(env_cfg_path):
-                break
-
-    env_cfg = None
-    env_cfg_args = None
-    if env_cfg_path is not None and os.path.exists(env_cfg_path):
-        print('env_cfg_path', env_cfg_path)
-        env_cfg = load_obj(env_cfg_path)
-    if env_cfg is not None:
-        env_cfg_override = args.env_cfg_override
-        if env_cfg_override is not None:
-            env_cfg_override = load_obj(env_cfg_override)
-            from unicon.utils import obj_update
-            obj_update(env_cfg, env_cfg_override)
-        env_cfg_env = env_cfg['env']
-        num_acts = env_cfg_env['num_actions']
-        num_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_observations'))
-        init_joint_angles = env_cfg['init_state']['default_joint_angles']
-        dof_names = env_cfg.get('dof_names', list(init_joint_angles.keys()))
-        default_dof_pos = np.array([init_joint_angles[n] for n in dof_names])
-        ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
-        env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
-        print('env_cfg_args', env_cfg_args)
-
-    print('dt', dt, 'ctrl_dt', ctrl_dt)
 
     states_infer_extras = {}
     inf_extras = args.states_infer_extras
@@ -747,12 +757,8 @@ def run(args=None):
         import yaml
         q_ctrl_mask = load_obj(q_ctrl_mask)
         q_ctrl_mask = [q_ctrl_mask] if not isinstance(q_ctrl_mask, (tuple, list)) else q_ctrl_mask
-        for mask in q_ctrl_mask:
-            if isinstance(mask, str):
-                idx = DOF_NAMES.index(mask)
-            else:
-                idx = mask
-            ctrl_mask[idx] = 1
+        inds = match_keys(q_ctrl_mask, DOF_NAMES)
+        ctrl_mask[inds] = 1
         print('q_ctrl_mask', q_ctrl_default_mask, ctrl_mask.astype(int).tolist())
         default_mask = None
         if q_ctrl_default_mask:
@@ -821,7 +827,17 @@ def run(args=None):
         if rec_q is not None:
             q_reset[:] = rec_q[0]
         lerp_steps = int((args.lerp_time + 0.01) // ctrl_dt)
-        cb_lerp = cb_ctrl_q_from_target_lerp(
+        cb_lerp0 = None
+        if Q_BOOT is not None:
+            cb_lerp0 = cb_ctrl_q_from_target_lerp(
+                **states_ctrls,
+                states_q_target=q_boot,
+                states_q=states_q,
+                max_steps=lerp_steps,
+                cycle=False,
+                from_q_ctrl=False,
+            )
+        cb_lerp1 = cb_ctrl_q_from_target_lerp(
             **states_ctrls,
             states_q_target=q_reset,
             states_q=states_q,
@@ -846,7 +862,8 @@ def run(args=None):
         )
         cb_pre_ctrl = [
             # cb_loop(cb_print(), max_steps=1),
-            cb_lerp,
+            cb_lerp0,
+            cb_lerp1,
             # cb_motor_q_lerp(max_steps=1e2, q_ctrl=q_reset),
         ]
         cb_post_ctrl = [
@@ -855,6 +872,7 @@ def run(args=None):
             # cb_motor_q_lerp(max_steps=lerp_steps, q_ctrl=q_boot),
         ]
         chain = cb_pre_ctrl + chain + cb_post_ctrl
+        chain = [x for x in chain if x is not None]
     else:
         states_q_ctrl[:NUM_DOFS] = q_reset
 
@@ -863,13 +881,14 @@ def run(args=None):
     wait_input = args.wait_input
     if wait_input:
         key = 'BTN_TL'
-        cb = cb_wait_input(
+        cb_idx = chain.index(cb)
+        cb_wi = cb_wait_input(
             states_input=states_input,
             keys=[key],
             clicks=1,
             prompt=True,
         )
-        chain.insert(min(len(chain) - 1, 1), cb)
+        chain.insert(cb_idx, cb_wi)
 
     print('chain', chain)
     cb = cb_chain(*chain) if len(chain) > 1 else chain[0]
@@ -883,12 +902,10 @@ def run(args=None):
 
     kp_r = args.kp_ratio
     kd_r = args.kd_ratio
-    kp_r *= args.kpd_ratio
-    kd_r *= args.kpd_ratio
     print('kp_r', kp_r)
     print('kd_r', kd_r)
-    kp = KP
-    kd = KD
+    kp = KP.copy()
+    kd = KD.copy()
     sim_kps = None
     sim_kds = None
     use_sim_pd = args.use_sim_pd
@@ -896,8 +913,6 @@ def run(args=None):
         sim_kps = env_cfg['control']['stiffness']
         sim_kds = env_cfg['control']['damping']
         sim_torque_limits = env_cfg['control'].get('torque_limits', None)
-        sim_kps = {k: v * kp_r for k, v in sim_kps.items()}
-        sim_kds = {k: v * kd_r for k, v in sim_kds.items()}
         nxs = []
         for x in [sim_kps, sim_kds, sim_torque_limits]:
             nx = {dof_names_map.get(k, k): v for k, v in x.items()}
@@ -909,14 +924,26 @@ def run(args=None):
         kp = [([v for k, v in sim_kps.items() if k in n] or [kp[i]])[0] for i, n in enumerate(DOF_NAMES)]
         kd = [([v for k, v in sim_kds.items() if k in n] or [kd[i]])[0] for i, n in enumerate(DOF_NAMES)]
         assert len(kp) == len(kd) == NUM_DOFS
-        kp = np.array(kp)
-        kd = np.array(kd)
-    elif kp is not None:
-        kp = np.array(kp)
-        kd = np.array(kd)
+        kp = np.array(kp, dtype=np.float64)
+        kd = np.array(kd, dtype=np.float64)
+    args_kpd = args.kpd
+    args_kp = args.kp if args_kpd is None else args_kpd
+    args_kd = args.kd if args_kpd is None else args_kpd
+    for x, ax in [[kp, args_kp], [kd, args_kd]]:
+        if ax is not None:
+            ax = load_obj(ax)
+        print(ax)
+        if isinstance(ax, dict):
+            for k, v in ax.items():
+                inds = match_keys(k, dof_names)
+                x[inds] = v
+        elif isinstance(ax, list):
+            x[:] = ax
+    if kp is not None:
+        kp = kp if isinstance(kp, np.ndarray) else np.array(kp, dtype=np.float64)
+        kd = kd if isinstance(kd, np.ndarray) else np.array(kd, dtype=np.float64)
         kp[:] *= kp_r
         kd[:] *= kd_r
-    if kp is not None:
         print('kp', pp_arr(kp))
         print('kd', pp_arr(kd))
 
@@ -990,6 +1017,13 @@ def run(args=None):
     sys_kwds = load_obj(args.system_kwargs or '') or {}
     sys_clip_q_ctrl = (not clip_q_ctrl)
 
+    states_extras_sys = dict(
+        states_q_tau=states_q_tau,
+        states_q_cur=states_q_cur,
+        states_lin_vel=states_lin_vel,
+        states_lin_acc=states_lin_acc,
+        states_pos=states_pos,
+    )
     cb_recv, cb_send, cb_close = None, None, None
     if systems['none']:
         pass
@@ -998,6 +1032,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_fake_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
+            **states_extras_sys,
             q_ctrl_min=q_ctrl_min,
             q_ctrl_max=q_ctrl_max,
             kp=kp,
@@ -1011,11 +1046,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_mini_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
-            states_q_tau=states_q_tau,
-            states_q_cur=states_q_cur,
-            states_lin_vel=states_lin_vel,
-            states_lin_acc=states_lin_acc,
-            states_pos=states_pos,
+            **states_extras_sys,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
@@ -1029,8 +1060,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_fftai_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
-            states_q_tau=states_q_tau,
-            states_q_cur=states_q_cur,
+            **states_extras_sys,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
@@ -1045,6 +1075,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_roblibpy_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
+            **states_extras_sys,
             **sys_kwds,
         )
     elif systems['sims']:
@@ -1083,15 +1114,16 @@ def run(args=None):
         if args.sims_pd:
             system_config['compute_torque'] = False
         # system_config['verbose'] = True
-        if sim_kps is not None:
-            system_config['Kp'] = system_config.get('Kp', {})
-            system_config['Kp'].update(sim_kps)
-            system_config['Kd'] = system_config.get('Kd', {})
-            system_config['Kd'].update(sim_kds)
+        if use_sim_pd:
+            # system_config['Kp'] = system_config.get('Kp', {})
+            # system_config['Kp'].update(sim_kps)
+            # system_config['Kd'] = system_config.get('Kd', {})
+            # system_config['Kd'].update(sim_kds)
             if sim_torque_limits is not None:
                 system_config['torque_limits'] = system_config.get('torque_limits', {})
                 system_config['torque_limits'].update(sim_torque_limits)
-        elif args.sims_use_kpd:
+        # if args.sims_use_kpd:
+        if True:
             # system_config['Kp'] = kp
             # system_config['Kd'] = kd
             system_config['Kp'] = {k: v for k, v in zip(sim_dof_names, kp)}
@@ -1112,10 +1144,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_sims_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
-            states_pos=states_pos,
-            states_lin_vel=states_lin_vel,
-            states_lin_acc=states_lin_acc,
-            states_q_tau=states_q_tau,
+            **states_extras_sys,
             dof_names=sim_dof_names,
             system_config=system_config,
             wrapper_config=wrapper_config,
@@ -1126,6 +1155,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_a1_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
+            **states_extras_sys,
             states_input=states_input,
             kp=kp,
             kd=kd,
@@ -1139,10 +1169,7 @@ def run(args=None):
         cb_recv, cb_send, cb_close = cb_unitree_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
-            states_q_tau=states_q_tau,
-            states_q_cur=states_q_cur,
-            states_lin_vel=states_lin_vel,
-            states_lin_acc=states_lin_acc,
+            **states_extras_sys,
             states_input=states_input,
             kp=kp,
             kd=kd,
@@ -1261,7 +1288,7 @@ def run(args=None):
         cb = cb_if(cb, pred=lambda pt: pt % intv == 0)
         seq = [cb]
     elif ctrl_dt < dt:
-        raise NotImplementedError
+        raise ValueError('ctrl_dt < dt', ctrl_dt, dt)
 
     cb_ctrl_tau = args.cb_ctrl_tau
     if cb_ctrl_tau is not None:
@@ -1287,53 +1314,87 @@ def run(args=None):
         )
         seq.append(cb)
 
-    seq = [cb_recv] + seq + [cb_send]
-    seq = [c for c in seq if c is not None]
+    states_all = dict(
+        **states_ctrls,
+        states_input=states_input,
+        **states_props,
+        **states_extras,
+    )
 
+    states_tf = states_all
     transforms = args.transforms
     for i, tf in enumerate(transforms):
         tf_kwds = load_obj(tf)
         tf_type = tf_kwds.pop('type')
         tf_cls = import_obj(tf_type, default_name_prefix='cb_tf', default_mod_prefix='unicon.transforms')
-        cb = tf_cls(**states_props, **tf_kwds)
-        seq.insert(1+i, cb)
+        cb = tf_cls(**states_tf, **tf_kwds)
+        seq.insert(i, cb)
 
     imu_transform = args.imu_transform
     if imu_transform is not None:
+        states_quat = states_props['states_quat']
         states_rpy = states_props['states_rpy']
         states_ang_vel = states_props['states_ang_vel']
         print('imu_transform', imu_transform)
         imu_transform = load_obj(imu_transform)
         if isinstance(imu_transform, dict):
-            rpy_tf, ang_vel_tf = [imu_transform[k] for k in ['rpy', 'ang_vel']]
+            tfs = [imu_transform.get(k) for k in ['rpy', 'ang_vel', 'quat']]
         elif isinstance(imu_transform, (list, tuple)):
-            rpy_tf, ang_vel_tf = imu_transform
+            tfs = [imu_transform[i] if len(imu_transform) > i else None for i in range(3)]
         else:
             raise ValueError('imu_transform')
+        rpy_tf, ang_vel_tf, quat_tf = tfs
 
         print('rpy_tf', rpy_tf)
         print('ang_vel_tf', ang_vel_tf)
-        rpy_w, rpy_b = rpy_tf
-        ang_vel_w, ang_vel_b = ang_vel_tf
+        print('quat_tf', quat_tf)
+        rpy_w, rpy_b = rpy_tf if rpy_tf is not None else (1, 0)
+        ang_vel_w, ang_vel_b = ang_vel_tf if ang_vel_tf is not None else (1, 0)
+        wb = rpy_w, rpy_b, ang_vel_w, ang_vel_b
+        wb = [(x if isinstance(x, (float, int)) else np.array(x)) for x in wb]
+        rpy_w, rpy_b, ang_vel_w, ang_vel_b = wb
+        if quat_tf is not None:
+            from unicon.utils import quat_mul_np, quat2rpy_np3, quat2mat_np
+            qt = np.array(quat_tf)
+            mat_t = quat2mat_np(qt).T
+            print('mat_t', mat_t)
 
         def cb_itf_recv():
-            states_rpy[:] = states_rpy * rpy_w + rpy_b
-            states_ang_vel[:] = states_ang_vel * ang_vel_w + ang_vel_b
+            if rpy_tf is not None:
+                states_rpy[:] = states_rpy * rpy_w + rpy_b
+            if ang_vel_tf is not None:
+                states_ang_vel[:] = states_ang_vel * ang_vel_w + ang_vel_b
+            if quat_tf is not None:
+                states_quat[:] = quat_mul_np(states_quat, qt)
+                states_rpy[:] = quat2rpy_np3(states_quat)
+                # states_rpy[:] = np.matmul(mat_t, states_rpy)
+                states_ang_vel[:] = np.matmul(mat_t, states_ang_vel)
 
-        seq.insert(1, cb_itf_recv)
+        seq.insert(0, cb_itf_recv)
+
+    post_transforms = args.post_transforms
+    for i, tf in enumerate(post_transforms):
+        tf_kwds = load_obj(tf)
+        tf_type = tf_kwds.pop('type')
+        tf_cls = import_obj(tf_type, default_name_prefix='cb_tf', default_mod_prefix='unicon.transforms')
+        cb = tf_cls(**states_tf, **tf_kwds)
+        seq.append(cb)
 
     if q_transform is not None:
         if qtf_recv:
             cb_qtf_recv()
-            seq.insert(1, cb_qtf_recv)
+            seq.insert(0, cb_qtf_recv)
         cb_qtf_send()
-        seq.insert(-1, cb_qtf_send)
+        seq.append(cb_qtf_send)
 
     if clip_q_ctrl:
         def cb_ctrl_q_clip():
             states_q_ctrl[:] = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max)
 
-        seq.insert(-1, cb_ctrl_q_clip)
+        seq.append(cb_ctrl_q_clip)
+
+    seq = [cb_recv] + seq + [cb_send]
+    seq = [c for c in seq if c is not None]
 
     fixed_wait = args.fixed_wait
     if fixed_wait is not None:
@@ -1345,12 +1406,7 @@ def run(args=None):
 
     inputs = args.inputs
     outputs = args.outputs
-    states_io = dict(
-        **states_ctrls,
-        states_input=states_input,
-        **states_props,
-        **states_extras,
-    )
+    states_io = states_all
     for output_kwds in outputs:
         output_kwds = load_obj(output_kwds)
         output_kwds = {'type': output_kwds} if isinstance(output_kwds, str) else output_kwds
@@ -1395,6 +1451,7 @@ def run(args=None):
         cmd_type = cmd_kwds.pop('type')
         print('cmd_type', cmd_type)
         cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.cmd')
+        kwds = {}
         ccv = args.cmd_const_v
         if ccv is not None:
             ccv = load_obj(ccv)

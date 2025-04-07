@@ -8,6 +8,11 @@ def cb_a1_recv_send_close(
     states_quat,
     states_q,
     states_qd,
+    states_q_tau=None,
+    states_q_cur=None,
+    states_lin_vel=None,
+    states_lin_acc=None,
+    states_pos=None,
     states_input=None,
     highlevel=False,
     kp=None,
@@ -43,6 +48,7 @@ def cb_a1_recv_send_close(
         'BTN_TR': 'R1',
     }
     mapped_keys = [key_mapping.get(k) for k in input_keys]
+    # print(input_keys, mapped_keys)
     mapped = [k is not None for k in mapped_keys]
     mapped_keys = [k for k in mapped_keys if k is not None]
 
@@ -76,7 +82,7 @@ def cb_a1_recv_send_close(
         bumper = rem[2]
         btns = rem[3]
         R1, L1, START, SELECT, R2, L2 = [(bumper >> i) & 0x1 for i in range(6)]
-        A, B, X, Y = [(bumper >> i) & 0x1 for i in range(4)]
+        A, B, X, Y = [(btns >> i) & 0x1 for i in range(4)]
         lx, rx, ry, _, ly = struct.unpack('fffff', rem[4:24])
         # print(lx, rx, ry, ly)
         inputs = dict(
@@ -93,6 +99,8 @@ def cb_a1_recv_send_close(
         motorState = state.motorState[:num_dofs]
         states_q[:] = motorState['q']
         states_qd[:] = motorState['dq']
+        if states_q_tau is not None:
+            states_q_tau[:] = motorState['tauEst']
         quat = state.imu.quaternion
         states_quat[3] = quat[0]
         states_quat[:3] = quat[1:]

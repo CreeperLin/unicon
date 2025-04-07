@@ -61,3 +61,6 @@ TAU_LIMIT = [
     20., 55., 55.
 ] * 4
 TAU_LIMIT = np.array(TAU_LIMIT)
+
+URDF = 'a1/urdf/a1.urdf'
+# URDF = 'a1/urdf/a1_bip.urdf'

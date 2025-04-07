@@ -100,8 +100,16 @@ def parse_urdf(
     default_tau_limit=1000.,
     qd_limit=30.,
 ):
-    from yourdfpy import URDF
-    urdf = URDF.load(urdf_path, load_meshes=False, build_scene_graph=False)
+    try:
+        from yourdfpy import URDF
+    except ImportError as e:
+        print(e)
+        return {}
+    print('parse_urdf', urdf_path)
+    if hasattr(URDF, 'load'):
+        urdf = URDF.load(urdf_path, load_meshes=False, build_scene_graph=False)
+    else:
+        urdf = URDF.from_xml_file(urdf_path)
     # links = urdf.robot.links
     joints = urdf.robot.joints
     joints = [j for j in joints if j.type != 'fixed']
@@ -112,8 +120,10 @@ def parse_urdf(
     q_max = [(default_q_max if m is None else m.upper) for m in joint_limits]
     tau_limit = [(default_tau_limit if m is None else m.effort) for m in joint_limits]
     qd_limit = [(qd_limit if m is None else m.velocity) for m in joint_limits]
-    kps = [(default_kp if d is None else d.stiffness) for d in joint_dynamics]
-    kds = [(default_kd if d is None else d.damping) for d in joint_dynamics]
+    damping = [(0 if d is None else d.damping) for d in joint_dynamics]
+    friction = [(0 if d is None else d.friction) for d in joint_dynamics]
+    kps = np.array([default_kp] * len(joints))
+    kds = np.array([default_kd] * len(joints))
     num_dofs = len(dof_names)
     robot_def = {
         'NUM_DOFS': num_dofs,
@@ -124,6 +134,8 @@ def parse_urdf(
         'QD_LIMIT': qd_limit,
         'KP': kps,
         'KD': kds,
+        'Q_DAMPING': damping,
+        'Q_FRICTION': friction,
     }
     print('parse_urdf', robot_def)
     return robot_def
@@ -152,7 +164,8 @@ def parse_robot_def(robot_def):
             continue
         robot_def[k] = [v] * num_dofs if isinstance(v, (float, int)) else v
     robot_def = {
-        k: np.array(v) if isinstance(v, list) and isinstance(v[0], (float, int)) else v for k, v in robot_def.items()
+        k: np.array(v, dtype=np.float64) if isinstance(v, list) and isinstance(v[0] if len(v) else None, (float, int)) else v
+        for k, v in robot_def.items()
     }
     return robot_def
 
@@ -165,7 +178,8 @@ def force_quit():
 
 def md5sum(path):
     import subprocess
-    return subprocess.run(['md5sum', path], capture_output=True).stdout.split()[0].decode()
+    PIPE = subprocess.PIPE
+    return subprocess.run(['md5sum', path], stdout=PIPE).stdout.split()[0].decode()
 
 
 def register_obj(
@@ -388,6 +402,44 @@ def try_conn(address, port):
     return fail
 
 
+def quat_rotate_np(q, v, w_first=False):
+    q_w, q_vec = (q[..., 0], q[..., 1:]) if w_first else (q[..., -1], q[..., :3])
+    a = v * (2.0 * q_w ** 2 - 1.0)[..., np.newaxis]
+    b = np.cross(q_vec, v) * q_w[..., np.newaxis] * 2.0
+    c = q_vec * np.sum(q_vec[..., np.newaxis, :] * v[..., np.newaxis, :], axis=-1) * 2.0
+    return a + b + c
+
+
+def quat_rotate_inverse_np(q, v, w_first=False):
+    q_w, q_vec = (q[..., 0], q[..., 1:]) if w_first else (q[..., -1], q[..., :3])
+    a = v * (2.0 * q_w ** 2 - 1.0)[..., np.newaxis]
+    b = np.cross(q_vec, v) * q_w[..., np.newaxis] * 2.0
+    c = q_vec * np.sum(q_vec[..., np.newaxis, :] * v[..., np.newaxis, :], axis=-1) * 2.0
+    return a - b + c
+
+
+def quat_mul_np(a, b, w_first=False):
+    assert a.shape == b.shape
+    shape = a.shape
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 4)
+    i, j, k, w = ([1, 2, 3, 0] if w_first else [0, 1, 2, 3])
+    x1, y1, z1, w1 = a[:, i], a[:, j], a[:, k], a[:, w]
+    x2, y2, z2, w2 = b[:, i], b[:, j], b[:, k], b[:, w]
+    ww = (z1 + x1) * (x2 + y2)
+    yy = (w1 - y1) * (w2 + z2)
+    zz = (w1 + y1) * (w2 - z2)
+    xx = ww + yy + zz
+    qq = 0.5 * (xx + (z1 - x1) * (x2 - y2))
+    w = qq - ww + (z1 - y1) * (y2 - z2)
+    x = qq - xx + (x1 + w1) * (x2 + w2)
+    y = qq - yy + (w1 - x1) * (y2 + z2)
+    z = qq - zz + (z1 + y1) * (w2 - x2)
+    els = [w, x, y, z] if w_first else [x, y, z, w]
+    quat = np.stack(els, axis=-1).reshape(shape)
+    return quat
+
+
 def rpy_reorder(rpy, src='rpy', dest='rpy'):
     inds = [src.index(c) for c in dest]
     return rpy[..., inds]
@@ -481,7 +533,7 @@ def quat2mat_np2(quat, w_first=False):
     return mat
 
 
-def quat2mat_np(quat, w_first=False):
+def quat2mat_np1(quat, w_first=False):
     shape = quat.shape[:-1]
     quat = quat.reshape(-1, 4)
     if w_first:
@@ -506,6 +558,9 @@ def quat2mat_np(quat, w_first=False):
     mat = np.array([[1.0 - (yY + zZ), xY - wZ, xZ + wY], [xY + wZ, 1.0 - (xX + zZ), yZ - wX],
                     [xZ - wY, yZ + wX, 1.0 - (xX + yY)]])
     return np.transpose(mat, (2, 0, 1)).reshape(*shape, 3, 3)
+
+
+quat2mat_np = quat2mat_np1
 
 
 def mat2quat_np(m):

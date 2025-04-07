@@ -16,8 +16,9 @@ def cb_fftai_recv_send_close(
     states_q_ctrl,
     states_q_tau=None,
     states_q_cur=None,
-    states_lin_acc=None,
     states_lin_vel=None,
+    states_lin_acc=None,
+    states_pos=None,
     kp=None,
     kd=None,
     # radian

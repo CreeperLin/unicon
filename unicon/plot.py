@@ -28,6 +28,8 @@ def get_plot_args(args=None):
     parser.add_argument('-mo', '--motion_output', default=None)
     parser.add_argument('-l', '--loss_fns', default=None, action='append')
     parser.add_argument('-e', '--ext', default='png')
+    parser.add_argument('-ae', '--aniext', default=None)
+    parser.add_argument('-pr', '--plot_root', default='plots2')
     args, _ = parser.parse_known_args(args)
     return args
 
@@ -183,7 +185,8 @@ def plot(args=None):
         return
     ext = args.ext
     from matplotlib import pyplot as plt
-    plot_root = 'plots2'
+    import matplotlib.animation as animation
+    plot_root = args.plot_root
     os.makedirs(plot_root, exist_ok=True)
     if states_i_extras:
         nplts = num_recs
@@ -493,11 +496,12 @@ def plot(args=None):
             tc_ratio = np.mean((q_tau + 1e-1) / (q_cur + 1e-1), axis=0)
             # tc_ratio = np.max(q_tau, axis=0)/np.max(q_cur, axis=0)
             print(np.round(tc_ratio.astype(np.float64), decimals=3).tolist())
-            mmc = rec['args']['motor_max_current'] or 0
-            mmc = float(mmc)
-            print('mmc', mmc)
-            print('torque limits')
-            print(np.round((mmc * np.abs(tc_ratio)).astype(np.float64)).tolist())
+            mmc = rec['args'].get('motor_max_current')
+            if mmc is not None:
+                mmc = float(mmc)
+                print('mmc', mmc)
+                print('torque limits')
+                print(np.round((mmc * np.abs(tc_ratio)).astype(np.float64)).tolist())
         nplts = 3
         fig, axes = plt.subplots(num_dofs, nplts, figsize=(10 * nplts, 10 * num_dofs))
         axes = axes.reshape(-1, nplts)
@@ -506,7 +510,6 @@ def plot(args=None):
         for k, (d, d_axes) in enumerate(zip(dofs, axes)):
             ax1, ax2, ax3 = d_axes
             for i, rec in enumerate(recs):
-                mmc = rec['args']['motor_max_current']
                 q = rec['states_q'][st:ed, d]
                 qd_b = (np.pad(q, (0, 1), 'edge')[1:] - np.pad(q, (1, 0), 'edge')[:-1]) / (2 * dt)
                 qd = rec['states_qd'][st:ed, d]
@@ -945,6 +948,11 @@ def plot(args=None):
         fig, axes = plt.subplots(num_dofs, nplts, figsize=(10 * nplts, 10 * num_dofs))
         axes = axes.reshape(axes.shape[0], -1)
         print('axes', axes.shape)
+    qc_ofs = -1
+    qc_ofs = 0
+    print('qc_ofs', qc_ofs)
+    aniext = args.aniext
+    save_anim = aniext is not None
     for i, idx in enumerate(dofs):
         print(idx, DOF_NAMES[idx])
         t = list(range(st, ed))
@@ -969,6 +977,7 @@ def plot(args=None):
         qrels = []
         qs = []
         qcs = []
+        axlines = []
         for rec in recs:
             states_qd = rec['states_qd']
             states_q = rec['states_q']
@@ -977,7 +986,7 @@ def plot(args=None):
             states_q_cur = rec.get('states_q_cur')
             q = states_q[st:ed, idx]
             qd = states_qd[st:ed, idx]
-            qc = states_q_ctrl[st:ed, idx]
+            qc = states_q_ctrl[st+qc_ofs:ed+qc_ofs, idx]
             qs.append(q)
             qcs.append(qc)
             qrel = q - qc
@@ -988,14 +997,18 @@ def plot(args=None):
             if first:
                 # ax1.plot([Q_CTRL_INIT[idx]], [0], marker='o')
                 qc_d_b = (np.pad(qc, (0, 1), 'edge')[1:] - np.pad(qc, (1, 0), 'edge')[:-1]) / (2 * dt)
-                ax1.plot(qc, qc_d_b, marker='.')
-            ax1.plot(q, qd, marker='.')
+                line, = ax1.plot(qc, qc_d_b, marker='.')
+                axlines.append([line, qc, qc_d_b])
+            line, = ax1.plot(q, qd, marker='.')
+            axlines.append([line, q, qd])
             # fig.savefig(plot_prefix+'qnqd.{ext}')
             # fig.close()
             # fig = plt.figure()
             if first:
-                ax2.plot(qc, qc)
-            ax2.plot(qc, q, marker='.')
+                line, = ax2.plot(qc, qc)
+                axlines.append([line, qc, qc])
+            line, = ax2.plot(qc, q, marker='.')
+            axlines.append([line, qc, q])
             # fig.savefig(plot_prefix+'qcnq.{ext}')
             # fig.close()
             # fig = plt.figure(figsize=figsize)
@@ -1005,11 +1018,14 @@ def plot(args=None):
             #     ax3.plot(t, qc, marker='.')
             # ax3.plot(t, q, marker='.')
             if first:
-                ax3.plot(t, qc, marker='.')
+                line, = ax3.plot(t, qc, marker='.')
+                axlines.append([line, t, qc])
             if plot_rel:
-                ax3.plot(t, qrel, marker='.')
+                line, = ax3.plot(t, qrel, marker='.')
+                axlines.append([line, t, qrel])
             else:
-                ax3.plot(t, q, marker='.')
+                line, = ax3.plot(t, q, marker='.')
+                axlines.append([line, t, q])
 
             # ax3.set_xlim([Q_CTRL_MIN, Q_CTRL_MAX])
             # ax3.set_ylim([Q_CTRL_MIN[idx], Q_CTRL_MAX[idx]])
@@ -1019,15 +1035,20 @@ def plot(args=None):
             if first:
                 if states_q_cur is not None:
                     cur = states_q_cur[st:ed, idx]
-                    ax4.plot(t, cur, marker='.')
+                    line, = ax4.plot(t, cur, marker='.')
+                    axlines.append([line, t, cur])
                 else:
-                    ax4.plot(t, kp * 0.5 * qc + kd * (-np.mean(np.abs(qd)) * 0.5))
+                    tau_ref = kp * 0.5 * qc + kd * (-np.mean(np.abs(qd)) * 0.5)
+                    line, = ax4.plot(t, tau_ref)
+                    axlines.append([line, t, tau_ref])
             if states_q_tau is not None:
                 tau = states_q_tau[st:ed, idx]
-                ax4.plot(t, tau, marker='.')
+                line, = ax4.plot(t, tau, marker='.')
+                axlines.append([line, t, tau])
             else:
                 tau = kp * (qc - q) + kd * (-qd)
-                ax4.plot(t, tau)
+                line, = ax4.plot(t, tau)
+                axlines.append([line, t, tau])
                 # ax4.plot(t, kp * qc)
             # fig.close()
             first = False
@@ -1082,8 +1103,31 @@ def plot(args=None):
             plt.suptitle(DOF_NAMES[idx])
             plt.savefig(plot_prefix + f'.{ext}')
             plt.close()
+        if save_anim:
+            # frame_step = int(1 // dt)
+            frame_step = 1
+            intv = frame_step * dt * 1000
+            num_frames = (ed - st) // frame_step
+            lns = [a[0] for a in axlines]
+            blit = True
+            # print('num_frames', num_frames)
 
-        # input()
+            def animate(i):
+                pt = i * frame_step
+                for line, x, y in axlines:
+                    line.set_xdata(x[:pt])
+                    line.set_ydata(y[:pt])
+                return lns
+
+            ani = animation.FuncAnimation(fig, animate, interval=intv, blit=blit, frames=num_frames)
+            kwds = {
+                'html': dict(writer='html'),
+                'apng': dict(writer='pillow'),
+                # 'gif': dict(writer='pillow'),
+                'gif': dict(writer='ffmpeg'),
+            }
+            ani.save(plot_prefix + f'.{aniext}', **kwds.get(aniext, {}))
+
     if do_plot and single_plot:
         plt.title('dofs')
         plt.savefig(plot_prefix + f'dofs.{ext}')

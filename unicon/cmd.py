@@ -4,9 +4,9 @@ import numpy as np
 def cb_cmd_vel(
     states_input,
     states_cmd,
-    range_lin_vel_x=[[-.5, .5], [-.75, .75], [-1., 1.]],
-    range_lin_vel_y=[[-.25, .25], [-.5, .5], [-.6, .6]],
-    range_ang_vel_yaw=[[-.5, .5], [-.75, .75], [-1., 1.]],
+    range_lin_vel_x=None,
+    range_lin_vel_y=None,
+    range_ang_vel_yaw=None,
     # step_vel=True,
     step_vel=False,
     step_vel_size=0.01,
@@ -38,15 +38,17 @@ def cb_cmd_vel(
         input_keys.index(k) for k in used_keys
     ]
 
-    assert lin_vel_x is not None
-    lin_vel_x = np.array(lin_vel_x).astype(np.float64)
-    lin_vel_y = np.array(lin_vel_y).astype(np.float64)
-    ang_vel_yaw = np.array(ang_vel_yaw).astype(np.float64)
-    # scales = [(i+2)/(num_ranges+1) for i in range(num_ranges)]
-    scales = [max_scale * (i + 1) / num_ranges for i in range(num_ranges)]
-    range_lin_vel_x = [[s * x for x in lin_vel_x] for s in scales]
-    range_lin_vel_y = [[s * x for x in lin_vel_y] for s in scales]
-    range_ang_vel_yaw = [[s * x for x in ang_vel_yaw] for s in scales]
+    if range_lin_vel_x is None:
+        scales = [max_scale * (i + 1) / num_ranges for i in range(num_ranges)]
+        # scales = [(i+2)/(num_ranges+1) for i in range(num_ranges)]
+        cmd_ranges = lin_vel_x, lin_vel_y, ang_vel_yaw
+        rngs = []
+        for rng in cmd_ranges:
+            rng = [-1, 1] if rng is None else rng
+            rng = np.array(rng).astype(np.float64)
+            rng = [[s * x for x in rng] for s in scales]
+            rngs.append(rng)
+        range_lin_vel_x, range_lin_vel_y, range_ang_vel_yaw = rngs
 
     print('range_lin_vel_x', range_lin_vel_x)
     print('range_lin_vel_y', range_lin_vel_y)
