@@ -10,6 +10,7 @@ def cb_a1_recv_send_close(
     states_qd,
     states_q_tau=None,
     states_q_cur=None,
+    states_q_temp=None,
     states_lin_vel=None,
     states_lin_acc=None,
     states_pos=None,
@@ -28,6 +29,7 @@ def cb_a1_recv_send_close(
     legged_type='A1',
     position_limit=True,
     position_protect=False,
+    **states,
 ):
     import a1_sdk as sdk
     num_dofs = len(states_q)
@@ -101,6 +103,8 @@ def cb_a1_recv_send_close(
         states_qd[:] = motorState['dq']
         if states_q_tau is not None:
             states_q_tau[:] = motorState['tauEst']
+        if states_q_temp is not None:
+            states_q_temp[:] = motorState['temperature']
         quat = state.imu.quaternion
         states_quat[3] = quat[0]
         states_quat[:3] = quat[1:]

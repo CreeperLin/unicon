@@ -9,7 +9,7 @@ def get_plot_args(args=None):
     parser.add_argument('-st', '--start', type=int, default=200)
     parser.add_argument('-o', '--offsets', type=int, action='append')
     parser.add_argument('-i', '--info', action='store_true')
-    parser.add_argument('-rt', '--robot_type', default='gr1t2')
+    parser.add_argument('-rt', '--robot_type', default=None)
     parser.add_argument('-sp', '--single_plot', action='store_true')
     parser.add_argument('-al', '--auto_lim', action='store_true')
     parser.add_argument('-np', '--no_plot', action='store_true')
@@ -30,6 +30,7 @@ def get_plot_args(args=None):
     parser.add_argument('-e', '--ext', default='png')
     parser.add_argument('-ae', '--aniext', default=None)
     parser.add_argument('-pr', '--plot_root', default='plots2')
+    parser.add_argument('-tl', '--traj_len', type=int, default=2**8)
     args, _ = parser.parse_known_args(args)
     return args
 
@@ -60,23 +61,9 @@ def plot(args=None):
         loss_fns = {n: getattr(unicon.losses, n) for n in loss_names}
     no_plot = args.no_plot
     do_plot = not args.no_plot
-    robot_type = args.robot_type
+
     from unicon.utils import import_obj, parse_robot_def
-    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
-    robot_def = parse_robot_def(robot_def)
-    Q_CTRL_INIT = robot_def.get('Q_CTRL_INIT', None)
-    Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
-    Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
-    DOF_NAMES = robot_def.get('DOF_NAMES', None)
-    NUM_DOFS = robot_def.get('NUM_DOFS', None)
-    TAU_LIMIT = robot_def.get('TAU_LIMIT', None)
-    QD_LIMIT = robot_def.get('QD_LIMIT', None)
-    KP = robot_def.get('KP', None)
-    KD = robot_def.get('KD', None)
-    KP_2 = robot_def.get('KP_2', KP)
-    KD_2 = robot_def.get('KD_2', KD)
-    Q_CTRL_INIT = np.zeros(NUM_DOFS) if Q_CTRL_INIT is None else Q_CTRL_INIT
-    tau_max = max(TAU_LIMIT) * 1.2
+
     rec_paths = args.rec_paths or []
     rec_types = args.rec_types or []
     rec_types = rec_types + [None] * (len(rec_paths) - len(rec_types))
@@ -91,19 +78,44 @@ def plot(args=None):
         print('rec_path', rec_path)
         return mod.load(
             rec_path,
-            robot_def=robot_def,
+            # robot_def=robot_def,
             **(load_kwds or {}),
         )
 
     recs = [load_rec(p, t) for p, t in zip(rec_paths, rec_types)]
     rec = recs[0]
+
+    robot_type = args.robot_type
+    robot_type = rec.get('args', {}).get('robot_type') if robot_type is None else robot_type
+    print('robot_type', robot_type)
+    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
+    robot_def = parse_robot_def(robot_def)
+    Q_CTRL_INIT = robot_def.get('Q_CTRL_INIT', None)
+    Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
+    Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
+    DOF_NAMES = robot_def.get('DOF_NAMES', None)
+    NUM_DOFS = robot_def.get('NUM_DOFS', None)
+    TAU_LIMIT = robot_def.get('TAU_LIMIT', None)
+    QD_LIMIT = robot_def.get('QD_LIMIT', None)
+    KP = robot_def.get('KP', None)
+    KD = robot_def.get('KD', None)
+    KP_2 = robot_def.get('KP_2', KP)
+    KD_2 = robot_def.get('KD_2', KD)
+    Q_CTRL_INIT = np.zeros(NUM_DOFS) if Q_CTRL_INIT is None else Q_CTRL_INIT
+    # tau_max = max(TAU_LIMIT) * 1.2
+
     dt = rec.get('dt', args.dt)
     # assert all([r.get('dt', dt) == dt for r in recs])
     num_recs = len(recs)
+    print('num_recs', num_recs)
     for n, r in zip(rec_names, recs):
         print(n)
-        print(' '.join(r.get('argv', [])))
-        print(r.get('env_cfg_args'))
+        print('keys', r.keys())
+        print('cmd', ' '.join(r.get('argv', [])))
+        # print('env_cfg_args', r.get('env_cfg_args'))
+        for k, v in r.items():
+            if 'states' not in k and k not in ['args', 'argv', 'robot_def', 'ts']:
+                print(k, v)
     rec_args = [rec.get('args', {}) for rec in recs]
     if num_recs == 1:
         print('rec_args', rec_args[0])
@@ -153,8 +165,9 @@ def plot(args=None):
     if num_recs > 1:
         fixed_inds0 = args.fixed_inds0
         if fixed_inds0 is not None:
-            inds0 = [fixed_inds0 for _ in range(num_recs)]
             inds1 = list(range(num_recs))
+            inds1 = [x for x in inds1 if x != fixed_inds0]
+            inds0 = [fixed_inds0 for _ in range(len(inds1))]
         else:
             import itertools
             inds0, inds1 = map(list, zip(*list(itertools.combinations(range(num_recs), 2))))
@@ -474,7 +487,6 @@ def plot(args=None):
         plt.close()
         return
     if states_q_extras:
-        default_tc_ratio = [6.82, 4.294, 1.81, 1.98, 2.704, 2.231, 4.298, 3.507, 1.81, 1.88, 5.911, 6.858]
         for n, rec in zip(rec_names, recs):
             print(n)
             q_tau = rec['states_q_tau'][st:ed, dofs]
@@ -502,13 +514,14 @@ def plot(args=None):
                 print('mmc', mmc)
                 print('torque limits')
                 print(np.round((mmc * np.abs(tc_ratio)).astype(np.float64)).tolist())
-        nplts = 3
+        nplts = 4
         fig, axes = plt.subplots(num_dofs, nplts, figsize=(10 * nplts, 10 * num_dofs))
         axes = axes.reshape(-1, nplts)
         print('axes', axes.shape)
         t = list(range(st, ed))
         for k, (d, d_axes) in enumerate(zip(dofs, axes)):
-            ax1, ax2, ax3 = d_axes
+            ax1, ax2, ax3 = d_axes[:3]
+            ax4 = d_axes[3]
             for i, rec in enumerate(recs):
                 q = rec['states_q'][st:ed, d]
                 qd_b = (np.pad(q, (0, 1), 'edge')[1:] - np.pad(q, (1, 0), 'edge')[:-1]) / (2 * dt)
@@ -516,6 +529,9 @@ def plot(args=None):
                 q_ctrl = rec['states_q_ctrl'][st:ed, d]
                 q_tau = rec['states_q_tau'][st:ed, d]
                 q_cur = rec['states_q_cur'][st:ed, d]
+                states_q_temp = rec.get('states_q_temp')
+                if states_q_temp is not None:
+                    q_temp = states_q_temp[st:ed, d]
                 # q_rel = q_ctrl - q
                 # ax1.plot(t, q_rel)
 
@@ -560,7 +576,13 @@ def plot(args=None):
                     ax3.plot(tau_ref, tau_ref)
                 # ax3.plot(q_rel, q_cur)
                 ax3.plot(tau_ref, q_tau)
+
+                if states_q_temp is not None:
+                    if i == 0:
+                        ax4.plot(t, [30] * len(t))
+                    ax4.plot(t, q_temp)
             name = DOF_NAMES[d]
+            tau_max = TAU_LIMIT[idx]
             # ax1.set_ylim([-mmc * 4, mmc * 4])
             ax1.set_ylim([-tau_max, tau_max])
             # ax2.set_ylim([-mmc * 2, mmc * 2])
@@ -570,6 +592,7 @@ def plot(args=None):
             # ax2.set_ylim([-40, 40])
             # ax3.set_ylim([-160, 160])
             # ax3.set_xlim([-160, 160])
+            ax4.set_ylim([0, 80])
             ax1.legend(['ref'] + rec_names, loc="lower right")
             ax1.set_title(name + ' sqe')
         fig.tight_layout()
@@ -654,6 +677,8 @@ def plot(args=None):
                 print('med', _med)
         return
     if num_recs > 1 and eval_loss:
+        num_losses = len(loss_fns)
+        num_pairs = len(inds0)
         import torch
         trajs = []
         for rec in recs:
@@ -671,7 +696,7 @@ def plot(args=None):
         trajs = np.stack(trajs, axis=0)
         trajs = torch.from_numpy(trajs)
         print('trajs', trajs.shape)
-        traj_len = 2**7
+        traj_len = args.traj_len
         num_segs = trajs.shape[1] // traj_len
         print('traj_len', traj_len)
         print('num_segs', num_segs)
@@ -682,6 +707,13 @@ def plot(args=None):
         unicon.losses.DEBUG = True
         loss_scale = traj_len * trajs[0].shape[-1]
         print('loss_scale', loss_scale, st, ed)
+        pair_names = []
+        for i1, i2 in zip(inds0, inds1):
+            pair_name = f'{rec_names[i1], rec_names[i2]}'
+            pair_names.append(pair_name)
+        fig, axes = plt.subplots(1, num_losses, figsize=(10 * num_losses, 10 * 1))
+        axes = axes.flatten().tolist() if num_losses > 1 else [axes]
+        maxs = [0] * num_pairs
         for i1, i2 in zip(inds0, inds1):
             print('traj loss', i1, i2, rec_names[i1], rec_names[i2])
             s0 = trajs[i1]
@@ -693,37 +725,59 @@ def plot(args=None):
                 std, mean = torch.std_mean(loss)
                 print(k, std.item(), mean.item())
                 loss_all.append(loss)
-            nplts = len(loss_all)
-            fig, axes = plt.subplots(1, nplts, figsize=(10 * nplts, 10 * 1))
-            axes = axes.flatten().tolist() if nplts > 1 else [axes]
+            # fig, axes = plt.subplots(1, nplts, figsize=(10 * nplts, 10 * 1))
+            # axes = axes.flatten().tolist() if nplts > 1 else [axes]
             for i, k in enumerate(loss_fns):
                 ax = axes[i]
                 loss = loss_all[i]
                 # print(loss.shape, loss.tolist())
                 t = list(range(len(loss)))
                 ax.plot(t, loss, marker='.')
-                ax.set_ylim([-0.01, loss.max() * 1.5 + 0.1])
+                # ax.set_ylim([-0.01, loss.max() * 1.5 + 0.1])
                 ax.set_title(k)
             fig.tight_layout()
             plt.subplots_adjust(top=0.92)
-            plot_prefix = plot_dir
-            plt.suptitle(f'traj loss {rec_names[i1], rec_names[i2]}')
-            plt.savefig(plot_prefix + f'loss_traj_{i1}_{i2}.{ext}')
-            plt.close()
+            # plt.suptitle(f'traj loss {rec_names[i1], rec_names[i2]}')
+            # plt.savefig(plot_prefix + f'loss_traj_{i1}_{i2}.{ext}')
+        ax.legend(pair_names)
+        plot_prefix = plot_dir
+        plt.savefig(plot_prefix + f'loss_traj.{ext}')
+        plt.close()
         unicon.losses.DEBUG = False
 
         if num_recs == 2:
             unicon.losses.plot_unfolded_mse_loss()
             unicon.losses.plot_chamfer_loss()
 
+        COLORS_5 = [
+            # '#000000',
+            '#E69F00',
+            '#56B4E9',
+            '#009E73',
+            '#F0E442',
+            '#0072B2',
+            '#D55E00',
+            '#CC79A7',
+        ]
+
+        def hex_to_rgb(hexes):
+            return [list(int(color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)) for color in hexes]
+
+        colors = hex_to_rgb(COLORS_5)
+
+        figsize = (20 * num_losses, 7 * (num_pairs+1))
+        fig, axes = plt.subplots(1, num_losses, figsize=figsize, layout='constrained')
+        axes = axes.flatten().tolist() if num_losses > 1 else [axes]
         dof_names = [DOF_NAMES[i] for i in dofs]
-        elm_names = sum([[f'{t}_{n}' for n in dof_names] for t in ['q', 'qd', 'qc']], [])
-        for i1, i2 in zip(inds0, inds1):
+        elm_names = sum([[f'{t} - {n}' for n in dof_names] for t in ['q', 'qd', 'qc']], [])
+        multiplier = -(num_pairs // 2)
+        maxs = np.zeros((num_pairs, num_losses))
+        loss_scale = traj_len
+        for m, (i1, i2) in enumerate(zip(inds0, inds1)):
             print('element loss', i1, i2, rec_names[i1], rec_names[i2])
             s0 = trajs[i1]
             s1 = trajs[i2]
             num_elms = s0.shape[-1]
-            loss_scale = traj_len
             loss_all = {k: [] for k in loss_fns}
             for i in range(num_elms):
                 # print(elm_names[i])
@@ -731,40 +785,21 @@ def plot(args=None):
                     loss = loss_fn(s0[..., i:i + 1], s1[..., i:i + 1])
                     loss *= loss_scale
                     traj_std, mean = [v.item() for v in torch.std_mean(loss)]
+                    traj_std = 0 if len(loss) == 1 else traj_std
                     # print(name, traj_std, std, mean)
                     loss_all[k].append([traj_std, mean])
             for name in loss_fns:
                 print(name, [x[-1] for x in loss_all[name]])
-            nplts = len(loss_fns)
-            figsize = (15 * nplts, 20)
-            fig, axes = plt.subplots(1, nplts, figsize=figsize, layout='constrained')
-            axes = axes.flatten().tolist() if nplts > 1 else [axes]
-            x = np.arange(num_elms) * 1.1
+            x = np.arange(num_elms) * num_pairs * 0.5
             width = 0.3  # the width of the bars
-            # multiplier = 0
             labels = elm_names[:num_elms]
-            COLORS_5 = [
-                # '#000000',
-                '#E69F00',
-                '#56B4E9',
-                '#009E73',
-                '#F0E442',
-                '#0072B2',
-                '#D55E00',
-                '#CC79A7',
-            ]
-
-            def hex_to_rgb(hexes):
-                return [list(int(color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)) for color in hexes]
-
-            colors = hex_to_rgb(COLORS_5)
             for i, k in enumerate(loss_all):
                 ax = axes[i]
                 loss = loss_all[k]
                 loss = np.array(loss)
                 traj_std, mean = loss.T
-                # offset = width * multiplier
-                offset = 0
+                offset = width * multiplier
+                # offset = 0
                 # rects = ax.bar(x + offset, mean, width, label=k, yerr=traj_std)
                 rects = ax.barh(x + offset,
                                 mean,
@@ -772,19 +807,25 @@ def plot(args=None):
                                 label=k,
                                 xerr=traj_std,
                                 tick_label=labels,
-                                color=colors[i])
+                                color=colors[m])
                 ax.bar_label(rects, padding=5)
-                # multiplier += 1
                 ax.set_yticks(x)
                 ax.set_yticklabels(labels, fontsize='xx-large')
                 ax.set_title(k)
-                ax.set_xlim(0, max(0.5, np.max(mean + traj_std) + 0.5))
+                maxs[m, i] = max(maxs[m, i], np.max(mean + traj_std))
+                # ax.set_xlim(0, max(0.5, np.max(mean + traj_std) + 0.5))
+                ax.set_xlim(0)
+            multiplier += 1
             # ax.legend(loc='upper left', ncols=3)
             # fig.tight_layout()
-            plot_prefix = plot_dir
-            plt.suptitle(f'elm loss {rec_names[i1], rec_names[i2]}')
-            plt.savefig(plot_prefix + f'loss_elm_{i1}_{i2}.{ext}')
-            plt.close()
+            # plt.suptitle(f'elm loss ')
+            # plt.savefig(plot_prefix + f'loss_elm_{i1}_{i2}.{ext}')
+        for i, ax in enumerate(axes):
+            ax.set_xlim(0, max(np.max(maxs[:, i]) * 1.2, 0.1))
+        ax.legend(pair_names)
+        plot_prefix = plot_dir
+        plt.savefig(plot_prefix + f'loss_elm.{ext}')
+        plt.close()
         return
     check_int = args.check_int
     plot_root_states = not args.no_root_states
@@ -912,6 +953,7 @@ def plot(args=None):
                 ax10.set_title(name + 'pitch_vel - roll_vel')
 
             if states_q_tau is not None and np.sum(np.abs(states_q_tau)) > 1e-3:
+                tau_max = np.max(TAU_LIMIT[dofs])
                 q_tau = states_q_tau[st:ed, dofs]
                 ax11.plot(t, q_tau[:, :h_num_dofs], marker='.')
                 ax12.plot(t, q_tau[:, h_num_dofs:], marker='.')
@@ -1060,22 +1102,25 @@ def plot(args=None):
         min_q = min([np.min(q) for q in qs])
         max_qc = max([np.max(qc) for qc in qcs])
         min_qc = min([np.min(qc) for qc in qcs])
-        print(min_q, max_q, min_qc, max_qc)
+        max_tau = max([np.max(np.abs(rec['states_q_tau'][:, idx])) for rec in recs if 'states_q_tau' in rec])
+        max_qd = max([np.max(np.abs(rec['states_qd'][:, idx])) for rec in recs])
+        print(min_q, max_q, min_qc, max_qc, max_tau, max_qd)
         min_q = min(min_q, min_qc)
         max_q = max(max_q, max_qc)
-        max_qd = np.max(qd)
-        min_qd = np.min(qd)
+        # max_qd = np.max(qd)
+        # min_qd = np.min(qd)
         q_range = max_q - min_q
         q_max_range = q_max - q_min
-        qd_scale = 0.8
         if auto_lim and q_range < 0.5 * q_max_range:
-            qd_scale = (max_qd - min_qd) / QD_LIMIT[idx]
             # q_min_lim = q_min * 0.8 + q_max * 0.2
             # q_max_lim = q_max * 0.8 + q_min * 0.2
             qrng = max_q - min_q
             q_min_lim = min_q - 0.1 * qrng
             q_max_lim = max_q + 0.1 * qrng
+            tau_max = max_tau * 1.1
+            qd_limit = max_qd * 1.1
         else:
+            qd_scale = 0.8
             q_min_lim = q_min - 0.1
             q_max_lim = q_max + 0.1
             ax2.axhline(y=q_max, color='k', linestyle='--')
@@ -1084,7 +1129,8 @@ def plot(args=None):
             ax2.axvline(x=q_min, color='k', linestyle='--')
             ax3.axhline(y=q_max, color='k', linestyle='--')
             ax3.axhline(y=q_min, color='k', linestyle='--')
-        qd_limit = QD_LIMIT[idx] * qd_scale
+            tau_max = TAU_LIMIT[idx]
+            qd_limit = QD_LIMIT[idx] * qd_scale
         ax1.set_title('qd - q')
         ax2.set_title('q - q_ctrl')
         ax3.set_title('q - t')
@@ -1094,7 +1140,7 @@ def plot(args=None):
         ax2.set_xlim([q_min_lim, q_max_lim])
         ax2.set_ylim([q_min_lim, q_max_lim])
         ax3.set_ylim([q_min_lim, q_max_lim])
-        ax4.set_ylim([-TAU_LIMIT[idx], TAU_LIMIT[idx]])
+        ax4.set_ylim([-tau_max, tau_max])
         fig.tight_layout()
         ax1.legend([
             'ref',

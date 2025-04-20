@@ -147,6 +147,7 @@ def cb_mini_recv_send_close(
     # control_mode=6,
     reboot=True,
     robot_def=None,
+    **states,
 ):
     if reboot or set_control_params:
         import sys

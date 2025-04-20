@@ -28,10 +28,12 @@ def get_args():
     parser.add_argument('-kpd', '--kpd', default=None)
     parser.add_argument('-kpr', '--kp_ratio', type=float, default=1.0)
     parser.add_argument('-kdr', '--kd_ratio', type=float, default=1.0)
+    parser.add_argument('-spt', '--sampler_type', type=str, default='uniform')
+    parser.add_argument('-spkwds', '--sampler_kwds', type=str, default=None)
     parser.add_argument('-spr', '--sample_r', type=str, default=None)
     parser.add_argument('-spd', '--sample_dofs', default=None)
     parser.add_argument('-spl', '--sample_lerp', type=int, default=0)
-    parser.add_argument('-spw', '--sample_wait', type=int, default=100)
+    parser.add_argument('-spw', '--sample_wait', type=int, default=0)
     parser.add_argument('-spn', '--num_samples', type=int, default=None)
     parser.add_argument('-sprp', '--sample_repeats', type=int, default=None)
     parser.add_argument('-sprg', '--sample_repeat_group', type=int, default=2)
@@ -128,7 +130,7 @@ def run(args=None):
     from unicon.states import states_init, states_news, states_new, states_get, states_destroy
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
-    from unicon.utils import set_nice2, set_cpu_affinity2, sampler_uniform, list2slice, pp_arr, set_seed, \
+    from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
         import_obj, parse_robot_def, load_obj, match_keys
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
@@ -273,6 +275,7 @@ def run(args=None):
         specs.extend([
             ('q_tau', NUM_DOFS),
             ('q_cur', NUM_DOFS),
+            ('q_temp', NUM_DOFS),
         ])
     x_extras = args.states_x_extras
     if x_extras:
@@ -316,11 +319,13 @@ def run(args=None):
     states_cmd = states_get('cmd')
     states_q_tau = states_get('q_tau')
     states_q_cur = states_get('q_cur')
+    states_q_temp = states_get('q_temp')
     states_pos = states_get('pos')
     states_lin_vel = states_get('lin_vel')
     states_lin_acc = states_get('lin_acc')
     states_extras = {
         'states_cmd': states_cmd,
+        'states_q_temp': states_q_temp,
         'states_q_tau': states_q_tau,
         'states_q_cur': states_q_cur,
         'states_pos': states_pos,
@@ -511,8 +516,15 @@ def run(args=None):
                 q_smpl_min = q_min + q_rng * rng_l
                 q_smpl_max = q_min + q_rng * rng_r
             num_samples = args.num_samples
+            num_samples = 2**10 if num_samples is None else num_samples
             print('num_samples', num_samples)
-            frames = sampler_uniform(low=q_smpl_min, high=q_smpl_max, num_samples=num_samples)
+            sampler_type = args.sampler_type
+            sampler_kwds = args.sampler_kwds
+            sampler_kwds = {} if sampler_kwds is None else load_obj(sampler_kwds)
+            sampler_kwds['dt'] = ctrl_dt
+            print('sampler_type', sampler_type)
+            sampler_cls = import_obj(sampler_type, default_name_prefix='sampler', default_mod_prefix='unicon.samplers')
+            frames = sampler_cls(low=q_smpl_min, high=q_smpl_max, num_samples=num_samples, **sampler_kwds)
             frames = np.array(list(frames))
             sample_repeats = args.sample_repeats
             if sample_repeats is not None:
@@ -946,6 +958,8 @@ def run(args=None):
         kd[:] *= kd_r
         print('kp', pp_arr(kp))
         print('kd', pp_arr(kd))
+    saved_info['kp'] = kp
+    saved_info['kd'] = kd
 
     states_props_sys = states_props
     states_ctrls_sys = states_ctrls
@@ -1020,6 +1034,7 @@ def run(args=None):
     states_extras_sys = dict(
         states_q_tau=states_q_tau,
         states_q_cur=states_q_cur,
+        states_q_temp=states_q_temp,
         states_lin_vel=states_lin_vel,
         states_lin_acc=states_lin_acc,
         states_pos=states_pos,
@@ -1122,8 +1137,8 @@ def run(args=None):
             if sim_torque_limits is not None:
                 system_config['torque_limits'] = system_config.get('torque_limits', {})
                 system_config['torque_limits'].update(sim_torque_limits)
-        # if args.sims_use_kpd:
-        if True:
+        sims_use_kpkd = ('Kp' not in system_config) or args.sims_use_kpd
+        if sims_use_kpkd:
             # system_config['Kp'] = kp
             # system_config['Kd'] = kd
             system_config['Kp'] = {k: v for k, v in zip(sim_dof_names, kp)}
@@ -1140,14 +1155,17 @@ def run(args=None):
         sims_wrapper_config = args.sims_wrapper_config
         if sims_wrapper_config is not None:
             wrapper_config.extend([load_obj(c) for c in sims_wrapper_config])
+        sims_kwds = dict(
+            system_config=system_config,
+            wrapper_config=wrapper_config,
+        )
         from unicon.systems.sims import cb_sims_recv_send_close
         cb_recv, cb_send, cb_close = cb_sims_recv_send_close(
             **states_props_sys,
             **states_ctrls_sys,
             **states_extras_sys,
             dof_names=sim_dof_names,
-            system_config=system_config,
-            wrapper_config=wrapper_config,
+            sims_kwds=sims_kwds,
             **sys_kwds,
         )
     elif systems['a1']:

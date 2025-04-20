@@ -14,13 +14,14 @@ def cb_sims_recv_send_close(
     states_qd_ctrl=None,
     states_tau_ctrl=None,
     copy=False,
-    **kwds,
+    sims_kwds=None,
+    **states,
 ):
     import numpy as np
     from sims.run import run
     from sims.utils import list2slice
 
-    s = run(**kwds, run_time=False)
+    s = run(**({} if sims_kwds is None else sims_kwds), run_time=False)
     s.cb_init()
     # num_dofs = len(states_q_ctrl) - 1
     num_dofs = len(states_q_ctrl)

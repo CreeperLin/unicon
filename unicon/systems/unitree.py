@@ -26,6 +26,7 @@ def cb_unitree_recv_send_close(
     msg_type='hg',
     mode_machine=6,
     mode_pr=0,
+    **states,
 ):
     assert kp is not None and kd is not None
     from unitree_sdk2py.core.channel import (

@@ -222,7 +222,7 @@ DOF_PRESETS = {
     ],
 }
 
-URDF = 'gr1/urdf/GR1T2.urdf'
+URDF = 'gr2/urdf/GR1T2.urdf'
 
 FSA_IPS = [
     # left leg

@@ -46,7 +46,7 @@ def cb_tf_affine(params=None, keys=None, **states):
     return cb
 
 
-def cb_tf_mean(params=3, keys=None, **states):
+def cb_tf_mean(params=2, keys=None, **states):
     states = states if keys is None else {k: states[k] for k in keys}
     params = {k: params for k in states.keys()} if not isinstance(params, dict) else params
     windows = {}

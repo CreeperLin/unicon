@@ -23,6 +23,7 @@ def cb_fake_recv_send_close(
     q_ctrl_mix=0.6,
     robot_def=None,
     dt=None,
+    **states,
 ):
     qd_limit = robot_def.get('QD_LIMIT', qd_limit)
     import time

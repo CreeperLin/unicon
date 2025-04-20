@@ -8,6 +8,48 @@ from threading import Event
 _default_time_fn = time.perf_counter
 
 
+def obj2dict(obj, memo=None):
+    if type(obj).__module__ in ['builtins', 'numpy']:
+        return obj
+    dct = {}
+    memo = set() if memo is None else memo
+    for key in dir(obj):
+        # if key.startswith('_'):
+        #     continue
+        if key.startswith('__'):
+            continue
+        attr = getattr(obj, key)
+        if callable(attr):
+            continue
+        if attr is obj:
+            continue
+        # print(obj, key)
+        if key in memo:
+            dct[key] = attr
+            continue
+        memo.add(key)
+        dct[key] = obj2dict(attr, memo)
+    return dct
+
+
+def dump_env_train_cfg(env=None, env_cfg=None, ppo_runner=None, train_cfg=None):
+    import os
+    import sys
+    import yaml
+    log_dir = '.' if ppo_runner is None else ppo_runner.log_dir
+    os.makedirs(log_dir, exist_ok=True)
+    # os.system('git diff > {}'.format(os.path.join(log_dir, 'diff.patch')))
+    if env is not None:
+        env_cfg.dof_names = env.dof_names
+    if env_cfg is not None:
+        env_cfg.argv = sys.argv
+        with open(os.path.join(log_dir, 'env_cfg.yaml'), 'w') as f:
+            f.write(yaml.dump(obj2dict(env_cfg), sort_keys=False))
+    if train_cfg is not None:
+        with open(os.path.join(log_dir, 'train_cfg.yaml'), 'w') as f:
+            f.write(yaml.dump(obj2dict(train_cfg), sort_keys=False))
+
+
 def match_keys(pats, keys, substr=True, regex=False):
     if not isinstance(pats, (tuple, list)):
         pats = [pats]
@@ -46,12 +88,13 @@ def load_rec(rec_path, rec_type=None, load_kwds=None, robot_def=None):
 
 def load_obj(obj):
     import yaml
-    # yaml.add_multi_constructor('tag:', lambda *_: None, Loader=yaml.SafeLoader)
+    yaml.add_multi_constructor('tag:', lambda *_: None, Loader=yaml.SafeLoader)
     if isinstance(obj, str):
         if os.path.exists(obj):
             with open(obj, 'r') as f:
                 obj = f.read()
     return yaml.safe_load(obj)
+    # return yaml.full_load(obj)
 
 
 def states_ts2dt(states_and_ts=None, states=None, tss=None, dt=0.02):
@@ -373,19 +416,6 @@ def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-
-def sampler_uniform(low, high, rng=None, num_samples=100, seed=1):
-    num_samples = 2**15 if num_samples is None else num_samples
-    rng = np.random.RandomState(seed) if rng is None else rng
-    low = np.array(low)
-    high = np.array(high)
-    i = 0
-    while True:
-        if num_samples is not None and i >= num_samples:
-            return
-        yield rng.uniform(low, high)
-        i += 1
 
 
 def try_conn(address, port):
