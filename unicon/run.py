@@ -55,6 +55,7 @@ def get_args():
     parser.add_argument('-rop', '--obs_path', default='obs_all.pt')
     parser.add_argument('-ecp', '--env_cfg_path', default=None)
     parser.add_argument('-eco', '--env_cfg_override', default=None)
+    parser.add_argument('-sst', '--sims_type', default='sims.systems.ig')
     parser.add_argument('-ssc', '--sims_config', default=None)
     parser.add_argument('-sso', '--sims_override', default=None)
     parser.add_argument('-ssar', '--sims_auto_reset', action='store_true')
@@ -62,7 +63,7 @@ def get_args():
     parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
     parser.add_argument('-ssh', '--sims_headless', action='store_true')
     parser.add_argument('-ssfb', '--sims_fixed_base', action='store_true')
-    parser.add_argument('-sspd', '--sims_pd', action='store_true')
+    parser.add_argument('-ssct', '--sims_compute_torque', action='store_true')
     parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
     parser.add_argument('-skwds', '--system_kwargs', default=None)
     parser.add_argument('-cqc', '--clip_q_ctrl', action='store_true')
@@ -162,7 +163,7 @@ def run(args=None):
         set_seed(args.seed)
 
     robot_type = args.robot_type
-    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
+    robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
     robot_def = parse_robot_def(robot_def)
     KP = robot_def.get('KP', None)
     KD = robot_def.get('KD', None)
@@ -448,7 +449,7 @@ def run(args=None):
         _, ext = os.path.splitext(rec_path)
         rec_type = ext[1:] if rec_type is None else rec_type
         print('rec_type', rec_type)
-        mod = import_obj((rec_type, None), default_mod_prefix='unicon.data')
+        mod = import_obj(rec_type, default_mod_prefix='unicon.data', prefer_mod=True)
         print('rec_path', rec_path)
         kwds = args.rec_kwds
         loaded_rec = mod.load(
@@ -632,6 +633,7 @@ def run(args=None):
                 # frames = rec_frames
             print('rep_dt', rep_dt)
             print('rep_dof_map', rep_dof_map)
+            print('frames', frames.shape)
             frames_min = np.min(frames, axis=0).astype(np.float64)
             frames_max = np.max(frames, axis=0).astype(np.float64)
             print('frames min', np.round(frames_min, decimals=3).tolist())
@@ -837,7 +839,7 @@ def run(args=None):
         # if rec_q_ctrl is not None:
         # q_reset[:] = rec_q_ctrl[0]
         if rec_q is not None:
-            q_reset[:] = rec_q[0]
+            q_reset[rep_dof_map] = frames[0]
         lerp_steps = int((args.lerp_time + 0.01) // ctrl_dt)
         cb_lerp0 = None
         if Q_BOOT is not None:
@@ -916,6 +918,7 @@ def run(args=None):
     kd_r = args.kd_ratio
     print('kp_r', kp_r)
     print('kd_r', kd_r)
+    tau_limits = TAU_LIMIT.copy()
     kp = KP.copy()
     kd = KD.copy()
     sim_kps = None
@@ -1096,10 +1099,12 @@ def run(args=None):
     elif systems['sims']:
         sims_config = args.sims_config
         if sims_config is None:
+            sims_type = args.sims_type
+            init_z = 1.0
             system_config = {
-                'type': 'sims.systems.ig',
+                'type': sims_type,
                 'urdf_path': robot_def.get('URDF'),
-                'default_root_states': [0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
+                'default_root_states': [0., 0., init_z, 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
                 'decimation': 20,
             }
         else:
@@ -1126,8 +1131,9 @@ def run(args=None):
             default_root_states[2] += 0.5
         if args.sims_headless:
             system_config['headless'] = True
-        if args.sims_pd:
-            system_config['compute_torque'] = False
+        if args.sims_compute_torque:
+            system_config['compute_torque'] = True
+        system_config['compute_torque'] = system_config.get('compute_torque', False)
         # system_config['verbose'] = True
         if use_sim_pd:
             # system_config['Kp'] = system_config.get('Kp', {})
@@ -1143,6 +1149,7 @@ def run(args=None):
             # system_config['Kd'] = kd
             system_config['Kp'] = {k: v for k, v in zip(sim_dof_names, kp)}
             system_config['Kd'] = {k: v for k, v in zip(sim_dof_names, kd)}
+            system_config['torque_limits'] = {k: v for k, v in zip(sim_dof_names, tau_limits)}
         system_config['dt'] = dt
         sims_override = args.sims_override
         sims_override = load_obj(sims_override or '') or {}
@@ -1221,7 +1228,7 @@ def run(args=None):
                 save_type = ext[1:]
                 print('save_type', save_type)
                 print('save_path', save_path)
-                mod = import_obj((save_type, None), default_mod_prefix='unicon.data')
+                mod = import_obj(save_type, default_mod_prefix='unicon.data', prefer_mod=True)
                 mod.save(save_path, data)
         if not reuse:
             states_destroy(force=True)

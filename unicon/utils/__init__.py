@@ -141,7 +141,7 @@ def parse_urdf(
     default_q_min=-np.pi,
     default_q_max=np.pi,
     default_tau_limit=1000.,
-    qd_limit=30.,
+    default_qd_limit=30.,
 ):
     try:
         from yourdfpy import URDF
@@ -161,8 +161,10 @@ def parse_urdf(
     joint_dynamics = [j.dynamics for j in joints]
     q_min = [(default_q_min if m is None else m.lower) for m in joint_limits]
     q_max = [(default_q_max if m is None else m.upper) for m in joint_limits]
+    q_min = [(-3.14 if q is None else q) for q in q_min]
+    q_max = [(3.14 if q is None else q) for q in q_max]
     tau_limit = [(default_tau_limit if m is None else m.effort) for m in joint_limits]
-    qd_limit = [(qd_limit if m is None else m.velocity) for m in joint_limits]
+    qd_limit = [(default_qd_limit if m is None else m.velocity) for m in joint_limits]
     damping = [(0 if d is None else d.damping) for d in joint_dynamics]
     friction = [(0 if d is None else d.friction) for d in joint_dynamics]
     kps = np.array([default_kp] * len(joints))
@@ -201,15 +203,27 @@ def parse_robot_def(robot_def):
             import traceback
             traceback.print_exc()
     num_dofs = robot_def['NUM_DOFS']
-    for k in ['QD_LIMIT', 'TAU_LIMIT']:
+    dof_names = robot_def['DOF_NAMES']
+    dof_attr_keys = [
+        'QD_LIMIT', 'TAU_LIMIT', 'KP', 'KD', 'Q_CTRL_MIN', 'Q_CTRL_MAX',
+        'Q_RESET', 'Q_BOOT'
+    ]
+    for k in dof_attr_keys:
         v = robot_def.get(k)
         if v is None:
             continue
-        robot_def[k] = [v] * num_dofs if isinstance(v, (float, int)) else v
+        if isinstance(v, (float, int)):
+            v = [v] * num_dofs
+        if isinstance(v, dict):
+            v = [v.get(n, ([vv for kk, vv in v.items() if kk in n] or [0])[0]) for n in dof_names]
+        robot_def[k] = v
     robot_def = {
         k: np.array(v, dtype=np.float64) if isinstance(v, list) and isinstance(v[0] if len(v) else None, (float, int)) else v
         for k, v in robot_def.items()
     }
+    for k, v in robot_def.items():
+        if isinstance(v, np.ndarray):
+            v[np.isnan(v)] = 0
     return robot_def
 
 
@@ -271,6 +285,7 @@ def import_obj(
     spec=None,
     default_name_prefix=None,
     default_mod_prefix=None,
+    prefer_mod=False,
 ):
     mod = name = None
     if spec is not None:
@@ -279,7 +294,7 @@ def import_obj(
         if len(spec) == 1:
             spec = spec[0]
             mod = spec
-            name = spec
+            name = None if prefer_mod else spec
         elif len(spec) == 2:
             mod, name = spec
         else:
@@ -747,21 +762,13 @@ def get_sleep_cffi(t_spin=0.0004):
             double tt0 = t0;
             double ttc = tc.tv_sec + tc.tv_nsec / 1e9;
             double tt2 = tt0 + s;
-            // double ts = s - T_SPIN;
             double tts = tt2 - ttc - T_SPIN;
-            // printf("%lf %lf %lf\n", ttc, t0, tts);
             if (tts > 0) usleep(tts * 1e6);
-            // if (tts > 0) {
-            //     struct timespec ts;
-            //     ts.tv_nsec = tts * 1e9;
-            //     nanosleep(&ts, NULL);
-            // }
             if (T_SPIN == 0) return;
             double tt1;
             do {
                 clock_gettime(CLOCK_MONOTONIC, &t1);
                 tt1 = t1.tv_sec + t1.tv_nsec / 1e9;
-                // printf("%lf %lf\n", tt1, tt2);
             } while (tt1 < tt2);
         }
     """.replace('<T_SPIN>', str(t_spin)))

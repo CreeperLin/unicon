@@ -24,7 +24,7 @@ def cb_unitree_recv_send_close(
     lowcmd_topic='rt/lowcmd',
     lowstate_topic='rt/lowstate',
     msg_type='hg',
-    mode_machine=6,
+    mode_machine=None,
     mode_pr=0,
     **states,
 ):
@@ -134,6 +134,11 @@ def cb_unitree_recv_send_close(
             break
         time.sleep(1)
 
+    if msg_type == 'hg' and mode_machine is None:
+        mode_machine = state.mode_machine
+        cmd.mode_machine = mode_machine
+        print('mode_machine', mode_machine)
+
     def input_fn():
         rem = bytearray(state.wireless_remote)
         unpacked_data = struct.unpack('<2B H 5f 16B', rem)
@@ -157,9 +162,6 @@ def cb_unitree_recv_send_close(
         if state is None:
             return True
         motor_state = state.motor_state[:num_dofs]
-        # states_q[:] = motor_state
-        # states_qd[:] = motor_state['dq']
-        # for i in range(dof_size):
         for i, s in enumerate(motor_state):
             states_q[i] = s.q
             states_qd[i] = s.dq
