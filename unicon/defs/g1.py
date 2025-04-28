@@ -115,3 +115,4 @@ DOF_PRESETS = {
 }
 
 URDF = 'g1_description/g1_29dof_rev_1_0.urdf'
+# URDF = 'g1/urdf/g1_29dof_boxcollision_fix_inertia_1.urdf'

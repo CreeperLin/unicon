@@ -32,6 +32,7 @@ def cb_sims_recv_send_close(
         'velocity': np.zeros(num_dofs) if states_qd_ctrl is None else states_qd_ctrl,
         'effort': np.zeros(num_dofs) if states_tau_ctrl is None else states_tau_ctrl,
     }
+    s.cb_recv(send_msg)
     dof_inds = None
 
     def cb_send():

@@ -1,3 +1,4 @@
+# yapf: disable
 
 hmn = {
     'URDF': 'humanoid/humanoid_1.urdf',
@@ -6,6 +7,51 @@ hmn = {
 
 adam = {
     'URDF': 'adam/adam_lite/urdf/adam_lite_1_1.urdf',
+    'DOF_NAMES': [
+        'hipPitch_Left',
+        'hipRoll_Left',
+        'hipYaw_Left',
+        'kneePitch_Left',
+        'anklePitch_Left',
+        'ankleRoll_Left',
+        'hipPitch_Right',
+        'hipRoll_Right',
+        'hipYaw_Right',
+        'kneePitch_Right',
+        'anklePitch_Right',
+        'ankleRoll_Right',
+        'waistRoll',
+        'waistPitch',
+        'waistYaw',
+        'shoulderPitch_Left',
+        'shoulderRoll_Left',
+        'shoulderYaw_Left',
+        'elbow_Left',
+        'wristYaw_Left',
+        'shoulderPitch_Right',
+        'shoulderRoll_Right',
+        'shoulderYaw_Right',
+        'elbow_Right',
+        'wristYaw_Right',
+    ],
+    'KP': [
+        305.0, 700.0, 405.0, 305.0, 20.0, 10.0,
+        305.0, 700.0, 405.0, 305.0, 20.0, 10.0,
+        # 305.0, 700.0, 405.0, 305.0, 30.0, 0.0,
+        # 305.0, 700.0, 405.0, 305.0, 30.0, 0.0,
+        405.0, 405.0, 205.0,
+        18.0, 9.0, 9.0, 9.0, 7.0,
+        18.0, 9.0, 9.0, 9.0, 7.0,
+    ],
+    'KD': [
+        6.1, 30.0, 6.1, 6.1, 1.25, 1.0,
+        6.1, 30.0, 6.1, 6.1, 1.25, 1.0,
+        # 6.1, 30.0, 6.1, 6.1, 2.25, 0.25,
+        # 6.1, 30.0, 6.1, 6.1, 2.25, 0.25,
+        6.1, 6.1, 4.1,
+        1.0, 1.0, 1.0, 1.0, 0.5,
+        1.0, 1.0, 1.0, 1.0, 0.5,
+    ],
 }
 
 t1 = {
@@ -44,7 +90,7 @@ t1 = {
         'Shoulder_Pitch': 0.45,
         'Shoulder_Roll': 0.45,
     },
-    'Q_RESET': { 
+    'Q_RESET': {
         'AAHead_yaw': 0,
         'Head_pitch': 0,
         'Waist': 0,

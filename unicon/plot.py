@@ -765,7 +765,7 @@ def plot(args=None):
 
         colors = hex_to_rgb(COLORS_5)
 
-        figsize = (20 * num_losses, 7 * (num_pairs+1))
+        figsize = (20 * num_losses, 7 * (num_pairs + 1))
         fig, axes = plt.subplots(1, num_losses, figsize=figsize, layout='constrained')
         axes = axes.flatten().tolist() if num_losses > 1 else [axes]
         dof_names = [DOF_NAMES[i] for i in dofs]
@@ -858,7 +858,7 @@ def plot(args=None):
             q = states_q[st:ed, dofs]
             qd = states_qd[st:ed, dofs]
             if max_q is None:
-                max_q = max(np.max(np.abs(qc))+0.1, 2)
+                max_q = max(np.max(np.abs(qc)) + 0.1, 2)
             if states_quat is not None:
                 quat = states_quat[st:ed]
                 rpy = states_rpy[st:ed, :2]
@@ -872,8 +872,8 @@ def plot(args=None):
                 # ax1.set_ylim([-3, 3])
                 legends = ['er', 'ep', 'qr', 'qp']
                 if max_rp is None:
-                    max_rp = max(np.max(np.abs(rpy))+0.05, 0.1)
-                    max_ang_vel = max(np.max(np.abs(ang_vel))+0.2, 1.5)
+                    max_rp = max(np.max(np.abs(rpy)) + 0.05, 0.1)
+                    max_ang_vel = max(np.max(np.abs(ang_vel)) + 0.2, 1.5)
                 ax1.set_ylim([-max_rp, max_rp])
                 ax1.legend(legends)
                 ax1.set_title(name + 'rpy')
@@ -1028,7 +1028,7 @@ def plot(args=None):
             states_q_cur = rec.get('states_q_cur')
             q = states_q[st:ed, idx]
             qd = states_qd[st:ed, idx]
-            qc = states_q_ctrl[st+qc_ofs:ed+qc_ofs, idx]
+            qc = states_q_ctrl[st + qc_ofs:ed + qc_ofs, idx]
             qs.append(q)
             qcs.append(qc)
             qrel = q - qc
@@ -1156,6 +1156,7 @@ def plot(args=None):
             num_frames = (ed - st) // frame_step
             lns = [a[0] for a in axlines]
             blit = True
+
             # print('num_frames', num_frames)
 
             def animate(i):

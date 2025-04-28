@@ -237,10 +237,14 @@ def run(args=None):
         num_acts = env_cfg_env['num_actions']
         num_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_observations'))
         init_joint_angles = env_cfg['init_state']['default_joint_angles']
-        dof_names = env_cfg.get('dof_names', list(init_joint_angles.keys()))
+        dof_names = env_cfg.get('dof_names')
+        if dof_names is None:
+            print('dof_names not found')
+            dof_names = DOF_NAMES
         default_dof_pos = np.array([init_joint_angles[n] for n in dof_names])
         ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
         env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
+        print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
         print('env_cfg_args', env_cfg_args)
 
     ctrl_dt = dt if ctrl_dt is None else ctrl_dt
@@ -686,9 +690,17 @@ def run(args=None):
             if policy_type == 'gr1':
                 policy_reset_fn = policy.reset_memory
                 policy_fn = lambda obs: policy(obs)[0]
-            else:
+            elif policy_type == 'none':
                 policy_reset_fn = None
                 policy_fn = policy
+            elif policy_type == 'debug':
+                policy_reset_fn = None
+
+                def policy_fn(obs):
+                    print('policy obs', obs.shape)
+                    ret = policy(obs)
+                    print('policy ret', ret.shape)
+                    return ret
 
             infer_kwds = load_obj(args.infer_kwargs or '') or {}
             cb_infer, reset_fn = cb_infer_cls(
@@ -930,7 +942,10 @@ def run(args=None):
         sim_torque_limits = env_cfg['control'].get('torque_limits', None)
         nxs = []
         for x in [sim_kps, sim_kds, sim_torque_limits]:
-            nx = {dof_names_map.get(k, k): v for k, v in x.items()}
+            if x is None:
+                nx = None
+            else:
+                nx = {dof_names_map.get(k, k): v for k, v in x.items()}
             nxs.append(nx)
         sim_kps, sim_kds, sim_torque_limits = nxs
         print('sim_kps', sim_kps)
@@ -1287,10 +1302,10 @@ def run(args=None):
             close_fn()
             return
 
-    pre_recv = 1
+    # pre_recv = 1
     pre_recv = 0
     if pre_recv and cb_recv is not None:
-        print('pre_recv')
+        print('pre_recv', pre_recv)
         for _ in range(pre_recv):
             cb_recv()
 
@@ -1413,6 +1428,7 @@ def run(args=None):
         seq.append(cb_qtf_send)
 
     if clip_q_ctrl:
+
         def cb_ctrl_q_clip():
             states_q_ctrl[:] = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max)
 

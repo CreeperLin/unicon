@@ -18,6 +18,12 @@ def cb_infer_gr1(
     dtype=None,
     use_rpy=True,
     flatten_hist=True,
+    # flatten_hist=False,
+    retained_obs=True,
+    observe_gait_commands=None,
+    enable_gait_idx=None,
+    stack_history_obs=None,
+    flatten_obs=False,
 ):
     import torch
     import numpy as np
@@ -42,10 +48,15 @@ def cb_infer_gr1(
     gait_freq_cmd = obs_scales['gait_freq_cmd']
     gait_phase_cmd = obs_scales['gait_phase_cmd']
     footswing_height_cmd = obs_scales['footswing_height_cmd']
-    observe_gait_commands = env_cfg['env']['observe_gait_commands']
+    if observe_gait_commands is None:
+        observe_gait_commands = env_cfg['env'].get('observe_gait_commands')
+    print('observe_gait_commands', observe_gait_commands)
     observe_clock_only = env_cfg.get('observe_clock_only', False)
+    print('observe_clock_only', observe_clock_only)
     include_history_steps = env_cfg['env']['include_history_steps']
-    stack_history_obs = env_cfg['env']['stack_history_obs']
+    if stack_history_obs is None:
+        stack_history_obs = env_cfg['env']['stack_history_obs']
+    print('stack_history_obs', stack_history_obs)
     use_clock = env_cfg['env'].get('use_clock', True)
     cmds_scale = [
         scales_lin_vel,
@@ -65,22 +76,24 @@ def cb_infer_gr1(
     if env_cfg['env'].get('interrupt_in_cmd'):
         cmds_scale.append(1)  # Interrupt Flag (1 dim)
     cmds_scale = np.array(cmds_scale, dtype=np_dtype)
+    print('cmds_scale', cmds_scale)
     gravity_vec = np.array(get_axis_params(-1., up_axis_idx), dtype=np_dtype)
+    print('gravity_vec', gravity_vec)
     default_dof_pos_np = np.array(default_dof_pos, dtype=np_dtype)
     default_dof_pos = np.array(default_dof_pos, dtype=np_dtype)
     default_dof_pos_tensor = to_tensor(default_dof_pos)
-    retained_action_inds = env_cfg.get('retained_action_inds')
+    retained_action_inds = env_cfg.get('retained_action_inds', env_cfg['env'].get('retained_actions_indxs'))
     dof_map_obs = dof_map
     if retained_action_inds is not None:
         _dof_map = list(range(dof_map.start, dof_map.stop)) if isinstance(dof_map, slice) else dof_map
-        print('retained_action_inds', retained_action_inds)
+        print('retained_action_inds', len(retained_action_inds), retained_action_inds)
         dof_map_action = [_dof_map[i] for i in retained_action_inds]
         print('dof_map_action', dof_map_action)
         # default_dof_pos_tensor = default_dof_pos_tensor[dof_map_action]
         default_dof_pos_tensor = default_dof_pos_tensor[retained_action_inds]
         default_dof_pos_np = default_dof_pos[retained_action_inds]
         # print('default_dof_pos_tensor', default_dof_pos_tensor)
-        if env_cfg.get('retained_obs', False):
+        if env_cfg.get('retained_obs', retained_obs):
             dof_map_obs = dof_map_action
             print('dof_map_obs', dof_map_obs)
             # default_dof_pos = default_dof_pos[dof_map_obs]
@@ -93,7 +106,8 @@ def cb_infer_gr1(
     last_actions = np.zeros(num_actions, dtype=np_dtype)
     hist = None
     if stack_history_obs:
-        num_partial_obs = env_cfg['env']['num_partial_obs']
+        env = env_cfg['env']
+        num_partial_obs = env.get('num_partial_obs', env.get('num_partial_observations'))
         num_partial_obs = int(num_partial_obs // include_history_steps) if num_partial_obs > 100 else num_partial_obs
         print('include_history_steps', include_history_steps)
         print('num_partial_obs', num_partial_obs)
@@ -103,12 +117,13 @@ def cb_infer_gr1(
     dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
     print('dt', dt)
 
-    enable_gait_idx = len(states_cmd) > 3
+    if enable_gait_idx is None:
+        enable_gait_idx = len(states_cmd) > 3
 
     if observe_gait_commands:
         print(env_cfg['commands'])
         num_commands = env_cfg['commands'].get('num_commands', 7)
-        num_commands = max(num_commands, 7)
+        num_commands = max(num_commands, 5)
         print('num_commands', num_commands)
         commands = np.zeros(num_commands, dtype=np_dtype)
         default_commands = [
@@ -216,21 +231,23 @@ def cb_infer_gr1(
                 foot_phases = [gait_indices + phases, gait_indices]
             clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
             if not observe_clock_only:
-                obs_list.append(commands[3:] * cmds_scale[3:])
+                obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
             obs_list.extend(clock_inputs)
         elif use_clock:
             nonlocal gait_time
             gait_time += 1
             freq = 1.2
             phases = gait_time * (dt * freq)
-            clock_sin = np.sin(phases)
-            clock_cos = np.cos(phases)
+            clock_sin = np.sin(phases).reshape(1)
+            clock_cos = np.cos(phases).reshape(1)
             obs_list.extend([
                 clock_sin,
                 clock_cos,
             ])
-        # print([len(o) for o in obs_list])
         obs = np.concatenate(obs_list)
+        # for i, x in enumerate(obs_list):
+        # print(i, x)
+        # print(obs.shape, [len(o) for o in obs_list])
         if states_infer_obs is not None:
             states_infer_obs[:] = obs
         obs = to_tensor(obs, dtype=dtype, device=device).view(1, -1)
@@ -241,8 +258,10 @@ def cb_infer_gr1(
             hist[:, -1, :] = obs
             obs = hist.view(1, -1) if flatten_hist else hist
             # obs = hist
+        if flatten_obs:
+            obs = obs.flatten()
         actions = policy_fn(obs)
-        acts = torch.clamp(actions, -clip_actions, clip_actions)[0]
+        acts = torch.clamp(actions, -clip_actions, clip_actions).view(1, -1)[0]
         acts_np = acts.cpu().numpy()
         if states_infer_acts is not None:
             states_infer_acts[:] = acts_np

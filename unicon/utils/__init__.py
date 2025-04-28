@@ -204,10 +204,7 @@ def parse_robot_def(robot_def):
             traceback.print_exc()
     num_dofs = robot_def['NUM_DOFS']
     dof_names = robot_def['DOF_NAMES']
-    dof_attr_keys = [
-        'QD_LIMIT', 'TAU_LIMIT', 'KP', 'KD', 'Q_CTRL_MIN', 'Q_CTRL_MAX',
-        'Q_RESET', 'Q_BOOT'
-    ]
+    dof_attr_keys = ['QD_LIMIT', 'TAU_LIMIT', 'KP', 'KD', 'Q_CTRL_MIN', 'Q_CTRL_MAX', 'Q_RESET', 'Q_BOOT']
     for k in dof_attr_keys:
         v = robot_def.get(k)
         if v is None:
@@ -217,10 +214,11 @@ def parse_robot_def(robot_def):
         if isinstance(v, dict):
             v = [v.get(n, ([vv for kk, vv in v.items() if kk in n] or [0])[0]) for n in dof_names]
         robot_def[k] = v
-    robot_def = {
-        k: np.array(v, dtype=np.float64) if isinstance(v, list) and isinstance(v[0] if len(v) else None, (float, int)) else v
-        for k, v in robot_def.items()
-    }
+
+    def is_num_list(x):
+        return isinstance(v, list) and isinstance(v[0] if len(v) else None, (float, int))
+
+    robot_def = {k: np.array(v, dtype=np.float64) if is_num_list(v) else v for k, v in robot_def.items()}
     for k, v in robot_def.items():
         if isinstance(v, np.ndarray):
             v[np.isnan(v)] = 0
@@ -449,7 +447,7 @@ def try_conn(address, port):
 
 def quat_rotate_np(q, v, w_first=False):
     q_w, q_vec = (q[..., 0], q[..., 1:]) if w_first else (q[..., -1], q[..., :3])
-    a = v * (2.0 * q_w ** 2 - 1.0)[..., np.newaxis]
+    a = v * (2.0 * q_w**2 - 1.0)[..., np.newaxis]
     b = np.cross(q_vec, v) * q_w[..., np.newaxis] * 2.0
     c = q_vec * np.sum(q_vec[..., np.newaxis, :] * v[..., np.newaxis, :], axis=-1) * 2.0
     return a + b + c
@@ -457,7 +455,7 @@ def quat_rotate_np(q, v, w_first=False):
 
 def quat_rotate_inverse_np(q, v, w_first=False):
     q_w, q_vec = (q[..., 0], q[..., 1:]) if w_first else (q[..., -1], q[..., :3])
-    a = v * (2.0 * q_w ** 2 - 1.0)[..., np.newaxis]
+    a = v * (2.0 * q_w**2 - 1.0)[..., np.newaxis]
     b = np.cross(q_vec, v) * q_w[..., np.newaxis] * 2.0
     c = q_vec * np.sum(q_vec[..., np.newaxis, :] * v[..., np.newaxis, :], axis=-1) * 2.0
     return a - b + c

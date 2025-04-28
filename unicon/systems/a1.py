@@ -88,9 +88,20 @@ def cb_a1_recv_send_close(
         lx, rx, ry, _, ly = struct.unpack('fffff', rem[4:24])
         # print(lx, rx, ry, ly)
         inputs = dict(
-            lx=lx, rx=rx, ry=-ry, ly=-ly,
-            A=A, B=B, X=X, Y=Y,
-            R1=R1, L1=L1, START=START, SELECT=SELECT, R2=R2, L2=L2,
+            lx=lx,
+            rx=rx,
+            ry=-ry,
+            ly=-ly,
+            A=A,
+            B=B,
+            X=X,
+            Y=Y,
+            R1=R1,
+            L1=L1,
+            START=START,
+            SELECT=SELECT,
+            R2=R2,
+            L2=L2,
         )
         vals = list(map(inputs.get, mapped_keys))
         states_input[mapped] = vals

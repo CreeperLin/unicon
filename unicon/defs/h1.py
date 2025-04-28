@@ -73,3 +73,5 @@ QD_LIMIT = np.array(QD_LIMIT)
 TAU_LIMIT = np.array(TAU_LIMIT)
 KP = np.array(KP)
 KD = np.array(KD)
+
+URDF = 'h1/urdf/h1_wholebody.urdf'
