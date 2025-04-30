@@ -128,7 +128,6 @@ def run(args=None):
         del isaacgym
     except ImportError:
         pass
-    import yaml
     from unicon.states import states_init, states_news, states_new, states_get, states_destroy
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
@@ -783,7 +782,6 @@ def run(args=None):
     q_ctrl_mask = args.q_ctrl_mask
     if q_ctrl_mask is not None:
         ctrl_mask = np.zeros(len(states_q_ctrl), dtype=bool)
-        import yaml
         q_ctrl_mask = load_obj(q_ctrl_mask)
         q_ctrl_mask = [q_ctrl_mask] if not isinstance(q_ctrl_mask, (tuple, list)) else q_ctrl_mask
         inds = match_keys(q_ctrl_mask, DOF_NAMES)
@@ -1035,7 +1033,10 @@ def run(args=None):
             states_q_ctrl_sys[:] = states_q_ctrl * qtf_w + qtf_b
 
     systems = {
-        k: False for k in ['consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd']
+        k: False
+        for k in [
+            'consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd'
+        ]
     }
     system = args.system
     system = {k[0]: k for k in systems.keys()}.get(system, system)

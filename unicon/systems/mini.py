@@ -28,16 +28,15 @@ def get_consys(servo_on=False, config=None):
     sys.argv = sys.argv[:1]
     if config is not None:
         sys.argv.extend(['--config', config])
-    # consys_mod = 'robot_rcs_gr.control_system.fi_control_system_gr'
-    # consys_cls = 'ControlSystemGR'
-    consys_mod = 'fourier_grx.sdk.grmini1.developer'
+    mod_path = 'fourier_grx.sdk.developer'
     consys_cls = 'ControlSystem'
-    sdk = __import__(consys_mod, fromlist=[''])
-    consys_mod = 'fourier_grx.sdk.grmini1.user'
-    user_sdk = __import__(consys_mod, fromlist=[''])
+    sdk = __import__(mod_path, fromlist=[''])
+    mod_path = 'fourier_grx.sdk.user'
+    user_sdk = __import__(mod_path, fromlist=[''])
     ControlSystem = getattr(sdk, consys_cls)
     consys = ControlSystem()
     consys.developer_mode(servo_on=servo_on)
+    print(consys.get_info())
     ctx['inited'] = True
     print('consys init', time.time() - t0)
     # mod = 'fourier_grx.sdk.grmini1.developer'
@@ -140,35 +139,55 @@ def cb_mini_recv_send_close(
     motor_max_acceleration=None,
     motor_max_speed=None,
     # config=None,
-    config='config_mini.yaml',
+    config='config_n1.yaml',
     # use_r=True,
     use_r=False,
     control_mode=4,
     # control_mode=6,
-    reboot=True,
+    # reboot=True,
+    reboot=False,
     robot_def=None,
+    use_fi_fsa=True,
+    # init_servo_on=False,
+    init_servo_on=True,
     **states,
 ):
-    if reboot or set_control_params:
-        import sys
-        sys.path.append('/home/gr1/GitRepo/Wiki-FSA/sdk-python/v3')
-        import fi_fsa
+    fi_fsa = None
+    if use_fi_fsa:
+        import socket
+        fsa_port_ctrl = 2333
+        fsa_port_comm = 2334
+        fsa_port_fast = 2335
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(1)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        fi_fsa = type('fi_fsa', (), {})()
+        fi_fsa.s = s
+        fi_fsa.fsa_port_ctrl = fsa_port_ctrl
+        fi_fsa.fsa_port_comm = fsa_port_comm
+        fi_fsa.fsa_port_fast = fsa_port_fast
+        fi_fsa.fsa_network = "192.168.137.255"
+
+    if fi_fsa is None:
+        print('fi_fsa not found')
+        set_control_params = False
+        reboot = False
 
     if reboot:
         from unicon.utils.fftai import reboot_fsa, fsa_broadcast
-        fsa_ips = robot_def.FSA_IPS
+        fsa_ips_def = robot_def['FSA_IPS']
         # fsa_ips = fsa_broadcast(fi_fsa, 'Actuator')
-        num_ips = len(fsa_ips)
+        num_ips = len(fsa_ips_def)
         print('rebooting fsa', num_ips)
-        for i, ip in enumerate(fsa_ips):
+        for i, ip in enumerate(fsa_ips_def):
             reboot_fsa(fi_fsa, ip)
-        __import__('time').sleep(13)
+        __import__('time').sleep(15)
         fsa_ips = fsa_broadcast(fi_fsa, 'Actuator', max_ips=num_ips)
-        assert num_ips == len(fsa_ips), f'{num_ips} != {len(fsa_ips)}'
+        assert num_ips == len(fsa_ips), f'{num_ips} != {len(fsa_ips)} {set(fsa_ips_def) - set(fsa_ips)}'
 
     num_dofs = len(states_q_ctrl)
     if consys is None:
-        consys = get_consys(servo_on=False, config=config)
+        consys = get_consys(servo_on=init_servo_on, config=config)
 
     r = get_robot_interface()
     fsa_ips = r.actuator_group.ips
@@ -209,17 +228,21 @@ def cb_mini_recv_send_close(
             for i, ip in enumerate(fsa_ips):
                 params = get_control_param_imm(fi_fsa, ip)
                 print('get_control_param_imm', ip, params)
-        servo_off(consys)
-        init_send_zeros = False
-        if init_send_zeros:
-            q_send = [0] * num_dofs
-        else:
-            q_send = state_dict['joint_position']
-        print('q_send', q_send.tolist())
-        servo_on(consys, control_mode=control_mode, q_send=q_send)
+        if not init_servo_on:
+            servo_off(consys)
+            init_send_zeros = False
+            if init_send_zeros:
+                q_send = [0] * num_dofs
+            else:
+                q_send = state_dict['joint_position']
+            print('q_send', q_send.tolist())
+            servo_on(consys, control_mode=control_mode, q_send=q_send)
+        infos = get_root_infos(fi_fsa, fsa_ips)
+        print('root_infos', infos)
+        # from unicon.utils.fftai import get_comm_infos
+        # infos = get_comm_infos(fi_fsa, fsa_ips)
+        # print('comm_infos', infos)
         if servo_on_all:
-            infos = get_root_infos(fi_fsa, fsa_ips)
-            print(infos)
             servo_on_fsa(fi_fsa, fsa_ips)
 
     # from sdk
