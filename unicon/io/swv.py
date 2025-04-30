@@ -19,7 +19,8 @@ def cb_send_swv(
     from sim_web_visualizer.parser.yourdfpy import URDF
     from unicon.utils import quat2mat_np, rpy2mat_np, try_conn
 
-    if use_rpy:
+    if use_rpy or states_quat is None or np.sum(states_quat) < 1e-3:
+        print('use_rpy')
         states_quat = None
     else:
         states_rpy = None

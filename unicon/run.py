@@ -72,6 +72,7 @@ def get_args():
     parser.add_argument('-dofs', '--dofs', default=None)
     parser.add_argument('-lrpt', '--lerp_time', type=float, default=5)
     parser.add_argument('-shm', '--shm', action='store_true')
+    parser.add_argument('-shmc', '--shm_clear', action='store_true')
     parser.add_argument('-rt', '--robot_type', default='gr1t2')
     parser.add_argument('-vr', '--verify_recv', action='store_true')
     parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
@@ -297,9 +298,11 @@ def run(args=None):
     num_commands = args.num_commands
     states_new('cmd', num_commands)
     use_shm = False
-    use_shm = args.shm
+    shm_clear = args.shm_clear
+    use_shm = args.shm or shm_clear
+    load = use_shm and not shm_clear
     reuse = True
-    states_init(use_shm=use_shm, reuse=reuse, clear=True)
+    states_init(use_shm=use_shm, load=load, reuse=reuse, clear=shm_clear)
 
     proc = None
 
@@ -1032,7 +1035,7 @@ def run(args=None):
             states_q_ctrl_sys[:] = states_q_ctrl * qtf_w + qtf_b
 
     systems = {
-        k: False for k in ['consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none']
+        k: False for k in ['consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd']
     }
     system = args.system
     system = {k[0]: k for k in systems.keys()}.get(system, system)
@@ -1211,6 +1214,19 @@ def run(args=None):
             **states_ctrls_sys,
             **states_extras_sys,
             states_input=states_input,
+            kp=kp,
+            kd=kd,
+            q_ctrl_min=q_ctrl_min,
+            q_ctrl_max=q_ctrl_max,
+            clip_q_ctrl=sys_clip_q_ctrl,
+            **sys_kwds,
+        )
+    elif systems['pnd']:
+        from unicon.systems.pnd import cb_pnd_recv_send_close
+        cb_recv, cb_send, cb_close = cb_pnd_recv_send_close(
+            **states_props_sys,
+            **states_ctrls_sys,
+            **states_extras_sys,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
