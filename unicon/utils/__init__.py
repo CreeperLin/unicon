@@ -216,7 +216,7 @@ def parse_robot_def(robot_def):
         robot_def[k] = v
 
     def is_num_list(x):
-        return isinstance(v, list) and isinstance(v[0] if len(v) else None, (float, int))
+        return isinstance(x, list) and isinstance(x[0] if len(x) else None, (float, int))
 
     robot_def = {k: np.array(v, dtype=np.float64) if is_num_list(v) else v for k, v in robot_def.items()}
     for k, v in robot_def.items():
