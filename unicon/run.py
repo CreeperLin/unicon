@@ -63,6 +63,7 @@ def get_args():
     parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
     parser.add_argument('-ssh', '--sims_headless', action='store_true')
     parser.add_argument('-ssfb', '--sims_fixed_base', action='store_true')
+    parser.add_argument('-ssiz', '--sims_init_z', type=float, default=1.)
     parser.add_argument('-ssct', '--sims_compute_torque', action='store_true')
     parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
     parser.add_argument('-skwds', '--system_kwargs', default=None)
@@ -101,6 +102,7 @@ def get_args():
     parser.add_argument('-sic', '--safety_integrity_check', action='store_true')
     parser.add_argument('-uspd', '--use_sim_pd', action='store_true')
     parser.add_argument('-dn2', '--dof_names_2', action='store_true')
+    parser.add_argument('-dnstd', '--dof_names_std', action='store_true')
     parser.add_argument('-dnr', '--dof_names_remap', default=None)
     parser.add_argument('-dns', '--dof_names_sub', default=None)
     parser.add_argument('-rp', '--rec_path', default=None)
@@ -236,12 +238,12 @@ def run(args=None):
         env_cfg_env = env_cfg['env']
         num_acts = env_cfg_env['num_actions']
         num_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_observations'))
-        init_joint_angles = env_cfg['init_state']['default_joint_angles']
         dof_names = env_cfg.get('dof_names')
         if dof_names is None:
             print('dof_names not found')
             dof_names = DOF_NAMES
-        default_dof_pos = np.array([init_joint_angles[n] for n in dof_names])
+        init_joint_angles = env_cfg['init_state']['default_joint_angles']
+        default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
         ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
         env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
         print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
@@ -385,6 +387,11 @@ def run(args=None):
     if dof_names_remap is not None:
         remap = load_obj(dof_names_remap)
         dof_names = [remap.get(n, n) for n in dof_names]
+
+    if args.dof_names_std:
+        dof_names_std = robot_def['DOF_NAMES_STD']
+        dof_names_std_rev = {v: k for k, v in dof_names_std.items()}
+        dof_names = [dof_names_std_rev.get(n, n) for n in dof_names]
 
     dof_names_map = {k: nk for k, nk in zip(dof_names_ori, dof_names)}
     print('DOF_NAMES', len(DOF_NAMES), DOF_NAMES)
@@ -715,7 +722,9 @@ def run(args=None):
                 policy_reset_fn=policy_reset_fn,
                 # dof_map=dof_map,
                 dof_map=dof_map_padded,
-                default_dof_pos=default_dof_pos,
+                dof_names=dof_names,
+                robot_def=robot_def,
+                # default_dof_pos=default_dof_pos,
                 env_cfg=env_cfg,
                 device=infer_device,
                 **infer_kwds,
@@ -1038,10 +1047,10 @@ def run(args=None):
             'consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd'
         ]
     }
-    system = args.system
-    system = {k[0]: k for k in systems.keys()}.get(system, system)
-    print('system', system)
-    systems[system] = True
+    system_type = args.system
+    system_type = {k[0]: k for k in systems.keys()}.get(system_type, system_type)
+    print('system', system_type)
+    systems[system_type] = True
 
     fft_sys = any([systems[s] for s in ['consys', 'grx', 'FFTAI', 'mini']])
     if fft_sys:
@@ -1119,10 +1128,10 @@ def run(args=None):
         sims_config = args.sims_config
         if sims_config is None:
             sims_type = args.sims_type
-            init_z = 1.0
+            init_z = args.sims_init_z
             system_config = {
                 'type': sims_type,
-                'urdf_path': robot_def.get('URDF'),
+                'urdf_path': robot_def.get('URDF', robot_def.get('MJCF')),
                 'default_root_states': [0., 0., init_z, 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
                 'decimation': 20,
             }
@@ -1236,7 +1245,20 @@ def run(args=None):
             **sys_kwds,
         )
     else:
-        raise ValueError('no system specified')
+        system_type = args.system
+        print('importing system', system_type)
+        sys_cls = import_obj(f'{system_type}:cb_{system_type}_recv_send_close', default_mod_prefix='unicon.systems')
+        cb_recv, cb_send, cb_close = sys_cls(
+            **states_props_sys,
+            **states_ctrls_sys,
+            **states_extras_sys,
+            kp=kp,
+            kd=kd,
+            q_ctrl_min=q_ctrl_min,
+            q_ctrl_max=q_ctrl_max,
+            clip_q_ctrl=sys_clip_q_ctrl,
+            **sys_kwds,
+        )
 
     dry_run = args.dry
     if dry_run:

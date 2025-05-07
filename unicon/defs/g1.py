@@ -2,6 +2,7 @@
 import numpy as np
 
 
+NAME = 'g1'
 KP = [
     100.0, 100.0, 100.0, 150.0, 40.0, 40.0,
     100.0, 100.0, 100.0, 150.0, 40.0, 40.0,
@@ -82,6 +83,41 @@ DOF_NAMES = [
     'right_wrist_pitch_joint',
     'right_wrist_yaw_joint',
 ]
+DOF_NAMES_STD = {
+    'left_hip_pitch_joint': 'left_hip_pitch',
+    'left_hip_roll_joint': 'left_hip_roll',
+    'left_hip_yaw_joint': 'left_hip_yaw',
+    'left_knee_joint': 'left_knee_pitch',
+    'left_ankle_pitch_joint': 'left_ankle_pitch',
+    'left_ankle_roll_joint': 'left_ankle_roll',
+    'right_hip_pitch_joint': 'right_hip_pitch',
+    'right_hip_roll_joint': 'right_hip_roll',
+    'right_hip_yaw_joint': 'right_hip_yaw',
+    'right_knee_joint': 'right_knee_pitch',
+    'right_ankle_pitch_joint': 'right_ankle_pitch',
+    'right_ankle_roll_joint': 'right_ankle_roll',
+    'waist_yaw_joint': 'waist_yaw',
+    'waist_roll_joint': 'waist_roll',
+    'waist_pitch_joint': 'waist_pitch',
+    'left_shoulder_pitch_joint': 'left_shoulder_pitch',
+    'left_shoulder_roll_joint': 'left_shoulder_roll',
+    'left_shoulder_yaw_joint': 'left_shoulder_yaw',
+    'left_elbow_joint': 'left_elbow_pitch',
+    # 'left_wrist_roll_joint': 'left_wrist_roll',
+    'left_wrist_roll_joint': 'left_wrist_yaw',
+    'left_wrist_pitch_joint': 'left_wrist_pitch',
+    # 'left_wrist_yaw_joint': 'left_wrist_yaw',
+    'left_wrist_yaw_joint': 'left_wrist_roll',
+    'right_shoulder_pitch_joint': 'right_shoulder_pitch',
+    'right_shoulder_roll_joint': 'right_shoulder_roll',
+    'right_shoulder_yaw_joint': 'right_shoulder_yaw',
+    'right_elbow_joint': 'right_elbow_pitch',
+    # 'right_wrist_roll_joint': 'right_wrist_roll',
+    'right_wrist_roll_joint': 'right_wrist_yaw',
+    'right_wrist_pitch_joint': 'right_wrist_pitch',
+    # 'right_wrist_yaw_joint': 'right_wrist_yaw',
+    'right_wrist_yaw_joint': 'right_wrist_roll',
+}
 
 Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)

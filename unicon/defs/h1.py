@@ -2,6 +2,7 @@
 import numpy as np
 
 
+NAME = 'h1'
 DOF_NAMES = [
     'left_hip_yaw_joint',
     'left_hip_roll_joint',
@@ -23,6 +24,27 @@ DOF_NAMES = [
     'right_shoulder_yaw_joint',
     'right_elbow_joint',
 ]
+DOF_NAMES_STD = {
+   'left_hip_yaw_joint': 'left_hip_yaw',
+   'left_hip_roll_joint': 'left_hip_roll',
+   'left_hip_pitch_joint': 'left_hip_pitch',
+   'left_knee_joint': 'left_knee_pitch',
+   'left_ankle_joint': 'left_ankle_pitch',
+   'right_hip_yaw_joint': 'right_hip_yaw',
+   'right_hip_roll_joint': 'right_hip_roll',
+   'right_hip_pitch_joint': 'right_hip_pitch',
+   'right_knee_joint': 'right_knee_pitch',
+   'right_ankle_joint': 'right_ankle_pitch',
+   'torso_joint': 'waist_yaw',
+   'left_shoulder_pitch_joint': 'left_shoulder_pitch',
+   'left_shoulder_roll_joint': 'left_shoulder_roll',
+   'left_shoulder_yaw_joint': 'left_shoulder_yaw',
+   'left_elbow_joint': 'left_elbow_pitch',
+   'right_shoulder_pitch_joint': 'right_shoulder_pitch',
+   'right_shoulder_roll_joint': 'right_shoulder_roll',
+   'right_shoulder_yaw_joint': 'right_shoulder_yaw',
+   'right_elbow_joint': 'right_elbow_pitch',
+}
 NUM_DOFS = 19
 
 KP = [

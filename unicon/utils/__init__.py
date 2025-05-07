@@ -190,15 +190,36 @@ def parse_robot_def(robot_def):
     if not isinstance(robot_def, dict):
         robot_def = {k: v for k, v in vars(robot_def).items() if k.isupper()}
     urdf_path = robot_def.get('URDF')
+    mjcf_path = robot_def.get('MJCF')
+    _default_asset_dir = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
+    _default_asset_dir = os.environ.get('UNICON_ASSET_DIR', _default_asset_dir)
     if urdf_path is not None:
-        _default_urdf_root = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
-        _default_urdf_root = os.environ.get('UNICON_URDF_ROOT', _default_urdf_root)
-        urdf_path = urdf_path if urdf_path.startswith('/') else os.path.join(_default_urdf_root, urdf_path)
+        urdf_path = urdf_path if urdf_path.startswith('/') else os.path.join(_default_asset_dir, urdf_path)
         robot_def['URDF'] = urdf_path
         try:
             urdf_def = parse_urdf(urdf_path)
             urdf_def.update(robot_def)
             robot_def = urdf_def
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    elif mjcf_path is not None:
+        mjcf_path = mjcf_path if mjcf_path.startswith('/') else os.path.join(_default_asset_dir, mjcf_path)
+        robot_def['MJCF'] = mjcf_path
+        try:
+            from mjcf_urdf_simple_converter import convert
+            # from unicon.utils.mjcf2urdf import convert_mjcf_to_urdf
+            import tempfile
+            with tempfile.TemporaryDirectory() as urdf_tmp_dir:
+                urdf_path = os.path.join(urdf_tmp_dir, os.path.basename(mjcf_path.replace('.xml', '.urdf')))
+                convert(mjcf_path, urdf_path)
+                # urdf_path = convert_mjcf_to_urdf(mjcf_path, urdf_tmp_dir)[-1]
+                print('urdf_path', urdf_path)
+                os.system(f'cp {urdf_path} tmp.urdf')
+                # robot_def['URDF'] = urdf_path
+                urdf_def = parse_urdf(urdf_path)
+                urdf_def.update(robot_def)
+                robot_def = urdf_def
         except Exception:
             import traceback
             traceback.print_exc()

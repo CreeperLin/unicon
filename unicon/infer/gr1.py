@@ -12,7 +12,7 @@ def cb_infer_gr1(
     states_infer_obs=None,
     env_cfg=None,
     dof_map=None,
-    default_dof_pos=None,
+    # default_dof_pos=None,
     up_axis_idx=2,
     device='cpu',
     dtype=None,
@@ -24,6 +24,9 @@ def cb_infer_gr1(
     enable_gait_idx=None,
     stack_history_obs=None,
     flatten_obs=False,
+    gait_alt0=False,
+    dof_names=None,
+    robot_def=None,
 ):
     import torch
     import numpy as np
@@ -36,7 +39,14 @@ def cb_infer_gr1(
     print('use_rpy', use_rpy)
     print('flatten_hist', flatten_hist)
     num_actions = env_cfg['env']['num_actions']
-    # num_actions = len(default_dof_pos)
+    if 'mix' in env_cfg.get('argv', []):
+        NAME = robot_def['NAME']
+        params = env_cfg['robot_params'][NAME]
+        init_joint_angles = params['default_joint_angles']
+        print('mix env', NAME, init_joint_angles)
+    else:
+        init_joint_angles = env_cfg['init_state']['default_joint_angles']
+    default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
     dof_map_action = dof_map
     clip_actions = env_cfg['normalization']['clip_actions']
     action_scale = env_cfg['control']['action_scale']
@@ -106,9 +116,10 @@ def cb_infer_gr1(
     last_actions = np.zeros(num_actions, dtype=np_dtype)
     hist = None
     if stack_history_obs:
+        num_partial_obs_full = False
         env = env_cfg['env']
         num_partial_obs = env.get('num_partial_obs', env.get('num_partial_observations'))
-        num_partial_obs = int(num_partial_obs // include_history_steps) if num_partial_obs > 100 else num_partial_obs
+        num_partial_obs = int(num_partial_obs // include_history_steps) if num_partial_obs_full else num_partial_obs
         print('include_history_steps', include_history_steps)
         print('num_partial_obs', num_partial_obs)
         hist = torch.zeros(1, include_history_steps, num_partial_obs, device=device)
@@ -229,6 +240,8 @@ def cb_infer_gr1(
                 foot_phases = [clock_scale * left_phase, clock_scale * right_phase]
             else:
                 foot_phases = [gait_indices + phases, gait_indices]
+            if enable_gait_idx and gait_idx == 0 and gait_alt0:
+                clock_inputs = [np.sin([x]) for x in [1, 1]]
             clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
             if not observe_clock_only:
                 obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
