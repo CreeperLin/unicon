@@ -85,7 +85,9 @@ adam = {
 
 t1 = {
     'NAME': 't1',
-    'URDF': 'Booster-T1/T1_serial_simple_version.urdf',
+    # 'URDF': 'Booster-T1/T1_serial_simple_version.urdf',
+    # 'URDF': 'T1/T1_locomotion.urdf',
+    'URDF': 'T1/T1_serial.urdf',
     'DOF_NAMES_STD': {
         'AAHead_yaw': 'head_yaw',
         'Head_pitch': 'head_pitch',
@@ -115,40 +117,56 @@ t1 = {
         'Right_Shoulder_Pitch': 'right_shoulder_pitch',
         'Right_Shoulder_Roll': 'right_shoulder_roll',
     },
-    'KP': {
-        'AAHead_yaw': 50,
-        'Head_pitch': 50,
-        'Waist': 100,
-        # left-lower
-        'Ankle_Pitch': 40,
-        'Ankle_Roll': 30,
-        'Hip_Pitch': 85,
-        'Hip_Roll': 55,
-        'Hip_Yaw': 55,
-        'Knee_Pitch': 110,
-        # left-upper
-        'Elbow_Pitch': 33.75,
-        'Elbow_Yaw': 33.75,
-        'Shoulder_Pitch': 33.75,
-        'Shoulder_Roll': 33.75,
-    },
-    'KD': {
-        'AAHead_yaw': 0.5,
-        'Head_pitch': 0.5,
-        'Waist': 1.0,
-        # left-lower
-        'Ankle_Pitch': 0.5,
-        'Ankle_Roll': 0.4,
-        'Hip_Pitch': 1.25,
-        'Hip_Roll': 0.75,
-        'Hip_Yaw': 0.75,
-        'Knee_Pitch': 1.5,
-        # left-upper
-        'Elbow_Pitch': 0.45,
-        'Elbow_Yaw': 0.45,
-        'Shoulder_Pitch': 0.45,
-        'Shoulder_Roll': 0.45,
-    },
+    'KP': [
+        20, 20,
+        20, 20, 20, 20,
+        20, 20, 20, 20,
+        200,
+        200, 200, 200, 200, 50, 50,
+        200, 200, 200, 200, 50, 50,
+    ],
+    'KD': [
+        0.2, 0.2,
+        0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5,
+        5,
+        5, 5, 5, 5, 3, 3,
+        5, 5, 5, 5, 3, 3
+    ],
+    # 'KP': {
+    #     'AAHead_yaw': 50,
+    #     'Head_pitch': 50,
+    #     'Waist': 100,
+    #     # left-lower
+    #     'Ankle_Pitch': 40,
+    #     'Ankle_Roll': 30,
+    #     'Hip_Pitch': 85,
+    #     'Hip_Roll': 55,
+    #     'Hip_Yaw': 55,
+    #     'Knee_Pitch': 110,
+    #     # left-upper
+    #     'Elbow_Pitch': 33.75,
+    #     'Elbow_Yaw': 33.75,
+    #     'Shoulder_Pitch': 33.75,
+    #     'Shoulder_Roll': 33.75,
+    # },
+    # 'KD': {
+    #     'AAHead_yaw': 0.5,
+    #     'Head_pitch': 0.5,
+    #     'Waist': 1.0,
+    #     # left-lower
+    #     'Ankle_Pitch': 0.5,
+    #     'Ankle_Roll': 0.4,
+    #     'Hip_Pitch': 1.25,
+    #     'Hip_Roll': 0.75,
+    #     'Hip_Yaw': 0.75,
+    #     'Knee_Pitch': 1.5,
+    #     # left-upper
+    #     'Elbow_Pitch': 0.45,
+    #     'Elbow_Yaw': 0.45,
+    #     'Shoulder_Pitch': 0.45,
+    #     'Shoulder_Roll': 0.45,
+    # },
     'Q_RESET': {
         'AAHead_yaw': 0,
         'Head_pitch': 0,
@@ -197,9 +215,16 @@ n1 = {
     'URDF': 'N1/urdf/N1_raw_1.urdf',
 }
 
-s42 = {
-    'NAME': 's42',
-    'MJCF': 'kuavo_s42/mjcf/biped_s42.xml',
+s45 = {
+    'NAME': 's45',
+    'URDF': 'biped_s45/urdf/biped_s45_1.urdf',
+    'DOF_NAMES': [
+        'leg_l1_joint', 'leg_l2_joint', 'leg_l3_joint', 'leg_l4_joint', 'leg_l5_joint', 'leg_l6_joint',
+        'leg_r1_joint', 'leg_r2_joint', 'leg_r3_joint', 'leg_r4_joint', 'leg_r5_joint', 'leg_r6_joint',
+        'zarm_l1_joint', 'zarm_l2_joint', 'zarm_l3_joint', 'zarm_l4_joint', 'zarm_l5_joint', 'zarm_l6_joint', 'zarm_l7_joint',
+        'zarm_r1_joint', 'zarm_r2_joint', 'zarm_r3_joint', 'zarm_r4_joint', 'zarm_r5_joint', 'zarm_r6_joint', 'zarm_r7_joint',
+        'zhead_1_joint', 'zhead_2_joint'
+    ],
     'DOF_NAMES_STD': {
         'leg_l1_joint': 'left_hip_roll',
         'leg_l2_joint': 'left_hip_yaw',
@@ -227,17 +252,68 @@ s42 = {
         'zarm_r5_joint': 'right_wrist_yaw',
         'zarm_r6_joint': 'right_wrist_pitch',
         'zarm_r7_joint': 'right_wrist_roll',
+        'zhead_1_joint': 'head_yaw',
+        'zhead_2_joint': 'head_pitch',
     },
     'KP': {
         'leg_l1_joint': 60.0, 'leg_l2_joint': 60.0, 'leg_l3_joint': 60.0, 'leg_l4_joint': 60.0, 'leg_l5_joint': 30.0, 'leg_l6_joint': 15.0,
         'leg_r1_joint': 60.0, 'leg_r2_joint': 60.0, 'leg_r3_joint': 60.0, 'leg_r4_joint': 60.0, 'leg_r5_joint': 30.0, 'leg_r6_joint': 15.0,
         'zarm_l1_joint': 15.0, 'zarm_l2_joint': 15.0, 'zarm_l3_joint': 15.0, 'zarm_l4_joint': 15.0, 'zarm_l5_joint': 15.0, 'zarm_l6_joint': 15.0, 'zarm_l7_joint': 15.0,
-        'zarm_r1_joint': 15.0, 'zarm_r2_joint': 15.0, 'zarm_r3_joint': 15.0, 'zarm_r4_joint': 15.0, 'zarm_r5_joint': 15.0, 'zarm_r6_joint': 15.0, 'zarm_r7_joint': 15.0
+        'zarm_r1_joint': 15.0, 'zarm_r2_joint': 15.0, 'zarm_r3_joint': 15.0, 'zarm_r4_joint': 15.0, 'zarm_r5_joint': 15.0, 'zarm_r6_joint': 15.0, 'zarm_r7_joint': 15.0,
+        'zhead_1_joint': 15.0, 'zhead_2_joint': 15.0,
     },
     'KD': {
         'leg_l1_joint': 10.0, 'leg_l2_joint': 6.0, 'leg_l3_joint': 12.0, 'leg_l4_joint': 12.0, 'leg_l5_joint': 22.0, 'leg_l6_joint': 22.0,
         'leg_r1_joint': 10.0, 'leg_r2_joint': 6.0, 'leg_r3_joint': 12.0, 'leg_r4_joint': 12.0, 'leg_r5_joint': 22.0, 'leg_r6_joint': 22.0,
         'zarm_l1_joint': 3, 'zarm_l2_joint': 3, 'zarm_l3_joint': 3, 'zarm_l4_joint': 3, 'zarm_l5_joint': 3, 'zarm_l6_joint': 3, 'zarm_l7_joint': 3,
-        'zarm_r1_joint': 3, 'zarm_r2_joint': 3, 'zarm_r3_joint': 3, 'zarm_r4_joint': 3, 'zarm_r5_joint': 3, 'zarm_r6_joint': 3, 'zarm_r7_joint': 3
+        'zarm_r1_joint': 3, 'zarm_r2_joint': 3, 'zarm_r3_joint': 3, 'zarm_r4_joint': 3, 'zarm_r5_joint': 3, 'zarm_r6_joint': 3, 'zarm_r7_joint': 3,
+        'zhead_1_joint': 3.0, 'zhead_2_joint': 3.0,
     }
 }
+
+s42 = s45.copy()
+s42['NAME'] = 's42'
+s42['URDF'] = 'biped_s42/urdf/biped_s42_1.urdf'
+
+grmini = dict(
+    NAME='grmini',
+    DOF_NAMES=[
+        'left_hip_pitch_joint',
+        'left_hip_roll_joint',
+        'left_hip_yaw_joint',
+        'left_knee_pitch_joint',
+        'left_ankle_roll_joint',
+        'left_ankle_pitch_joint',
+        'right_hip_pitch_joint',
+        'right_hip_roll_joint',
+        'right_hip_yaw_joint',
+        'right_knee_pitch_joint',
+        'right_ankle_roll_joint',
+        'right_ankle_pitch_joint',
+        'waist_yaw_joint',
+        'left_shoulder_pitch_joint',
+        'left_shoulder_roll_joint',
+        'left_shoulder_yaw_joint',
+        'left_elbow_pitch_joint',
+        'left_wrist_yaw_joint',
+        'right_shoulder_pitch_joint',
+        'right_shoulder_roll_joint',
+        'right_shoulder_yaw_joint',
+        'right_elbow_pitch_joint',
+        'right_wrist_yaw_joint',
+    ],
+    KP=[
+        185.256, 114.209, 114.209, 185.256, 55.958, 55.958,  # left leg
+        185.256, 114.209, 114.209, 185.256, 55.958, 55.958,  # right leg
+        114.209,  # waist
+        114.209, 55.958, 55.958, 55.958, 55.958,  # left arm
+        114.209, 55.958, 55.958, 55.958, 55.958,  # right arm
+    ],
+    KD=[
+        9.2628, 5.71045, 5.71045, 9.2628, 2.7979, 2.7979,  # left leg
+        9.2628, 5.71045, 5.71045, 9.2628, 2.7979, 2.7979,  # right leg
+        5.71045,  # waist
+        5.71045, 2.7979, 2.7979, 2.7979, 2.7979,  # left arm
+        5.71045, 2.7979, 2.7979, 2.7979, 2.7979,  # right arm
+    ]
+)

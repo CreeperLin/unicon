@@ -8,6 +8,21 @@ from threading import Event
 _default_time_fn = time.perf_counter
 
 
+def load_model_torch(model_path, device=None):
+    import torch
+    from unicon.utils.torch import torch_load_jit, torch_no_grad, torch_no_profiling
+    torch_no_grad()
+    torch_no_profiling()
+    model = torch_load_jit(model_path, device=device)
+    return model
+
+
+def load_model(model_path, **kwds):
+    name, ext = os.path.splitext(model_path)
+    if ext == '.pt':
+        return load_model_torch(model_path, **kwds)
+
+
 def obj2dict(obj, memo=None):
     if type(obj).__module__ in ['builtins', 'numpy']:
         return obj

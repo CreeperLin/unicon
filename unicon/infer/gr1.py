@@ -242,7 +242,8 @@ def cb_infer_gr1(
                 foot_phases = [gait_indices + phases, gait_indices]
             if enable_gait_idx and gait_idx == 0 and gait_alt0:
                 clock_inputs = [np.sin([x]) for x in [1, 1]]
-            clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
+            else:
+                clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
             if not observe_clock_only:
                 obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
             obs_list.extend(clock_inputs)

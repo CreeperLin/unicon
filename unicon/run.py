@@ -686,30 +686,26 @@ def run(args=None):
             infer_type = args.infer_type
             print('infer_type', infer_type)
             cb_infer_cls = import_obj(infer_type, default_name_prefix='cb_infer', default_mod_prefix='unicon.infer')
-            import torch
-            from unicon.utils.torch import torch_load_jit, torch_no_grad, torch_no_profiling
-            torch_no_grad()
-            torch_no_profiling()
 
+            policy_fn = None
+            policy_reset_fn = None
             infer_device = args.infer_device
-            print('infer_model_path', infer_model_path)
-            policy = torch_load_jit(infer_model_path, device=infer_device)
+            if infer_model_path is not None:
+                print('infer_model_path', infer_model_path)
+                from unicon.utils import load_model
+                policy = load_model(infer_model_path, device=infer_device)
+                policy_type = args.policy_type
+                if policy_type == 'none':
+                    policy_fn = policy
+                elif policy_type == 'debug':
 
-            policy_type = args.policy_type
-            if policy_type == 'gr1':
-                policy_reset_fn = policy.reset_memory
-                policy_fn = lambda obs: policy(obs)[0]
-            elif policy_type == 'none':
-                policy_reset_fn = None
-                policy_fn = policy
-            elif policy_type == 'debug':
-                policy_reset_fn = None
+                    def _policy_fn(obs):
+                        print('policy obs', obs.shape)
+                        ret = policy(obs)
+                        print('policy ret', ret.shape)
+                        return ret
 
-                def policy_fn(obs):
-                    print('policy obs', obs.shape)
-                    ret = policy(obs)
-                    print('policy ret', ret.shape)
-                    return ret
+                    policy_fn = _policy_fn
 
             infer_kwds = load_obj(args.infer_kwargs or '') or {}
             cb_infer, reset_fn = cb_infer_cls(
@@ -724,7 +720,6 @@ def run(args=None):
                 dof_map=dof_map_padded,
                 dof_names=dof_names,
                 robot_def=robot_def,
-                # default_dof_pos=default_dof_pos,
                 env_cfg=env_cfg,
                 device=infer_device,
                 **infer_kwds,
@@ -1043,9 +1038,7 @@ def run(args=None):
 
     systems = {
         k: False
-        for k in [
-            'consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd'
-        ]
+        for k in ['consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd']
     }
     system_type = args.system
     system_type = {k[0]: k for k in systems.keys()}.get(system_type, system_type)
@@ -1060,6 +1053,7 @@ def run(args=None):
         saved_info['battery'] = bat
 
     sys_kwds = load_obj(args.system_kwargs or '') or {}
+    sys_kwds['robot_def'] = robot_def
     sys_clip_q_ctrl = (not clip_q_ctrl)
 
     states_extras_sys = dict(
@@ -1069,6 +1063,7 @@ def run(args=None):
         states_lin_vel=states_lin_vel,
         states_lin_acc=states_lin_acc,
         states_pos=states_pos,
+        states_input=states_input,
     )
     cb_recv, cb_send, cb_close = None, None, None
     if systems['none']:
@@ -1083,7 +1078,6 @@ def run(args=None):
             q_ctrl_max=q_ctrl_max,
             kp=kp,
             kd=kd,
-            robot_def=robot_def,
             dt=dt,
             **sys_kwds,
         )
@@ -1098,7 +1092,6 @@ def run(args=None):
             q_ctrl_min=q_ctrl_min,
             q_ctrl_max=q_ctrl_max,
             clip_q_ctrl=sys_clip_q_ctrl,
-            robot_def=robot_def,
             **sys_kwds,
         )
     elif systems['FFTAI']:
@@ -1113,7 +1106,6 @@ def run(args=None):
             q_ctrl_max=q_ctrl_max,
             clip_q_ctrl=sys_clip_q_ctrl,
             dof_map=dof_map,
-            robot_def=robot_def,
             **sys_kwds,
         )
     elif systems['roslibpy']:
@@ -1209,7 +1201,6 @@ def run(args=None):
             **states_props_sys,
             **states_ctrls_sys,
             **states_extras_sys,
-            states_input=states_input,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
@@ -1223,7 +1214,6 @@ def run(args=None):
             **states_props_sys,
             **states_ctrls_sys,
             **states_extras_sys,
-            states_input=states_input,
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,

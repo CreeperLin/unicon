@@ -26,8 +26,16 @@ def cb_unitree_recv_send_close(
     msg_type='hg',
     mode_machine=None,
     mode_pr=0,
+    robot_def=None,
     **states,
 ):
+    NAME = robot_def.get('NAME')
+    num_dofs = len(states_q)
+    motor_inds = range(num_dofs)
+    if NAME == 'h1':
+        msg_type = 'go'
+        motor_inds = list(range(num_dofs + 1))
+        motor_inds.pop(9)
     assert kp is not None and kd is not None
     from unitree_sdk2py.core.channel import (
         ChannelPublisher,
@@ -39,6 +47,7 @@ def cb_unitree_recv_send_close(
         from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowCmd_ as LowCmdGo
         from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_ as LowStateGo
+        from unitree_sdk2py.utils.crc import CRC
         low_cmd_cls = LowCmdGo
         low_state_cls = LowStateGo
         low_cmd_def_cls = unitree_go_msg_dds__LowCmd_
@@ -52,7 +61,6 @@ def cb_unitree_recv_send_close(
         low_state_cls = LowStateHG
         low_cmd_def_cls = unitree_hg_msg_dds__LowCmd_
 
-    num_dofs = len(states_q)
     import struct
     if input_keys is None:
         from unicon.inputs import _default_input_keys
@@ -89,13 +97,29 @@ def cb_unitree_recv_send_close(
         PosStopF = 2.146e9
         VelStopF = 16000.0
         motor_cmd = cmd.motor_cmd
-        for i, c in enumerate(motor_cmd):
-            c.mode = 0x0A
-            c.q = PosStopF
-            c.qd = VelStopF
-            c.kp = 0
-            c.kd = 0
-            c.tau = 0
+        if NAME == 'h1':
+            for c in motor_cmd[:9]:
+                c.mode = 0x0A
+                c.q = PosStopF
+                c.qd = VelStopF
+                c.kp = 0
+                c.kd = 0
+                c.tau = 0
+            for c in motor_cmd[10:20]:
+                c.mode = 0x01
+                c.q = PosStopF
+                c.qd = VelStopF
+                c.kp = 0
+                c.kd = 0
+                c.tau = 0
+        else:
+            for i, c in enumerate(motor_cmd):
+                c.mode = 0x0A
+                c.q = PosStopF
+                c.qd = VelStopF
+                c.kp = 0
+                c.kd = 0
+                c.tau = 0
     elif msg_type == 'hg':
         cmd.mode_machine = mode_machine
         cmd.mode_pr = mode_pr
@@ -161,12 +185,14 @@ def cb_unitree_recv_send_close(
         state = sub.Read()
         if state is None:
             return True
-        motor_state = state.motor_state[:num_dofs]
-        for i, s in enumerate(motor_state):
+        motor_state = state.motor_state
+        for i, mi in enumerate(motor_inds):
+            s = motor_state[mi]
             states_q[i] = s.q
             states_qd[i] = s.dq
         if states_q_tau is not None:
-            for i, s in enumerate(motor_state):
+            for i, mi in enumerate(motor_inds):
+                s = motor_state[mi]
                 states_q_tau[i] = s.tau_est
 
         quat = state.imu_state.quaternion
@@ -180,8 +206,9 @@ def cb_unitree_recv_send_close(
     def cb_send():
         # udp.InitCmdData(cmd)
         q_ctrl_clip = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max) if clip_q_ctrl else states_q_ctrl
-        motor_cmd = cmd.motor_cmd[:num_dofs]
-        for i, c in enumerate(motor_cmd):
+        motor_cmd = cmd.motor_cmd
+        for i, mi in enumerate(motor_inds):
+            c = motor_cmd[mi]
             c.kp = kp[i]
             c.kd = kd[i]
             c.q = q_ctrl_clip[i]
