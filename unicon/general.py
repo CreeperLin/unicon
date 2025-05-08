@@ -348,7 +348,7 @@ def cb_wait_input(
     states_input,
     keys=None,
     inds=None,
-    press_th=0.5,
+    press_th=0.49,
     pred='any',
     clicks=2,
     press_intv=0.5,

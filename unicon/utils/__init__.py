@@ -8,6 +8,25 @@ from threading import Event
 _default_time_fn = time.perf_counter
 
 
+def find(root='.', name=None):
+    if root == '~':
+        root = os.environ["HOME"]
+    import subprocess
+    PIPE = subprocess.PIPE
+    args = [
+        'find',
+        root,
+    ]
+    if name is not None:
+        args.extend(['-name', name])
+    res = subprocess.run(args, stdout=PIPE)
+    out = res.stdout.decode()
+    if not len(out):
+        return None
+    out = list(map(str.strip, out.split('\n')))[:-1]
+    return out
+
+
 def load_model_torch(model_path, device=None):
     import torch
     from unicon.utils.torch import torch_load_jit, torch_no_grad, torch_no_profiling

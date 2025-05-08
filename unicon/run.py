@@ -486,8 +486,11 @@ def run(args=None):
     seq = []
     mode = args.mode or []
     print('mode', mode)
+    all_modes = [
+        'noop', 'const', 'sample', 'replay', 'infer', 'teleop', 'play', 'follow',
+    ]
     for m in mode:
-        modes = {k: False for k in ['noop', 'const', 'sample', 'replay', 'infer', 'teleop', 'play']}
+        modes = {k: False for k in all_modes}
         m = {k[0]: k for k in modes.keys()}[m]
         modes[m] = True
         if modes['noop']:
@@ -776,6 +779,11 @@ def run(args=None):
                 inds=dof_map,
                 use_tqdm=True,
             )
+        elif modes['follow']:
+            def cb_follow():
+                states_q_ctrl[:] = states_q
+
+            cb = cb_follow
         seq.append(cb)
 
     if dof_states_padded:

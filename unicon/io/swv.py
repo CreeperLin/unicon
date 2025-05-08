@@ -19,11 +19,12 @@ def cb_send_swv(
     from sim_web_visualizer.parser.yourdfpy import URDF
     from unicon.utils import quat2mat_np, rpy2mat_np, try_conn
 
-    if use_rpy or states_quat is None or np.sum(states_quat) < 1e-3:
-        print('use_rpy')
+    if use_rpy or states_quat is None:
+        print('swv rpy')
         states_quat = None
     else:
         states_rpy = None
+        print('swv quat')
 
     port = int(port)
     proc = None
@@ -31,7 +32,8 @@ def cb_send_swv(
         print('starting meshcat-server')
         import time
         import subprocess
-        args = ['meshcat-server']
+        # args = ['meshcat-server']
+        args = ['python3', '-m', 'meshcat.servers.zmqserver']
         proc = subprocess.Popen(args)
         time.sleep(2)
         ret = proc.poll()
@@ -67,7 +69,7 @@ def cb_send_swv(
     class cb_cls:
 
         def __call__(self):
-            nonlocal last_h, pt
+            nonlocal last_h, pt, states_quat
             h = (states_q + 100).sum()
             if last_h == h:
                 return
@@ -82,7 +84,10 @@ def cb_send_swv(
                 pose = robot.get_link_global_transform(link_name)
                 urdf_viz[link_name].set_transform(pose)
             if states_quat is not None:
-                tf[:3, :3] = quat2mat_np(states_quat)
+                if np.sum(np.abs(states_quat)) < 1e-3:
+                    states_quat = None
+                else:
+                    tf[:3, :3] = quat2mat_np(states_quat)
             if states_rpy is not None:
                 tf[:3, :3] = rpy2mat_np(states_rpy)
             if states_pos is not None:
