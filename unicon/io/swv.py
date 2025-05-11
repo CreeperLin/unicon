@@ -9,6 +9,7 @@ def cb_send_swv(
     start_server=True,
     init_z=1.0,
     use_rpy=False,
+    rot=True,
     verbose=False,
     **states,
 ):
@@ -25,6 +26,10 @@ def cb_send_swv(
     else:
         states_rpy = None
         print('swv quat')
+
+    if not rot:
+        states_quat = None
+        states_rpy = None
 
     port = int(port)
     proc = None

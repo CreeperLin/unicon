@@ -194,3 +194,21 @@ def cb_safety_integrity_check(
             last_inds = None
 
     return cb
+
+
+def cb_safety_verify_imu(
+    states_rpy,
+    states_ang_vel,
+    states_quat,
+    tol=1e-3,
+):
+    from unicon.utils import quat2rpy_np
+
+    def cb():
+        if np.sum(np.abs(states_quat)) > 0.1:
+            rpy2 = quat2rpy_np(states_quat)
+            err = np.sum(np.square(rpy2 - states_rpy))
+            if err > tol:
+                print('cb_safety_verify_imu', rpy2, rpy, err, tol)
+
+    return cb

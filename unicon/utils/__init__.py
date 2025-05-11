@@ -36,10 +36,53 @@ def load_model_torch(model_path, device=None):
     return model
 
 
-def load_model(model_path, **kwds):
+def load_model_onnx2pytorch(model_path, device=None):
+    import onnx
+    import torch
+    from onnx2pytorch import ConvertModel
+    onnx_model = onnx.load(model_path)
+    model = ConvertModel(onnx_model)
+    print(model)
+    from unicon.utils.torch import torch_no_grad, torch_no_profiling
+    torch_no_grad()
+    torch_no_profiling()
+    return model
+
+
+def load_model_ort(model_path, device=None):
+    import onnxruntime as ort
+    options = ort.SessionOptions()
+    # options.enable_profiling = True
+    ort_sess = ort.InferenceSession(model_path, sess_options=options)
+    input0 = ort_sess.get_inputs()[0]
+    print('input0', input0.name, input0.type, input0.shape)
+    in_k = input0.name
+    output0 = ort_sess.get_outputs()[0]
+    print('output0', output0.name, output0.type, output0.shape)
+    output_names = [output0.name]
+
+    def model(obs):
+        # print(obs.shape, type(obs))
+        obs = obs.numpy()
+        outputs = ort_sess.run(output_names=output_names, input_feed={in_k: obs})
+        result = outputs[0]
+        return result
+
+    return model
+
+
+_model_type_ext = {
+    '.pt': 'torch',
+    '.onnx': 'ort',
+    # '.onnx': 'onnx2pytorch',
+}
+
+
+def load_model(model_path, model_type=None, **kwds):
     name, ext = os.path.splitext(model_path)
-    if ext == '.pt':
-        return load_model_torch(model_path, **kwds)
+    if model_type is None:
+        model_type = _model_type_ext[ext]
+    return globals().get(f'load_model_{model_type}')(model_path, **kwds)
 
 
 def obj2dict(obj, memo=None):
@@ -170,8 +213,8 @@ def states_ts2dt(states_and_ts=None, states=None, tss=None, dt=0.02):
 
 def parse_urdf(
     urdf_path,
-    default_kp=40.,
-    default_kd=2.,
+    default_kp=40.1,
+    default_kd=2.1,
     default_q_min=-np.pi,
     default_q_max=np.pi,
     default_tau_limit=1000.,
@@ -201,9 +244,22 @@ def parse_urdf(
     qd_limit = [(default_qd_limit if m is None else m.velocity) for m in joint_limits]
     damping = [(0 if d is None else d.damping) for d in joint_dynamics]
     friction = [(0 if d is None else d.friction) for d in joint_dynamics]
-    kps = np.array([default_kp] * len(joints))
-    kds = np.array([default_kd] * len(joints))
+    kps = [default_kp] * len(joints)
+    kds = [default_kd] * len(joints)
     num_dofs = len(dof_names)
+    print('dof_names', num_dofs, dof_names)
+    print('q_min', np.round(np.array(q_min), 2).tolist())
+    print('q_max', np.round(np.array(q_max), 2).tolist())
+    print('tau_limit', np.round(np.array(tau_limit), 2).tolist())
+    print('qd_limit', np.round(np.array(qd_limit), 2).tolist())
+    q_min = {k: v for k, v in zip(dof_names, q_min)}
+    q_max = {k: v for k, v in zip(dof_names, q_max)}
+    tau_limit = {k: v for k, v in zip(dof_names, tau_limit)}
+    qd_limit = {k: v for k, v in zip(dof_names, qd_limit)}
+    damping = {k: v for k, v in zip(dof_names, damping)}
+    friction = {k: v for k, v in zip(dof_names, friction)}
+    kps = {k: v for k, v in zip(dof_names, kps)}
+    kds = {k: v for k, v in zip(dof_names, kds)}
     robot_def = {
         'NUM_DOFS': num_dofs,
         'DOF_NAMES': dof_names,
@@ -216,7 +272,6 @@ def parse_urdf(
         'Q_DAMPING': damping,
         'Q_FRICTION': friction,
     }
-    print('parse_urdf', robot_def)
     return robot_def
 
 
@@ -232,7 +287,8 @@ def parse_robot_def(robot_def):
         robot_def['URDF'] = urdf_path
         try:
             urdf_def = parse_urdf(urdf_path)
-            urdf_def.update(robot_def)
+            # urdf_def.update(robot_def)
+            obj_update(urdf_def, robot_def, verbose=False)
             robot_def = urdf_def
         except Exception:
             import traceback
@@ -587,7 +643,7 @@ def quat2rpy_np2(q, w_first=False):
     return np.stack((r, p, y), axis=-1)
 
 
-def quat2rpy_np(q, w_first=False):
+def quat2rpy_np1(q, w_first=False):
     if w_first:
         inds = [1, 2, 3, 0]
     else:
@@ -607,6 +663,9 @@ def quat2rpy_np(q, w_first=False):
                 qx - qy * qy - qz * qz
     yaw = np.atan2(siny_cosp, cosy_cosp)
     return np.stack((roll, pitch, yaw), axis=-1)
+
+
+quat2rpy_np = quat2rpy_np3
 
 
 def quat2mat_np2(quat, w_first=False):
@@ -946,13 +1005,14 @@ UPDATE_PREFIX = '__update__'
 UPDATE_RET_DEL = '__update_ret_del__'
 
 
-def obj_update(obj, updates):
+def obj_update(obj, updates, verbose=True):
     if not isinstance(updates, dict):
         return updates
     for key, val in updates.items():
         if isinstance(key, str) and key.startswith(UPDATE_PREFIX):
             fn = key.split(':')[1]
-            print('update', type(obj), fn)
+            if verbose:
+                print('update', type(obj), fn)
             getattr(obj, fn)(*val)
             continue
         if isinstance(obj, dict):
@@ -962,9 +1022,10 @@ def obj_update(obj, updates):
         else:
             src = getattr(obj, key, None)
         if isinstance(val, dict) and src is not None:
-            ret = obj_update(src, val)
+            ret = obj_update(src, val, verbose=verbose)
         else:
-            print('set', key, 'src', type(src), 'val', val)
+            if verbose:
+                print('set', key, 'src', type(src), 'val', val)
             ret = val
         if ret == UPDATE_RET_DEL:
             if isinstance(obj, (dict, list, tuple)):

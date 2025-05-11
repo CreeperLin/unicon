@@ -15,7 +15,8 @@ def get_args():
     parser.add_argument('-ro', '--rec_output', default=None)
     parser.add_argument('-it', '--infer_type', default='gr1')
     parser.add_argument('-di', '--input_dev_type', default='js')
-    parser.add_argument('-p', '--policy_type', default='none')
+    parser.add_argument('-pt', '--policy_type', default='none')
+    parser.add_argument('-mt', '--model_type', default=None)
     parser.add_argument('-cmd', '--cmd', default='vel')
     parser.add_argument('-ccv', '--cmd_const_v', default=None)
     parser.add_argument('-cir', '--cmd_init_range', default=None)
@@ -487,7 +488,14 @@ def run(args=None):
     mode = args.mode or []
     print('mode', mode)
     all_modes = [
-        'noop', 'const', 'sample', 'replay', 'infer', 'teleop', 'play', 'follow',
+        'noop',
+        'const',
+        'sample',
+        'replay',
+        'infer',
+        'teleop',
+        'play',
+        'follow',
     ]
     for m in mode:
         modes = {k: False for k in all_modes}
@@ -696,15 +704,16 @@ def run(args=None):
             if infer_model_path is not None:
                 print('infer_model_path', infer_model_path)
                 from unicon.utils import load_model
-                policy = load_model(infer_model_path, device=infer_device)
+                model_type = args.model_type
+                model = load_model(infer_model_path, model_type=model_type, device=infer_device)
                 policy_type = args.policy_type
                 if policy_type == 'none':
-                    policy_fn = policy
+                    policy_fn = model
                 elif policy_type == 'debug':
 
                     def _policy_fn(obs):
                         print('policy obs', obs.shape)
-                        ret = policy(obs)
+                        ret = model(obs)
                         print('policy ret', ret.shape)
                         return ret
 
@@ -738,7 +747,7 @@ def run(args=None):
                 # policy_reset_fn()
                 reset_fn()
                 for obs in obs_all:
-                    actions = policy(torch.from_numpy(obs).view(1, -1))
+                    actions = model(torch.from_numpy(obs).view(1, -1))
                     actions_pred.append(actions)
                 actions_pred = torch.stack(actions_pred, dim=1).squeeze()
                 print(actions_pred.shape)
@@ -780,6 +789,7 @@ def run(args=None):
                 use_tqdm=True,
             )
         elif modes['follow']:
+
             def cb_follow():
                 states_q_ctrl[:] = states_q
 
@@ -1135,6 +1145,10 @@ def run(args=None):
                 'default_root_states': [0., 0., init_z, 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
                 'decimation': 20,
             }
+            if sims_type == 'sims.systems.ig':
+                asset_options = robot_def.get('ASSET_OPTIONS')
+                if asset_options is not None:
+                    system_config.update({'asset_options': asset_options})
         else:
             system_config = load_obj(sims_config)
         sim_dof_names = DOF_NAMES

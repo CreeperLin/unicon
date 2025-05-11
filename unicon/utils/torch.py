@@ -45,11 +45,6 @@ def torch_load(model_path, env_cfg=None, train_cfg=None, traced=False, script=Tr
     return model
 
 
-def torch_load_onnx(model_path, env_cfg=None, train_cfg=None, device='cpu'):
-    model = torch.onnx.load(model_path).to(device=device)
-    return model
-
-
 def torch_no_grad():
     torch.set_grad_enabled(False)
     inference_mode = getattr(torch, 'inference_mode', None)

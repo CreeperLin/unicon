@@ -1,4 +1,3 @@
-
 _launch_str = '''<?xml version="1.0" ?>
 
 <launch>
@@ -7,6 +6,8 @@ _launch_str = '''<?xml version="1.0" ?>
     <arg name="cali"                  default="false" />
     <arg name="joystick_type"       default="bt2"/>
     <arg name="start_way"           default="manual"/>
+    <arg name="cali_arm"              default="false" />
+    <arg name="build_cppad_state"     default="2" />
 
     <include file="$(find humanoid_controllers)/launch/robot_version_manager.launch">
       <arg name="robot_version" value="$(arg robot_version)"/>
@@ -15,6 +16,7 @@ _launch_str = '''<?xml version="1.0" ?>
     <param name="robot_version"     value="$(arg robot_version)"/>
     <param name="joystick_type"               value="$(arg joystick_type)"/>
     
+    <param name="build_cppad_state"    value="$(arg build_cppad_state)" />
     <param name="cali_arm"             value="$(arg cali_arm)" />
     <param name="cali"                 value="$(arg cali)" />
     <param name="start_way"            value="$(arg start_way)"/>
@@ -45,16 +47,6 @@ _launch_str = '''<?xml version="1.0" ?>
 
 '''
 
-_init_state = [
-    0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0,
-    0.0, 0.0, 0.87,
-    0.0, 0.05, 0.0,
-    0.0, 0.0, -0.27, 0.52, -0.3, 0.0,
-    0.0, 0.0, -0.27, 0.52, -0.3, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-]
 
 def cb_kuavo_recv_send_close(
     states_q_ctrl,
@@ -75,8 +67,9 @@ def cb_kuavo_recv_send_close(
     control_mode=2,
     robot_def=None,
     launch=True,
-    stop=True,
-    use_h12=True,
+    stop=None,
+    # use_h12=True,
+    use_h12=False,
     deploy_path=None,
     **states,
 ):
@@ -89,7 +82,15 @@ def cb_kuavo_recv_send_close(
     from kuavo_msgs.msg import sensorsData, jointCmd, jointData, imuData
     from h12pro_controller_node.msg import h12proRemoteControllerChannel
 
+    from unicon.utils import quat2rpy_np
+
+    tau_limit = robot_def.get('TAU_LIMIT').copy()
+    NAME = robot_def.get('NAME')
+    robot_version = int(NAME[1:])
+    print('robot_version', robot_version)
+
     proc = None
+    stop = launch if stop is None else stop
     if launch:
         import os
         import subprocess
@@ -97,20 +98,28 @@ def cb_kuavo_recv_send_close(
             from unicon.utils import find
             deploy_path = find(root='~', name='kuavo-robot-deploy')[0]
         os.system('sudo pkill -ef roslaunch')
-        time.sleep(5)
+        time.sleep(2)
+        _init_state = [0.0] * (3*4+num_dofs)
+        # print('_init_state', _init_state)
         launch_str = _launch_str.format(initial_state=_init_state, squat_initial_state=_init_state)
         launch_path = '/tmp/tmp.launch'
+        launch_params = ''
+        if use_h12:
+            launch_params = 'start_way:=manual joystick_type:=h12'
         with open(launch_path, 'w') as f:
             f.write(launch_str)
         script_str = f'''#!/bin/bash
         source {deploy_path}/devel/setup.bash
-        echo o | roslaunch {launch_path} start_way:=manual joystick_type:=h12
+        export ROBOT_VERSION={robot_version}
+        echo o | roslaunch {launch_path} {launch_params}
         '''
         script_path = '/tmp/tmp.bash'
         with open(script_path, 'w') as f:
             f.write(script_str)
         args = [
-            'sudo', 'bash', script_path,
+            'sudo',
+            'bash',
+            script_path,
         ]
         proc = subprocess.Popen(args)
         for i in range(27):
@@ -119,9 +128,7 @@ def cb_kuavo_recv_send_close(
             ret = proc.poll()
             if ret is not None:
                 proc.kill()
-                raise RuntimeError('launch failed')
-
-    tau_limit = robot_def.get('TAU_LIMIT')
+                raise RuntimeError('roslaunch failed')
 
     rospy.init_node('unicon_sys_kuavo', anonymous=True)
     cmd_pub = rospy.Publisher('/joint_cmd', jointCmd, queue_size=10)
@@ -133,6 +140,10 @@ def cb_kuavo_recv_send_close(
     base_quat = np.zeros(4, dtype=np.float32)
     dof_pos = np.zeros(num_dofs, dtype=np.float32)
     dof_vel = np.zeros(num_dofs, dtype=np.float32)
+
+    print('kp', kp)
+    print('kd', kd)
+    print('tau_limit', tau_limit)
 
     last_recv_ts = 0
 
@@ -159,11 +170,19 @@ def cb_kuavo_recv_send_close(
     h12_rng = h12_max - h12_min
     h12_mean = (h12_max + h12_min) // 2
     h12_mapping = [
-        'ABS_RX', 'ABS_RY', 'ABS_Y', 'ABS_X',
+        'ABS_RX',
+        'ABS_RY',
+        'ABS_Y',
+        'ABS_X',
         # 'E', 'F',
-        'BTN_TL', 'BTN_TR',
-        'BTN_A', 'BTN_B', 'BTN_X', 'BTN_Y',
-        'G', 'H',
+        'BTN_TL',
+        'BTN_TR',
+        'BTN_A',
+        'BTN_B',
+        'BTN_X',
+        'BTN_Y',
+        'G',
+        'H',
     ]
     h12_channels = np.zeros(len(h12_mapping))
 
@@ -190,13 +209,14 @@ def cb_kuavo_recv_send_close(
 
     while cmd_pub.get_num_connections() == 0:
         rospy.loginfo("Waiting for subscribers to connect...")
-        rospy.sleep(0.5)
+        rospy.sleep(1)
 
     ros_joint_cmd = jointCmd()
 
     def cb_recv():
         nonlocal last_recv_ts
-        # states_rpy[:] = base_rpy
+        base_rpy = quat2rpy_np(base_quat)
+        states_rpy[:] = base_rpy
         states_quat[:] = base_quat
         states_ang_vel[:] = base_ang_vel
         states_q[:] = dof_pos
@@ -216,14 +236,17 @@ def cb_kuavo_recv_send_close(
         ros_joint_cmd.joint_v[i] = 0.
         ros_joint_cmd.tau[i] = 0.
         ros_joint_cmd.tau_ratio[i] = 1.
-        ros_joint_cmd.joint_kp[i] = kp[i]
-        ros_joint_cmd.joint_kd[i] = kd[i]
+        if kp is not None:
+            ros_joint_cmd.joint_kp[i] = kp[i]
+        if kd is not None:
+            ros_joint_cmd.joint_kd[i] = kd[i]
         ros_joint_cmd.tau_max[i] = tau_limit[i]
     print('control_modes', ros_joint_cmd.control_modes)
 
     def cb_send():
+        q_ctrl = states_q_ctrl
         for i in range(num_dofs):
-            ros_joint_cmd.joint_q[i] = states_q_ctrl[i]
+            ros_joint_cmd.joint_q[i] = q_ctrl[i]
             ros_joint_cmd.joint_v[i] = 0.
             ros_joint_cmd.tau[i] = 0.
         cmd_pub.publish(ros_joint_cmd)
@@ -234,6 +257,12 @@ def cb_kuavo_recv_send_close(
             states_input[input_inds] = channels[h12_inds]
         if use_joy:
             pass
+        if launch:
+            ret = proc.poll()
+            if ret is not None:
+                # raise RuntimeError('roslaunch crashed')
+                print('roslaunch crashed')
+                return True
 
     def cb_close():
         if stop:

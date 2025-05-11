@@ -88,7 +88,7 @@ def plot(args=None):
     robot_type = args.robot_type
     robot_type = rec.get('args', {}).get('robot_type') if robot_type is None else robot_type
     print('robot_type', robot_type)
-    robot_def = import_obj((robot_type, None), default_mod_prefix='unicon.defs')
+    robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
     robot_def = parse_robot_def(robot_def)
     Q_CTRL_INIT = robot_def.get('Q_CTRL_INIT', None)
     Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
@@ -197,6 +197,84 @@ def plot(args=None):
             rec2motion(rec, name=n, dofs=dofs, save_dir=save_dir)
         return
     ext = args.ext
+    if args.info:
+        q_tau_limit = TAU_LIMIT
+        qd_limit = QD_LIMIT
+        q_min = Q_CTRL_MIN
+        q_max = Q_CTRL_MAX
+        q_init = Q_CTRL_INIT
+        print('q_tau_limit', q_tau_limit[dofs])
+        print('qd_limit', qd_limit[dofs])
+        print('q_min', q_min[dofs])
+        print('q_max', q_max[dofs])
+        print('q_init', q_init[dofs])
+        for rec in recs:
+            states_q = rec['states_q']
+            states_q_ctrl = rec['states_q_ctrl']
+            states_qd = rec['states_qd']
+            states_q_tau = rec.get('states_q_tau')
+            q = states_q[st:ed]
+            qc = states_q_ctrl[st:ed]
+            qd = states_qd[st:ed]
+            if states_q_tau is not None:
+                q_tau = states_q_tau[st:ed]
+            for k in ['qc', 'q']:
+                print(k)
+                v = locals().get(k)
+                min_v = np.min(v, axis=0)
+                max_v = np.max(v, axis=0)
+                print('min', np.round(min_v[dofs].astype(np.float64), 2).tolist())
+                print('max', np.round(max_v[dofs].astype(np.float64), 2).tolist())
+                v_rng_n = (min_v - q_init) / (q_min - q_init)
+                v_rng_p = (max_v - q_init) / (q_max - q_init)
+                print('rng_n', np.round(v_rng_n[dofs], 2).tolist())
+                print('rng_p', np.round(v_rng_p[dofs], 2).tolist())
+                v_rng_l = (min_v - q_min) / (q_max - q_min)
+                v_rng_r = (max_v - q_min) / (q_max - q_min)
+                print('rng_l', np.round(v_rng_l[dofs], 2).tolist())
+                print('rng_r', np.round(v_rng_r[dofs], 2).tolist())
+                print('rng_lr', np.round((v_rng_r - v_rng_l)[dofs], 2).tolist())
+            v = qd
+            print('qd')
+            min_v = np.min(v, axis=0)
+            max_v = np.max(v, axis=0)
+            print('min', np.round(min_v[dofs].astype(np.float64), 2).tolist())
+            print('max', np.round(max_v[dofs].astype(np.float64), 2).tolist())
+            v_rng_l = (min_v + qd_limit) / qd_limit / 2
+            v_rng_r = (max_v + qd_limit) / qd_limit / 2
+            print('rng_l', np.round(v_rng_l[dofs], 2).tolist())
+            print('rng_r', np.round(v_rng_r[dofs], 2).tolist())
+            print('rng_lr', np.round((v_rng_r - v_rng_l)[dofs], 2).tolist())
+            if states_q_tau is None:
+                continue
+            v = q_tau
+            print('q_tau')
+            min_v = np.min(v, axis=0)
+            max_v = np.max(v, axis=0)
+            print('min', np.round(min_v[dofs].astype(np.float64), 2).tolist())
+            print('max', np.round(max_v[dofs].astype(np.float64), 2).tolist())
+            v_rng_l = (min_v + q_tau_limit) / q_tau_limit / 2
+            v_rng_r = (max_v + q_tau_limit) / q_tau_limit / 2
+            print('rng_l', np.round(v_rng_l[dofs], 2).tolist())
+            print('rng_r', np.round(v_rng_r[dofs], 2).tolist())
+            print('rng_lr', np.round((v_rng_r - v_rng_l)[dofs], 2).tolist())
+        for rec in recs:
+            for k, v in rec.items():
+                if not isinstance(v, np.ndarray):
+                    continue
+                v = v[st:ed]
+                print(k, v.shape)
+                std = np.round(np.std(v, axis=0).astype(np.float64), decimals=3).tolist()
+                mean = np.round(np.mean(v, axis=0).astype(np.float64), decimals=3).tolist()
+                _min = np.round(np.min(v, axis=0).astype(np.float64), decimals=3).tolist()
+                _max = np.round(np.max(v, axis=0).astype(np.float64), decimals=3).tolist()
+                _med = np.round(np.median(v, axis=0).astype(np.float64), decimals=3).tolist()
+                print('std', std)
+                print('mean', mean)
+                print('min', _min)
+                print('max', _max)
+                print('med', _med)
+        return
     from matplotlib import pyplot as plt
     import matplotlib.animation as animation
     plot_root = args.plot_root
@@ -600,81 +678,6 @@ def plot(args=None):
         plot_prefix = plot_dir
         plt.savefig(plot_prefix + f'sqe.{ext}')
         plt.close()
-        return
-    if args.info:
-        q_tau_limit = TAU_LIMIT
-        qd_limit = QD_LIMIT
-        q_min = Q_CTRL_MIN
-        q_max = Q_CTRL_MAX
-        q_init = Q_CTRL_INIT
-        print('q_tau_limit', q_tau_limit[dofs])
-        print('qd_limit', qd_limit[dofs])
-        print('q_min', q_min[dofs])
-        print('q_max', q_max[dofs])
-        print('q_init', q_init[dofs])
-        for rec in recs:
-            states_q = rec['states_q']
-            states_q_ctrl = rec['states_q_ctrl']
-            states_qd = rec['states_qd']
-            states_q_tau = rec['states_q_tau']
-            q = states_q[st:ed]
-            qc = states_q_ctrl[st:ed]
-            qd = states_qd[st:ed]
-            q_tau = states_q_tau[st:ed]
-            for k in ['qc', 'q']:
-                print(k)
-                v = locals().get(k)
-                min_v = np.min(v, axis=0)
-                max_v = np.max(v, axis=0)
-                print('min', np.round(min_v[dofs].astype(np.float64), 2).tolist())
-                print('max', np.round(max_v[dofs].astype(np.float64), 2).tolist())
-                v_rng_n = (min_v - q_init) / (q_min - q_init)
-                v_rng_p = (max_v - q_init) / (q_max - q_init)
-                print('rng_n', np.round(v_rng_n[dofs], 2).tolist())
-                print('rng_p', np.round(v_rng_p[dofs], 2).tolist())
-                v_rng_l = (min_v - q_min) / (q_max - q_min)
-                v_rng_r = (max_v - q_min) / (q_max - q_min)
-                print('rng_l', np.round(v_rng_l[dofs], 2).tolist())
-                print('rng_r', np.round(v_rng_r[dofs], 2).tolist())
-                print('rng_lr', np.round((v_rng_r - v_rng_l)[dofs], 2).tolist())
-            v = qd
-            print('qd')
-            min_v = np.min(v, axis=0)
-            max_v = np.max(v, axis=0)
-            print('min', np.round(min_v[dofs].astype(np.float64), 2).tolist())
-            print('max', np.round(max_v[dofs].astype(np.float64), 2).tolist())
-            v_rng_l = (min_v + qd_limit) / qd_limit / 2
-            v_rng_r = (max_v + qd_limit) / qd_limit / 2
-            print('rng_l', np.round(v_rng_l[dofs], 2).tolist())
-            print('rng_r', np.round(v_rng_r[dofs], 2).tolist())
-            print('rng_lr', np.round((v_rng_r - v_rng_l)[dofs], 2).tolist())
-            v = q_tau
-            print('q_tau')
-            min_v = np.min(v, axis=0)
-            max_v = np.max(v, axis=0)
-            print('min', np.round(min_v[dofs].astype(np.float64), 2).tolist())
-            print('max', np.round(max_v[dofs].astype(np.float64), 2).tolist())
-            v_rng_l = (min_v + q_tau_limit) / q_tau_limit / 2
-            v_rng_r = (max_v + q_tau_limit) / q_tau_limit / 2
-            print('rng_l', np.round(v_rng_l[dofs], 2).tolist())
-            print('rng_r', np.round(v_rng_r[dofs], 2).tolist())
-            print('rng_lr', np.round((v_rng_r - v_rng_l)[dofs], 2).tolist())
-        for rec in recs:
-            for k, v in rec.items():
-                if not isinstance(v, np.ndarray):
-                    continue
-                v = v[st:ed]
-                print(k, v.shape)
-                std = np.round(np.std(v, axis=0).astype(np.float64), decimals=3).tolist()
-                mean = np.round(np.mean(v, axis=0).astype(np.float64), decimals=3).tolist()
-                _min = np.round(np.min(v, axis=0).astype(np.float64), decimals=3).tolist()
-                _max = np.round(np.max(v, axis=0).astype(np.float64), decimals=3).tolist()
-                _med = np.round(np.median(v, axis=0).astype(np.float64), decimals=3).tolist()
-                print('std', std)
-                print('mean', mean)
-                print('min', _min)
-                print('max', _max)
-                print('med', _med)
         return
     if num_recs > 1 and eval_loss:
         num_losses = len(loss_fns)
@@ -1102,7 +1105,8 @@ def plot(args=None):
         min_q = min([np.min(q) for q in qs])
         max_qc = max([np.max(qc) for qc in qcs])
         min_qc = min([np.min(qc) for qc in qcs])
-        max_tau = max([np.max(np.abs(rec['states_q_tau'][:, idx])) for rec in recs if 'states_q_tau' in rec])
+        max_taus = [np.max(np.abs(rec['states_q_tau'][:, idx])) for rec in recs if 'states_q_tau' in rec]
+        max_tau = max(max_taus + [120])
         max_qd = max([np.max(np.abs(rec['states_qd'][:, idx])) for rec in recs])
         print(min_q, max_q, min_qc, max_qc, max_tau, max_qd)
         min_q = min(min_q, min_qc)

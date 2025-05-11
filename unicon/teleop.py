@@ -3,10 +3,13 @@ def cb_teleop_q(
     states_q,
     states_input,
     axis_inds=[0, 1, 2, 3],
-    cmd_idx_q_ctrl_inds=4,
-    cmd_idx_axis_inds=5,
+    cmd_idx_q_ctrl_next=4,
+    cmd_idx_axis_next=5,
+    cmd_idx_q_ctrl_prev=6,
+    cmd_idx_axis_prev=7,
     # use_q=True,
     use_q=False,
+    use_q_ctrl=False,
     axis_delta_q=0.01,
     q_ctrl_inds=None,
 ):
@@ -18,19 +21,54 @@ def cb_teleop_q(
 
     axis_pt = 0
     num_axes = len(axis_inds)
-    q_ctrl_inds = list(range(num_axes)) if q_ctrl_inds is None else q_ctrl_inds
+    q_ctrl_inds = [1, 0, 0, 0] if q_ctrl_inds is None else q_ctrl_inds
+
+    num_dofs = len(states_q)
+    num_dofs_p = num_dofs + 1
+    q_ctrl_cur = np.zeros(num_dofs, dtype=np.float32)
+    if use_q:
+        q_cur = states_q
+    elif use_q_ctrl:
+        q_cur = states_q_ctrl
+    else:
+        q_cur = q_ctrl_cur
+
+    _q_ctrl_inds = []
+    _axes_inds = []
 
     def cb():
         nonlocal q_ctrl_inds, axis_pt
-        if is_cmd_rising(cmd_idx_q_ctrl_inds):
-            q_ctrl_inds[axis_pt] = (q_ctrl_inds[axis_pt] + 1) % len(states_q_ctrl)
+        if is_cmd_rising(cmd_idx_q_ctrl_next):
+            q_ctrl_inds[axis_pt] = (q_ctrl_inds[axis_pt] + 1) % num_dofs_p
             print(axis_pt, 'axes joint inds', q_ctrl_inds)
-        if is_cmd_rising(cmd_idx_axis_inds):
+        if is_cmd_rising(cmd_idx_axis_next):
             axis_pt = (axis_pt + 1) % num_axes
             print('setting axis idx', axis_pt)
+            print('q_ctrl_cur', np.round(q_ctrl_cur.astype(np.float64), 2).tolist())
+        if is_cmd_rising(cmd_idx_q_ctrl_prev):
+            q_ctrl_inds[axis_pt] = (q_ctrl_inds[axis_pt] - 1 + num_dofs_p) % num_dofs_p
+            print(axis_pt, 'axes joint inds', q_ctrl_inds)
+        if is_cmd_rising(cmd_idx_axis_prev):
+            axis_pt = (axis_pt - 1 + num_axes) % num_axes
+            print('setting axis idx', axis_pt)
+            print('q_ctrl_cur', np.round(q_ctrl_cur.astype(np.float64), 2).tolist())
         axes = states_input[axis_inds]
-        ctrl = (states_q if use_q else states_q_ctrl)[q_ctrl_inds] + axis_delta_q * axes
-        states_q_ctrl[q_ctrl_inds] = ctrl
+        _q_ctrl_inds.clear()
+        _axes_inds.clear()
+        for i, x in enumerate(q_ctrl_inds):
+            if x > 0:
+                _q_ctrl_inds.append(x - 1)
+                _axes_inds.append(i)
+        if np.any(np.abs(axes)) > 0 and len(_q_ctrl_inds):
+            ctrl = q_cur[_q_ctrl_inds] + axis_delta_q * axes[_axes_inds]
+            print(
+                'cb_teleop_q',
+                _q_ctrl_inds,
+                np.round(states_q_ctrl[_q_ctrl_inds].astype(np.float64), 2).tolist(),
+                np.round(ctrl.astype(np.float64), 2).tolist(),
+            )
+            q_ctrl_cur[_q_ctrl_inds] = ctrl
+        states_q_ctrl[:] = q_ctrl_cur
         last_cmd[:] = states_input
 
     return cb

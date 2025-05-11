@@ -81,6 +81,9 @@ adam = {
         1.0, 1.0, 1.0, 1.0, 0.5,
         1.0, 1.0, 1.0, 1.0, 0.5,
     ],
+    'ASSET_OPTIONS': {
+        'flip_visual_attachments': True,
+    }
 }
 
 t1 = {
@@ -219,8 +222,12 @@ s45 = {
     'NAME': 's45',
     'URDF': 'biped_s45/urdf/biped_s45_1.urdf',
     'DOF_NAMES': [
-        'leg_l1_joint', 'leg_l2_joint', 'leg_l3_joint', 'leg_l4_joint', 'leg_l5_joint', 'leg_l6_joint',
-        'leg_r1_joint', 'leg_r2_joint', 'leg_r3_joint', 'leg_r4_joint', 'leg_r5_joint', 'leg_r6_joint',
+        'leg_l1_joint', 'leg_l2_joint', 'leg_l3_joint', 'leg_l4_joint',
+        'leg_l5_joint',
+        'leg_l6_joint',
+        'leg_r1_joint', 'leg_r2_joint', 'leg_r3_joint', 'leg_r4_joint',
+        'leg_r5_joint',
+        'leg_r6_joint',
         'zarm_l1_joint', 'zarm_l2_joint', 'zarm_l3_joint', 'zarm_l4_joint', 'zarm_l5_joint', 'zarm_l6_joint', 'zarm_l7_joint',
         'zarm_r1_joint', 'zarm_r2_joint', 'zarm_r3_joint', 'zarm_r4_joint', 'zarm_r5_joint', 'zarm_r6_joint', 'zarm_r7_joint',
         'zhead_1_joint', 'zhead_2_joint'
@@ -268,6 +275,17 @@ s45 = {
         'zarm_l1_joint': 3, 'zarm_l2_joint': 3, 'zarm_l3_joint': 3, 'zarm_l4_joint': 3, 'zarm_l5_joint': 3, 'zarm_l6_joint': 3, 'zarm_l7_joint': 3,
         'zarm_r1_joint': 3, 'zarm_r2_joint': 3, 'zarm_r3_joint': 3, 'zarm_r4_joint': 3, 'zarm_r5_joint': 3, 'zarm_r6_joint': 3, 'zarm_r7_joint': 3,
         'zhead_1_joint': 3.0, 'zhead_2_joint': 3.0,
+    },
+    'TAU_LIMIT': {
+        'leg_l1_joint': 110.0, 'leg_l2_joint': 110.0, 'leg_l3_joint': 110.0, 'leg_l4_joint': 110.0, 'leg_l5_joint': 18.0, 'leg_l6_joint': 18.0,
+        'leg_r1_joint': 110.0, 'leg_r2_joint': 110.0, 'leg_r3_joint': 110.0, 'leg_r4_joint': 110.0, 'leg_r5_joint': 18.0, 'leg_r6_joint': 18.0,
+        'zarm_l1_joint': 110.0, 'zarm_l2_joint': 18, 'zarm_l3_joint': 18, 'zarm_l4_joint': 18, 'zarm_l5_joint': 18, 'zarm_l6_joint': 18, 'zarm_l7_joint': 18,
+        'zarm_r1_joint': 110.0, 'zarm_r2_joint': 18, 'zarm_r3_joint': 18, 'zarm_r4_joint': 18, 'zarm_r5_joint': 18, 'zarm_r6_joint': 18, 'zarm_r7_joint': 18,
+        'zhead_1_joint': 10.0, 'zhead_2_joint': 10.0,
+    },
+    'Q_CTRL_MAX': {
+        'leg_l3_joint': 0.7,
+        'leg_r3_joint': 0.7,
     }
 }
 

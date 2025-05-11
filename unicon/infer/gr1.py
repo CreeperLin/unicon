@@ -41,6 +41,7 @@ def cb_infer_gr1(
     num_actions = env_cfg['env']['num_actions']
     if 'mix' in env_cfg.get('argv', []):
         NAME = robot_def['NAME']
+        NAME = 's42' if NAME == 's45' else NAME
         params = env_cfg['robot_params'][NAME]
         init_joint_angles = params['default_joint_angles']
         print('mix env', NAME, init_joint_angles)
@@ -72,19 +73,42 @@ def cb_infer_gr1(
         scales_lin_vel,
         scales_lin_vel,
         scales_ang_vel,
-        gait_freq_cmd,
-        gait_phase_cmd,
-        gait_phase_cmd,
-        footswing_height_cmd,
     ]
+    default_commands = [
+        0.,
+        0.,
+        0.,
+    ]
+    cmd_frequency = 1.2
+    cmd_phase = 0.5
+    if env_cfg['env'].get('observe_frequency', True):
+        cmds_scale.append(obs_scales['gait_freq_cmd'])
+        cmd_frequency = 1.2
+        default_commands.append(cmd_frequency)
+    if env_cfg['env'].get('observe_phase', True):
+        cmds_scale.append(obs_scales['gait_phase_cmd'])
+        cmd_phase = 0.5
+        default_commands.append(cmd_phase)
+    if env_cfg['env'].get('observe_duration', True):
+        cmds_scale.append(obs_scales.get('gait_duration_cmd', gait_phase_cmd))
+        default_commands.append(0.5)
+    if env_cfg['env'].get('observe_foot_height', True):
+        cmds_scale.append(obs_scales['footswing_height_cmd'])
+        default_commands.append(0.12)
     if env_cfg['env'].get('observe_body_height'):
         cmds_scale.append(obs_scales['body_height_cmd'])  # Body Height Cmd (1 dim)
+        default_commands.append(0.)
+        # default_commands.append(0.1)
     if env_cfg['env'].get('observe_body_pitch'):
         cmds_scale.append(obs_scales['body_pitch_cmd'])  # Body Pitch Cmd (1 dim)
+        default_commands.append(0.)
     if env_cfg['env'].get('observe_waist_roll'):
         cmds_scale.append(obs_scales['waist_roll_cmd'])  # Waist Roll (1 dim)
+        default_commands.append(0.)
     if env_cfg['env'].get('interrupt_in_cmd'):
         cmds_scale.append(1)  # Interrupt Flag (1 dim)
+        default_commands.append(0.)
+    default_commands.extend([0] * (12 - len(default_commands)))
     cmds_scale = np.array(cmds_scale, dtype=np_dtype)
     print('cmds_scale', cmds_scale)
     gravity_vec = np.array(get_axis_params(-1., up_axis_idx), dtype=np_dtype)
@@ -137,20 +161,6 @@ def cb_infer_gr1(
         num_commands = max(num_commands, 5)
         print('num_commands', num_commands)
         commands = np.zeros(num_commands, dtype=np_dtype)
-        default_commands = [
-            0.,
-            0.,
-            0.,
-            1.2,
-            0.5,
-            0.5,
-            0.12,
-            0.,
-            0.,
-            0.,
-            0.,
-            0,
-        ]
         if enable_gait_idx:
             keys = [
                 None,
@@ -207,8 +217,8 @@ def cb_infer_gr1(
         ]
         if observe_gait_commands:
             nonlocal gait_indices
-            frequencies = commands[3]
-            phases = commands[4]
+            frequencies = cmd_frequency
+            phases = cmd_phase
             # durations = commands[:, 5]
             gait_indices = np.modf(gait_indices + dt * frequencies)[0]
             # print(gait_indices)
@@ -246,6 +256,7 @@ def cb_infer_gr1(
                 clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
             if not observe_clock_only:
                 obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
+            # print('clock_inputs', foot_phases, clock_inputs)
             obs_list.extend(clock_inputs)
         elif use_clock:
             nonlocal gait_time
@@ -260,7 +271,7 @@ def cb_infer_gr1(
             ])
         obs = np.concatenate(obs_list)
         # for i, x in enumerate(obs_list):
-        # print(i, x)
+        # print(i, np.round(x, decimals=2))
         # print(obs.shape, [len(o) for o in obs_list])
         if states_infer_obs is not None:
             states_infer_obs[:] = obs
@@ -291,6 +302,7 @@ def cb_infer_gr1(
         if stack_history_obs:
             hist[:] = 0.
         last_actions[:] = 0.
+        gait_indices[:] = 0.
         if policy_reset_fn is not None:
             policy_reset_fn()
 
