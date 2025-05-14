@@ -99,7 +99,7 @@ def cb_kuavo_recv_send_close(
             deploy_path = find(root='~', name='kuavo-robot-deploy')[0]
         os.system('sudo pkill -ef roslaunch')
         time.sleep(2)
-        _init_state = [0.0] * (3*4+num_dofs)
+        _init_state = [0.0] * (3 * 4 + num_dofs)
         # print('_init_state', _init_state)
         launch_str = _launch_str.format(initial_state=_init_state, squat_initial_state=_init_state)
         launch_path = '/tmp/tmp.launch'

@@ -24,26 +24,74 @@ def cb_cmd_vel(
     init_mode=0,
     env_cfg=None,
     # init_mode=-1,
+    enable_gait_idx=False,
+    cmd_ranges=None,
+    cmd_keys=None,
+    enable_extra_commands=None,
 ):
-    if lin_vel_x is None and env_cfg is not None:
+    import numpy as np
+    import time
+    _default_ranges = {
+        'frequency': [0.5, 0.5],
+        'phase': [0.5, 0.5],
+        'duration': [0.5, 0.5],
+        'foot_trajectory': [0.18, 0.18],
+    }
+    _default_cmd_keys = [
+        'lin_vel_x',
+        'lin_vel_y',
+        'ang_vel_yaw',
+        'frequency',
+        'phase',
+        'duration',
+        'foot_trajectory',
+        'body_height',
+        'body_pitch',
+        'waist_yaw',
+        'waist_roll',
+        'waist_pitch',
+    ]
+    _def_range = [-0.42, 0.42]
+    cmd_keys = _default_cmd_keys if cmd_keys is None else cmd_keys
+    print('cmd_keys', list(enumerate(cmd_keys)))
+    num_cmd = len(states_cmd)
+    num_commands = num_cmd
+    if env_cfg is not None:
         ranges = env_cfg['commands']['ranges']
         print('env_cfg cmd ranges', ranges)
-        lin_vel_x = ranges['lin_vel_x']
-        lin_vel_y = ranges['lin_vel_y']
-        ang_vel_yaw = ranges['ang_vel_yaw']
-    import numpy as np
+        lin_vel_x = ranges.get('limit_vel_x', ranges['lin_vel_x'])
+        lin_vel_y = ranges.get('limit_vel_y', ranges['lin_vel_y'])
+        ang_vel_yaw = ranges.get('limit_vel_yaw', ranges['ang_vel_yaw'])
+        cmd_ranges = [ranges[k] if k in ranges else _default_ranges.get(k, _def_range) for k in cmd_keys]
+        cmd_min = [r[0] for r in cmd_ranges]
+        cmd_max = [r[1] for r in cmd_ranges]
+        cmd_min = np.array(cmd_min)
+        cmd_max = np.array(cmd_max)
+        cmd_span = cmd_max - cmd_min
+        num_commands = env_cfg['commands'].get('num_commands', num_cmd)
+        inp_min = -1.
+        inp_max = 1.
+        inp_span = inp_max - inp_min
+        w_cmd = cmd_span / inp_span
+        b_cmd = (cmd_min * inp_span - inp_min * cmd_span) / inp_span
+        w_cmd = w_cmd[:num_commands]
+        b_cmd = b_cmd[:num_commands]
+        print('w_cmd', w_cmd)
+        print('b_cmd', b_cmd)
+    print('num_cmd', num_cmd)
+    print('num_commands', num_commands)
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
-    used_keys = ['ABS_X', 'ABS_Y', 'ABS_RX', 'BTN_A', 'BTN_B', 'BTN_X', 'BTN_Y', 'BTN_TL', 'BTN_TR']
-    idx_abs_x, idx_abs_y, idx_abs_rx, idx_btn_a, idx_btn_b, idx_btn_x, idx_btn_y, idx_btn_tl, idx_btn_tr = [
+    used_keys = ['ABS_X', 'ABS_Y', 'ABS_RX', 'ABS_RY', 'BTN_A', 'BTN_B', 'BTN_X', 'BTN_Y', 'BTN_TL', 'BTN_TR']
+    idx_abs_x, idx_abs_y, idx_abs_z, idx_abs_rz, idx_btn_a, idx_btn_b, idx_btn_x, idx_btn_y, idx_btn_tl, idx_btn_tr = [
         input_keys.index(k) for k in used_keys
     ]
 
     if range_lin_vel_x is None:
         scales = [max_scale * (i + 1) / num_ranges for i in range(num_ranges)]
         # scales = [(i+2)/(num_ranges+1) for i in range(num_ranges)]
-        cmd_ranges = lin_vel_x, lin_vel_y, ang_vel_yaw
+        vel_ranges = lin_vel_x, lin_vel_y, ang_vel_yaw
         rngs = []
-        for rng in cmd_ranges:
+        for rng in vel_ranges:
             rng = [-1, 1] if rng is None else rng
             rng = np.array(rng).astype(np.float64)
             rng = [[s * x for x in rng] for s in scales]
@@ -54,13 +102,22 @@ def cb_cmd_vel(
     print('range_lin_vel_y', range_lin_vel_y)
     print('range_ang_vel_yaw', range_ang_vel_yaw)
 
-    import time
-    import numpy as np
+    num_vel_cmds = 3
+    if enable_extra_commands is None:
+        enable_extra_commands = num_cmd > num_vel_cmds and num_cmd == num_commands
+    if enable_extra_commands:
+        num_extra_cmds = num_commands - num_vel_cmds
+        extra_cmd_pt = 0
+        extra_cmd_idx = idx_abs_rz
+        input_extra = np.zeros(num_extra_cmds, dtype=np.float32)
+        w_extra = w_cmd[num_vel_cmds:]
+        b_extra = b_cmd[num_vel_cmds:]
+        print('num_extra_cmds', num_extra_cmds, extra_cmd_pt, extra_cmd_idx, w_extra.shape)
+
     ctrl_w = None
     range_pt = init_range_pt
     num_ranges = len(range_lin_vel_x)
     last_chg = 0
-    num_vel_cmds = 3
 
     def update_ctrl_wb():
         nonlocal ctrl_w
@@ -77,8 +134,9 @@ def cb_cmd_vel(
         ctrl_span = 2.
         ctrl_w = span / ctrl_span
 
-    cmd_const = np.zeros(num_vel_cmds, dtype=np.float32)
+    cmd_const = np.zeros(num_commands, dtype=np.float32)
     cmd_const[:len(cmd)] = cmd
+    print('cmd_const', cmd_const)
     cmd = np.zeros(num_vel_cmds, dtype=np.float32)
 
     ctrl_lin_vel_x = 0
@@ -87,29 +145,29 @@ def cb_cmd_vel(
 
     update_ctrl_wb()
 
-    if len(states_cmd) > 3:
+    if enable_gait_idx:
         init_mode = num_modes + init_mode if init_mode < 0 else init_mode
-        states_cmd[3] = init_mode
+        states_cmd[-1] = init_mode
 
     def clamp(x, lo=0, hi=1):
         return min(x, max(x, lo), hi)
 
     def cb():
         nonlocal cmd, ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw, range_pt, last_chg
-        abs_x = states_input[idx_abs_x]
-        abs_y = states_input[idx_abs_y]
-        abs_rx = states_input[idx_abs_rx]
-        abs_x, abs_y, abs_rx = [0 if abs(x) < eps else x for x in (abs_x, abs_y, abs_rx)]
+        inp_vx = states_input[idx_abs_y]
+        inp_vy = states_input[idx_abs_x]
+        inp_vyaw = states_input[idx_abs_z]
+        inp_vx, inp_vy, inp_vyaw = [0 if abs(x) < eps else x for x in (inp_vx, inp_vy, inp_vyaw)]
         if step_vel:
-            ctrl_lin_vel_x = ctrl_lin_vel_x + step_vel_size * abs_y
-            ctrl_lin_vel_y = ctrl_lin_vel_y + step_vel_size * abs_rx
-            ctrl_ang_vel_yaw = ctrl_ang_vel_yaw + step_vel_size * abs_x
+            ctrl_lin_vel_x = ctrl_lin_vel_x + step_vel_size * inp_vx
+            ctrl_lin_vel_y = ctrl_lin_vel_y + step_vel_size * inp_vy
+            ctrl_ang_vel_yaw = ctrl_ang_vel_yaw + step_vel_size * inp_vyaw
             if states_input[idx_btn_a] == 1:
                 ctrl_lin_vel_x = ctrl_lin_vel_y = ctrl_ang_vel_yaw = 0
         else:
-            ctrl_lin_vel_x = abs_y
-            ctrl_lin_vel_y = abs_rx
-            ctrl_ang_vel_yaw = abs_x
+            ctrl_lin_vel_x = inp_vx
+            ctrl_lin_vel_y = inp_vy
+            ctrl_ang_vel_yaw = inp_vyaw
         ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw = [
             clamp(x) for x in [ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw]
         ]
@@ -117,7 +175,7 @@ def cb_cmd_vel(
         cmd[1] = -ctrl_lin_vel_y
         cmd[2] = -ctrl_ang_vel_yaw
         cmd *= ctrl_w
-        out_cmd = cmd + cmd_const
+        out_cmd = cmd + cmd_const[:num_vel_cmds]
         out_cmd[np.abs(out_cmd) < min_vel] = 0
         states_cmd[:num_vel_cmds] = out_cmd
         chg = time.time() - last_chg > 1
@@ -126,13 +184,27 @@ def cb_cmd_vel(
             range_pt = (range_pt + d + num_ranges) % num_ranges
             update_ctrl_wb()
             last_chg = time.time()
-        if len(states_cmd) > 3:
+        if enable_gait_idx:
             if (states_input[idx_btn_x] == 1 or states_input[idx_btn_y] == 1) and chg:
                 d = 1 if states_input[idx_btn_x] else -1
-                mode_pt = (states_cmd[3] + d + num_modes) % num_modes
+                mode_pt = (states_cmd[-1] + d + num_modes) % num_modes
                 print('mode_pt', mode_pt)
-                states_cmd[3] = mode_pt
+                states_cmd[-1] = mode_pt
                 last_chg = time.time()
+        if enable_extra_commands:
+            nonlocal extra_cmd_pt
+            if (states_input[idx_btn_x] == 1 or states_input[idx_btn_y] == 1) and chg:
+                d = 1 if states_input[idx_btn_x] else -1
+                extra_cmd_pt = (extra_cmd_pt + d + num_extra_cmds) % num_extra_cmds
+                print('extra_cmd_pt', extra_cmd_pt, extra_cmd_idx, cmd_keys[num_vel_cmds + extra_cmd_pt])
+                last_chg = time.time()
+            inp_extra = states_input[extra_cmd_idx]
+            inp_extra = 0 if abs(inp_extra) < eps else inp_extra
+            if inp_extra == 0:
+                return
+            input_extra[extra_cmd_pt] = inp_extra
+            states_cmd[num_vel_cmds:] = input_extra * w_extra + b_extra + cmd_const[num_vel_cmds:]
+            print('states_cmd', states_cmd[num_vel_cmds:], extra_cmd_pt, inp_extra, input_extra)
 
     return cb
 

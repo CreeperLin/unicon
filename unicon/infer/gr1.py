@@ -21,7 +21,8 @@ def cb_infer_gr1(
     # flatten_hist=False,
     retained_obs=True,
     observe_gait_commands=None,
-    enable_gait_idx=None,
+    enable_gait_idx=False,
+    adaptive_gait_frequency=None,
     stack_history_obs=None,
     flatten_obs=False,
     gait_alt0=False,
@@ -52,6 +53,7 @@ def cb_infer_gr1(
     clip_actions = env_cfg['normalization']['clip_actions']
     action_scale = env_cfg['control']['action_scale']
     obs_scales = env_cfg['normalization']['obs_scales']
+    print('obs_scales', obs_scales)
     scales_lin_vel = obs_scales['lin_vel']
     scales_ang_vel = obs_scales['ang_vel']
     scales_dof_pos = obs_scales['dof_pos']
@@ -65,6 +67,9 @@ def cb_infer_gr1(
     observe_clock_only = env_cfg.get('observe_clock_only', False)
     print('observe_clock_only', observe_clock_only)
     include_history_steps = env_cfg['env']['include_history_steps']
+    if adaptive_gait_frequency is None:
+        adaptive_gait_frequency = env_cfg['commands'].get('adaptive_gait_frequency', False)
+        print('adaptive_gait_frequency', adaptive_gait_frequency)
     if stack_history_obs is None:
         stack_history_obs = env_cfg['env']['stack_history_obs']
     print('stack_history_obs', stack_history_obs)
@@ -118,6 +123,8 @@ def cb_infer_gr1(
     default_dof_pos_tensor = to_tensor(default_dof_pos)
     retained_action_inds = env_cfg.get('retained_action_inds', env_cfg['env'].get('retained_actions_indxs'))
     dof_map_obs = dof_map
+    retained_actions = env_cfg['env'].get('retained_actions', True)
+    retained_action_inds = retained_action_inds if retained_actions else None
     if retained_action_inds is not None:
         _dof_map = list(range(dof_map.start, dof_map.stop)) if isinstance(dof_map, slice) else dof_map
         print('retained_action_inds', len(retained_action_inds), retained_action_inds)
@@ -152,8 +159,7 @@ def cb_infer_gr1(
     dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
     print('dt', dt)
 
-    if enable_gait_idx is None:
-        enable_gait_idx = len(states_cmd) > 3
+    num_cmds = len(states_cmd)
 
     if observe_gait_commands:
         print(env_cfg['commands'])
@@ -182,6 +188,9 @@ def cb_infer_gr1(
         commands[:num_commands] = default_commands[:num_commands]
         gait_indices = np.zeros(1)
         print('commands', commands)
+        if num_cmds == num_commands:
+            print('using states_cmd')
+            commands = states_cmd
     elif use_clock:
         gait_time = 0
     # import time
@@ -223,7 +232,7 @@ def cb_infer_gr1(
             gait_indices = np.modf(gait_indices + dt * frequencies)[0]
             # print(gait_indices)
             if enable_gait_idx:
-                gait_idx = states_cmd[3]
+                gait_idx = states_cmd[-1]
                 nonlocal clock_scale, last_gait, jump_switching
                 if gait_idx == 0:  # Standing
                     clock_scale = max(0, clock_scale - 0.1)
@@ -254,6 +263,13 @@ def cb_infer_gr1(
                 clock_inputs = [np.sin([x]) for x in [1, 1]]
             else:
                 clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
+
+            if adaptive_gait_frequency:
+                v_level = 1.0 * np.linalg.norm(states_cmd[2]) + 0.5 * np.abs(states_cmd[2])
+                velocity2frequency = (1.8 - 1.0) / (2.5 - 0.6)
+                freq = (1.0 + velocity2frequency * (v_level - 0.6)).clip(min=1.0, max=1.8)
+                # print(freq)
+                commands[3] = freq
             if not observe_clock_only:
                 obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
             # print('clock_inputs', foot_phases, clock_inputs)
@@ -285,6 +301,7 @@ def cb_infer_gr1(
             # obs = hist
         if flatten_obs:
             obs = obs.flatten()
+        # print('obs', obs.shape)
         actions = policy_fn(obs)
         acts = torch.clamp(actions, -clip_actions, clip_actions).view(1, -1)[0]
         acts_np = acts.cpu().numpy()

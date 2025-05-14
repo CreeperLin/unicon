@@ -132,23 +132,5 @@ DOF_MAPS = {
     'legs': range(0, 12),
 }
 
-DOF_PRESETS = {
-    'lower': [
-        'left_hip_pitch_joint',
-        'left_hip_roll_joint',
-        'left_hip_yaw_joint',
-        'left_knee_joint',
-        'left_ankle_pitch_joint',
-        'left_ankle_roll_joint',
-
-        'right_hip_pitch_joint',
-        'right_hip_roll_joint',
-        'right_hip_yaw_joint',
-        'right_knee_joint',
-        'right_ankle_pitch_joint',
-        'right_ankle_roll_joint',
-    ],
-}
-
 URDF = 'g1_description/g1_29dof_rev_1_0.urdf'
 # URDF = 'g1/urdf/g1_29dof_boxcollision_fix_inertia_1.urdf'

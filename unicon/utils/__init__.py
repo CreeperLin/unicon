@@ -109,21 +109,23 @@ def obj2dict(obj, memo=None):
     return dct
 
 
-def dump_env_train_cfg(env=None, env_cfg=None, ppo_runner=None, train_cfg=None):
+def dump_policy_cfg(env=None, env_cfg=None, path=None, ppo_runner=None, train_cfg=None):
     import os
     import sys
     import yaml
-    log_dir = '.' if ppo_runner is None else ppo_runner.log_dir
-    os.makedirs(log_dir, exist_ok=True)
-    # os.system('git diff > {}'.format(os.path.join(log_dir, 'diff.patch')))
+    if path is None:
+        path = '.' if ppo_runner is None else ppo_runner.path
+    print('dump_policy_cfg', path)
+    os.makedirs(path, exist_ok=True)
+    # os.system('git diff > {}'.format(os.path.join(path, 'diff.patch')))
     if env is not None:
         env_cfg.dof_names = env.dof_names
     if env_cfg is not None:
         env_cfg.argv = sys.argv
-        with open(os.path.join(log_dir, 'env_cfg.yaml'), 'w') as f:
+        with open(os.path.join(path, 'env_cfg.yaml'), 'w') as f:
             f.write(yaml.dump(obj2dict(env_cfg), sort_keys=False))
     if train_cfg is not None:
-        with open(os.path.join(log_dir, 'train_cfg.yaml'), 'w') as f:
+        with open(os.path.join(path, 'train_cfg.yaml'), 'w') as f:
             f.write(yaml.dump(obj2dict(train_cfg), sort_keys=False))
 
 
@@ -1027,7 +1029,7 @@ def obj_update(obj, updates, verbose=True):
             if verbose:
                 print('set', key, 'src', type(src), 'val', val)
             ret = val
-        if ret == UPDATE_RET_DEL:
+        if isinstance(ret, str) and ret == UPDATE_RET_DEL:
             if isinstance(obj, (dict, list, tuple)):
                 del obj[key]
             else:

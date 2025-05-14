@@ -18,19 +18,22 @@ def cb_send_pyzmq(keys=None, port=1337, host='*', robot_def=None, **states):
     import zmq
     dump_fn = dump_json
     context = zmq.Context()
-    publisher = context.socket(zmq.PUB)
+    pub = context.socket(zmq.PUB)
+    pub.setsockopt(zmq.CONFLATE, 1)
+    # pub.setsockopt(zmq.SNDHWM, 2)
+    # pub.setsockopt(zmq.SNDBUF, 2*1024)  # See: http://api.zeromq.org/4-2:zmq-setsockopt
     addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
     print('pyzmq', addr, keys)
-    publisher.bind(addr)
+    pub.bind(addr)
 
     class cb:
 
         def __call__(self):
             msg = dump_fn(states)
-            publisher.send(msg)
+            pub.send(msg)
 
         def __del__(self):
-            publisher.close()
+            pub.close()
             context.term()
 
     return cb()
@@ -41,20 +44,29 @@ def cb_recv_pyzmq(keys=None, port=1337, host='localhost', robot_def=None, **stat
     states = {k: states[k] for k in keys}
     import zmq
     context = zmq.Context()
-    socket = context.socket(zmq.SUB)
+    sub = context.socket(zmq.SUB)
+    # sub.setsockopt(zmq.RCVHWM, 2)
+    sub.setsockopt(zmq.CONFLATE, 1)
+    # sub.setsockopt(zmq.RCVBUF, 2*1024)
     addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
     print('pyzmq', addr, keys)
-    socket.connect(addr)
-    socket.setsockopt(zmq.SUBSCRIBE, b'')
+    sub.connect(addr)
+    sub.setsockopt(zmq.SUBSCRIBE, b'')
     load_fn = load_json
+    n_again = 0
 
     class cb:
 
-        def __call__(self):
+        def __call__(_):
+            nonlocal n_again
             try:
-                msg = socket.recv(flags=zmq.NOBLOCK)
+                msg = sub.recv(flags=zmq.NOBLOCK)
             except zmq.Again:
+                n_again += 1
+                if n_again > 1000 and n_again % 100 == 0:
+                    print('cb_recv_pyzmq timeout', n_again)
                 return
+            n_again = 0
             data = load_fn(msg)
             for k, v in data.items():
                 s = states.get(k)
@@ -62,8 +74,8 @@ def cb_recv_pyzmq(keys=None, port=1337, host='localhost', robot_def=None, **stat
                     continue
                 s[:] = v
 
-        def __del__(self):
-            socket.close()
+        def __del__(_):
+            sub.close()
             context.term()
 
     return cb()

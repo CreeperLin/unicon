@@ -81,6 +81,7 @@ def get_args():
     parser.add_argument('-ff', '--fast', action='store_true')
     parser.add_argument('-sqm', '--safety_q_margin', type=float, default=0.)
     parser.add_argument('-iis', '--inner_input_stop', action='store_true')
+    parser.add_argument('-nois', '--no_outer_input_stop', action='store_true')
     parser.add_argument('-cms', '--cmd_max_steps', type=int, default=None)
     parser.add_argument('-sd', '--seed', type=int, default=None)
     parser.add_argument('-inp', '--infer_no_profile', action='store_true')
@@ -173,7 +174,6 @@ def run(args=None):
     Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
     Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
     DOF_NAMES = robot_def.get('DOF_NAMES', None)
-    DOF_PRESETS = robot_def.get('DOF_PRESETS', None)
     NUM_DOFS = robot_def.get('NUM_DOFS', None)
     DOF_MAPS = robot_def.get('DOF_MAPS', None)
     TAU_LIMIT = robot_def.get('TAU_LIMIT', None)
@@ -197,6 +197,18 @@ def run(args=None):
 
     dof_names = None
     default_dof_pos = None
+
+    dofs = args.dofs
+    if dofs is not None:
+        dofs = load_obj(dofs)
+        if isinstance(dofs, str):
+            pass
+        elif isinstance(dofs, (list, tuple)):
+            dof_names = dofs
+        else:
+            raise ValueError(f'invalid dofs {dofs}')
+
+    dof_names = DOF_NAMES if dof_names is None else dof_names
 
     env_cfg_path = args.env_cfg_path
     infer_load_run = args.infer_load_run
@@ -239,10 +251,10 @@ def run(args=None):
         env_cfg_env = env_cfg['env']
         num_acts = env_cfg_env['num_actions']
         num_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_observations'))
-        dof_names = env_cfg.get('dof_names')
-        if dof_names is None:
-            print('dof_names not found')
-            dof_names = DOF_NAMES
+        env_dof_names = env_cfg.get('dof_names')
+        print('env dof_names', env_dof_names)
+        if env_dof_names is not None:
+            dof_names = env_dof_names
         init_joint_angles = env_cfg['init_state']['default_joint_angles']
         default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
         ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
@@ -358,18 +370,6 @@ def run(args=None):
             'states_infer_obs': states_infer_obs,
         }
 
-    dofs = args.dofs
-    if dofs is not None:
-        dofs = load_obj(dofs)
-        if isinstance(dofs, str):
-            dof_names = DOF_PRESETS[dofs]
-        elif isinstance(dofs, (list, tuple)):
-            dof_names = dofs
-        else:
-            raise ValueError(f'invalid dofs {dofs}')
-
-    dof_names = DOF_NAMES if dof_names is None else dof_names
-
     dof_names_ori = dof_names[:]
     print('dof_names_ori', len(dof_names_ori), dof_names_ori)
 
@@ -414,16 +414,17 @@ def run(args=None):
     num_dofs = len(dof_map)
     assert num_dofs > 0
 
-    if default_dof_pos is not None:
-        q_reset[dof_map] = default_dof_pos[dof_src_map]
-    default_dof_pos = q_reset[dof_map] if default_dof_pos is None else default_dof_pos
-
     _dof_map = dof_map
     dof_map = list2slice(dof_map)
     dof_src_map = list2slice(dof_src_map)
     print('num_dofs', num_dofs)
     print('dof_map', dof_map)
     print('dof_src_map', dof_src_map)
+
+    if default_dof_pos is not None:
+        q_reset[dof_map] = default_dof_pos[dof_src_map]
+    default_dof_pos = q_reset[dof_map] if default_dof_pos is None else default_dof_pos
+
     print('default_dof_pos', default_dof_pos.tolist())
     print('q_reset', q_reset.tolist())
 
@@ -718,6 +719,9 @@ def run(args=None):
                         return ret
 
                     policy_fn = _policy_fn
+                elif policy_type == 'mem':
+                    policy_reset_fn = model.reset_memory
+                    policy_fn = model
 
             infer_kwds = load_obj(args.infer_kwargs or '') or {}
             cb_infer, reset_fn = cb_infer_cls(
@@ -1054,21 +1058,11 @@ def run(args=None):
         def cb_qtf_send():
             states_q_ctrl_sys[:] = states_q_ctrl * qtf_w + qtf_b
 
-    systems = {
-        k: False
-        for k in ['consys', 'mini', 'grx', 'fake', 'FFTAI', 'roslibpy', 'sims', 'a1', 'unitree', 'none', 'pnd']
-    }
+    systems = {k: False for k in ['fake', 'roslibpy', 'sims', 'none']}
     system_type = args.system
     system_type = {k[0]: k for k in systems.keys()}.get(system_type, system_type)
     print('system', system_type)
     systems[system_type] = True
-
-    fft_sys = any([systems[s] for s in ['consys', 'grx', 'FFTAI', 'mini']])
-    if fft_sys:
-        from unicon.utils.fftai import get_battery_level
-        bat = get_battery_level()
-        print('bat', bat)
-        saved_info['battery'] = bat
 
     sys_kwds = load_obj(args.system_kwargs or '') or {}
     sys_kwds['robot_def'] = robot_def
@@ -1097,33 +1091,6 @@ def run(args=None):
             kp=kp,
             kd=kd,
             dt=dt,
-            **sys_kwds,
-        )
-    elif systems['mini']:
-        from unicon.systems.mini import cb_mini_recv_send_close
-        cb_recv, cb_send, cb_close = cb_mini_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            kp=kp,
-            kd=kd,
-            q_ctrl_min=q_ctrl_min,
-            q_ctrl_max=q_ctrl_max,
-            clip_q_ctrl=sys_clip_q_ctrl,
-            **sys_kwds,
-        )
-    elif systems['FFTAI']:
-        from unicon.systems.fftai import cb_fftai_recv_send_close
-        cb_recv, cb_send, cb_close = cb_fftai_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            kp=kp,
-            kd=kd,
-            q_ctrl_min=q_ctrl_min,
-            q_ctrl_max=q_ctrl_max,
-            clip_q_ctrl=sys_clip_q_ctrl,
-            dof_map=dof_map,
             **sys_kwds,
         )
     elif systems['roslibpy']:
@@ -1215,45 +1182,6 @@ def run(args=None):
             **states_extras_sys,
             dof_names=sim_dof_names,
             sims_kwds=sims_kwds,
-            **sys_kwds,
-        )
-    elif systems['a1']:
-        from unicon.systems.a1 import cb_a1_recv_send_close
-        cb_recv, cb_send, cb_close = cb_a1_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            kp=kp,
-            kd=kd,
-            q_ctrl_min=q_ctrl_min,
-            q_ctrl_max=q_ctrl_max,
-            clip_q_ctrl=sys_clip_q_ctrl,
-            **sys_kwds,
-        )
-    elif systems['unitree']:
-        from unicon.systems.unitree import cb_unitree_recv_send_close
-        cb_recv, cb_send, cb_close = cb_unitree_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            kp=kp,
-            kd=kd,
-            q_ctrl_min=q_ctrl_min,
-            q_ctrl_max=q_ctrl_max,
-            clip_q_ctrl=sys_clip_q_ctrl,
-            **sys_kwds,
-        )
-    elif systems['pnd']:
-        from unicon.systems.pnd import cb_pnd_recv_send_close
-        cb_recv, cb_send, cb_close = cb_pnd_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            kp=kp,
-            kd=kd,
-            q_ctrl_min=q_ctrl_min,
-            q_ctrl_max=q_ctrl_max,
-            clip_q_ctrl=sys_clip_q_ctrl,
             **sys_kwds,
         )
     else:
@@ -1534,7 +1462,9 @@ def run(args=None):
             cb_input,
         ])
 
-    seq.append(cb_wait_input(states_input=states_input, keys=outer_stop_keys))
+    outer_input_stop = not args.no_outer_input_stop
+    if outer_input_stop:
+        seq.append(cb_wait_input(states_input=states_input, keys=outer_stop_keys))
 
     cmd = args.cmd
     if cmd and cmd != 'none':

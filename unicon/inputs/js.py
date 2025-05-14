@@ -8,6 +8,7 @@ def cb_input_js(
     min_num_buttons=2,
     blocking=False,
     dev_path='/dev/input',
+    z2r=True,
 ):
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     # Released by rdb under the Unlicense (unlicense.org)
@@ -69,6 +70,11 @@ def cb_input_js(
             1: 'ABS_Y',
             2: 'ABS_Z'
         }
+        if z2r:
+            axis_names.update({
+                2: 'ABS_RX',
+                5: 'ABS_RY',
+            })
         button_names = {
             256: ['BTN_0', 'BTN_MISC'],
             257: 'BTN_1',
@@ -196,13 +202,38 @@ def cb_input_js(
     if not blocking:
         os.set_blocking(jsdev.fileno(), False)
 
+    n_fails = 0
+    retry_intv = 100
+    retry_pt = 0
+
     def cb():
+        nonlocal jsdev, n_fails, retry_pt
+        if jsdev is None:
+            if retry_pt:
+                retry_pt -= 1
+                return
+            try:
+                jsdev = open(device, 'rb')
+                if not blocking:
+                    os.set_blocking(jsdev.fileno(), False)
+                print('jsdev reconnected', n_fails, device)
+            except Exception as e2:
+                n_fails += 1
+                print('jsdev reopen error', n_fails, device, e2)
+                jsdev = None
+                retry_pt = retry_intv
+                return
         while True:
             try:
                 evbuf = jsdev.read(8)
             except Exception as e:
-                print('jsdev error', e)
+                n_fails += 1
+                if n_fails < 50:
+                    print('jsdev error', n_fails, e)
+                else:
+                    jsdev = None
                 return
+            n_fails = 0
             if evbuf is None or not evbuf:
                 return
             time, value, typ, number = struct.unpack('IhBB', evbuf)

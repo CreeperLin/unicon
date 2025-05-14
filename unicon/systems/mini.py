@@ -138,8 +138,7 @@ def cb_mini_recv_send_close(
     motor_max_current=None,
     motor_max_acceleration=None,
     motor_max_speed=None,
-    # config=None,
-    config='config_n1.yaml',
+    config=None,
     # use_r=True,
     use_r=False,
     control_mode=4,
@@ -186,6 +185,9 @@ def cb_mini_recv_send_close(
         assert num_ips == len(fsa_ips), f'{num_ips} != {len(fsa_ips)} {set(fsa_ips_def) - set(fsa_ips)}'
 
     num_dofs = len(states_q_ctrl)
+    if config is None:
+        import os
+        config = os.path.join(os.environ['HOME'], 'fourier-grx/config/grmini1/config_GRMini1_T2_debug.yaml')
     if consys is None:
         consys = get_consys(servo_on=init_servo_on, config=config)
 

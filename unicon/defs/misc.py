@@ -9,6 +9,7 @@ hmn = {
 adam = {
     'NAME': 'adam',
     'URDF': 'adam/adam_lite/urdf/adam_lite_1_1.urdf',
+    # 'URDF': 'adam/adam_lite/urdf/adam_lite_1_2.urdf',
     'DOF_NAMES': [
         'hipPitch_Left',
         'hipRoll_Left',
@@ -293,45 +294,27 @@ s42 = s45.copy()
 s42['NAME'] = 's42'
 s42['URDF'] = 'biped_s42/urdf/biped_s42_1.urdf'
 
+from unicon.defs import n1
 grmini = dict(
     NAME='grmini',
-    DOF_NAMES=[
-        'left_hip_pitch_joint',
-        'left_hip_roll_joint',
-        'left_hip_yaw_joint',
-        'left_knee_pitch_joint',
-        'left_ankle_roll_joint',
-        'left_ankle_pitch_joint',
-        'right_hip_pitch_joint',
-        'right_hip_roll_joint',
-        'right_hip_yaw_joint',
-        'right_knee_pitch_joint',
-        'right_ankle_roll_joint',
-        'right_ankle_pitch_joint',
-        'waist_yaw_joint',
-        'left_shoulder_pitch_joint',
-        'left_shoulder_roll_joint',
-        'left_shoulder_yaw_joint',
-        'left_elbow_pitch_joint',
-        'left_wrist_yaw_joint',
-        'right_shoulder_pitch_joint',
-        'right_shoulder_roll_joint',
-        'right_shoulder_yaw_joint',
-        'right_elbow_pitch_joint',
-        'right_wrist_yaw_joint',
-    ],
-    KP=[
-        185.256, 114.209, 114.209, 185.256, 55.958, 55.958,  # left leg
-        185.256, 114.209, 114.209, 185.256, 55.958, 55.958,  # right leg
-        114.209,  # waist
-        114.209, 55.958, 55.958, 55.958, 55.958,  # left arm
-        114.209, 55.958, 55.958, 55.958, 55.958,  # right arm
-    ],
-    KD=[
-        9.2628, 5.71045, 5.71045, 9.2628, 2.7979, 2.7979,  # left leg
-        9.2628, 5.71045, 5.71045, 9.2628, 2.7979, 2.7979,  # right leg
-        5.71045,  # waist
-        5.71045, 2.7979, 2.7979, 2.7979, 2.7979,  # left arm
-        5.71045, 2.7979, 2.7979, 2.7979, 2.7979,  # right arm
-    ]
+    DOF_NAMES=n1.DOF_NAMES,
+    DOF_NAMES_STD=n1.DOF_NAMES_STD,
+    KP=n1.KP,
+    KD=n1.KD,
+    NUM_DOFS=n1.NUM_DOFS,
+    URDF='GRMini1T1/urdf/GRMini1T1_full.urdf',
 )
+
+# from unicon.defs import g1
+# g1d23 = dict(
+#     NAME='g1d23',
+#     URDF='g1_description/g1_23dof_rev_1_0.urdf',
+#     KP=g1.KP,
+#     KD=g1.KD,
+#     Q_CTRL_MIN=g1.Q_CTRL_MIN,
+#     Q_CTRL_MAX=g1.Q_CTRL_MAX,
+#     QD_LIMIT=g1.QD_LIMIT,
+#     TAU_LIMIT=g1.TAU_LIMIT,
+#     DOF_NAMES=g1.DOF_NAMES,
+#     DOF_NAMES_STD=g1.DOF_NAMES_STD,
+# )

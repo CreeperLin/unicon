@@ -1,7 +1,7 @@
 # yapf: disable
 import numpy as np
 
-
+NAME = 'n1'
 KP = [
     185.256, 114.209, 114.209, 185.256, 55.958, 55.958,  # left leg
     185.256, 114.209, 114.209, 185.256, 55.958, 55.958,  # right leg
@@ -99,7 +99,31 @@ DOF_NAMES = [
     'right_elbow_pitch_joint',
     'right_wrist_yaw_joint',
 ]
-
+DOF_NAMES_STD = {
+    'left_hip_pitch_joint': 'left_hip_pitch',
+    'left_hip_roll_joint': 'left_hip_roll',
+    'left_hip_yaw_joint': 'left_hip_yaw',
+    'left_knee_pitch_joint': 'left_knee_pitch',
+    'left_ankle_roll_joint': 'left_ankle_roll',
+    'left_ankle_pitch_joint': 'left_ankle_pitch',
+    'right_hip_pitch_joint': 'right_hip_pitch',
+    'right_hip_roll_joint': 'right_hip_roll',
+    'right_hip_yaw_joint': 'right_hip_yaw',
+    'right_knee_pitch_joint': 'right_knee_pitch',
+    'right_ankle_roll_joint': 'right_ankle_roll',
+    'right_ankle_pitch_joint': 'right_ankle_pitch',
+    'waist_yaw_joint': 'waist_yaw',
+    'left_shoulder_pitch_joint': 'left_shoulder_pitch',
+    'left_shoulder_roll_joint': 'left_shoulder_roll',
+    'left_shoulder_yaw_joint': 'left_shoulder_yaw',
+    'left_elbow_pitch_joint': 'left_elbow_pitch',
+    'left_wrist_yaw_joint': 'left_wrist_yaw',
+    'right_shoulder_pitch_joint': 'right_shoulder_pitch',
+    'right_shoulder_roll_joint': 'right_shoulder_roll',
+    'right_shoulder_yaw_joint': 'right_shoulder_yaw',
+    'right_elbow_pitch_joint': 'right_elbow_pitch',
+    'right_wrist_yaw_joint': 'right_wrist_yaw',
+}
 Q_CTRL_MIN = np.array(Q_CTRL_MIN)
 Q_CTRL_MAX = np.array(Q_CTRL_MAX)
 QD_LIMIT = np.array(QD_LIMIT)
@@ -113,25 +137,8 @@ DOF_MAPS = {
     'legs': range(0, 12),
 }
 
-DOF_PRESETS = {
-    'lower': [
-        'left_hip_pitch_joint',
-        'left_hip_roll_joint',
-        'left_hip_yaw_joint',
-        'left_knee_pitch_joint',
-        'left_ankle_roll_joint',
-        'left_ankle_pitch_joint',
-        'right_hip_pitch_joint',
-        'right_hip_roll_joint',
-        'right_hip_yaw_joint',
-        'right_knee_pitch_joint',
-        'right_ankle_roll_joint',
-        'right_ankle_pitch_joint',
-    ],
-}
-
-URDF = 'GRMini1T1/urdf/GRMini1T1_full.urdf'
 # URDF = 'N1/urdf/N1_raw.urdf'
+URDF = 'N1/urdf/N1_raw_1.urdf'
 
 FSA_IPS = [
     # left leg
