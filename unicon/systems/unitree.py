@@ -62,9 +62,7 @@ def cb_unitree_recv_send_close(
         low_cmd_def_cls = unitree_hg_msg_dds__LowCmd_
 
     import struct
-    if input_keys is None:
-        from unicon.inputs import _default_input_keys
-        input_keys = _default_input_keys
+    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     key_mapping = {
         'ABS_X': 'lx',
         'ABS_Y': 'ly',
@@ -76,10 +74,15 @@ def cb_unitree_recv_send_close(
         'BTN_Y': 'Y',
         'BTN_TL': 'L1',
         'BTN_TR': 'R1',
+        'ABS_HAT0Y-': 'up',
+        'ABS_HAT0X+': 'right',
+        'ABS_HAT0Y+': 'down',
+        'ABS_HAT0X-': 'left',
     }
     mapped_keys = [key_mapping.get(k) for k in input_keys]
     mapped = [k is not None for k in mapped_keys]
     mapped_keys = [k for k in mapped_keys if k is not None]
+    print('input_keys', input_keys, mapped_keys)
 
     ChannelFactoryInitialize(networkInterface=network_interface,)
     pub = ChannelPublisher(lowcmd_topic, low_cmd_cls)
@@ -166,6 +169,7 @@ def cb_unitree_recv_send_close(
     def input_fn():
         rem = bytearray(state.wireless_remote)
         unpacked_data = struct.unpack('<2B H 5f 16B', rem)
+        # print('unpacked_data', unpacked_data)
 
         lx = unpacked_data[3]
         ly = unpacked_data[7]
@@ -173,12 +177,17 @@ def cb_unitree_recv_send_close(
         ry = unpacked_data[5]
 
         value = unpacked_data[2]
-        inputs = dict(lx=lx, rx=rx, ry=-ry, ly=-ly)
+        states = dict(lx=lx, rx=rx, ry=-ry, ly=-ly)
         for i, k in enumerate(state_rem_keys):
-            inputs[k] = (value & (1 << i)) >> i
-        # print(inputs)
-        vals = list(map(inputs.get, mapped_keys))
+            states[k] = (value & (1 << i)) >> i
+        # print('states', states)
+        vals = list(map(states.get, mapped_keys))
         states_input[mapped] = vals
+        for i, k in enumerate(input_keys):
+            if k.startswith('ABS_HAT'):
+                neg = states.get(key_mapping[k + '-'], 0)
+                pos = states.get(key_mapping[k + '+'], 0)
+                states_input[i] = -neg + pos
 
     def cb_recv():
         nonlocal state

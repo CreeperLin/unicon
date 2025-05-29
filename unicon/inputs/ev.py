@@ -8,6 +8,7 @@ def cb_input_ev(
     remap_pedals=True,
     abs_type=0,
     dev_path='/dev/input',
+    z2r=True,
 ):
     import os
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
@@ -31,9 +32,14 @@ def cb_input_ev(
     kbs.update(evdev.ecodes.BTN)
     kbs.update(evdev.ecodes.KEY)
 
+    ecodes_abs = evdev.ecodes.ABS.copy()
+    if z2r:
+        ecodes_abs[2] = ['ABS_Z', 'ABS_RX']
+        ecodes_abs[5] = ['ABS_RZ', 'ABS_RY']
+
     code_maps = {
         evdev.ecodes.EV_KEY: kbs,
-        evdev.ecodes.EV_ABS: evdev.ecodes.ABS,
+        evdev.ecodes.EV_ABS: ecodes_abs,
         evdev.ecodes.EV_REL: evdev.ecodes.REL,
         evdev.ecodes.EV_MSC: evdev.ecodes.MSC,
     }
@@ -74,6 +80,7 @@ def cb_input_ev(
                     input_states[c] = evalue
                 if verbose:
                     print(evdev.ecodes.EV[etype], cds, evalue)
+            # print('input_states', input_states)
             for i, k in enumerate(input_keys):
                 v = input_states.get(k)
                 if remap_pedals and k in ['ABS_GAS', 'ABS_BRAKE']:
@@ -83,6 +90,8 @@ def cb_input_ev(
                         v = 0 if v is None else v / 32767.0
                     else:
                         v = 0 if v is None else v / 255
+                elif k.startswith('ABS_HAT'):
+                    v = 0 if v is None else v
                 elif k.startswith('ABS'):
                     if v is not None and v > 256:
                         abs_type = 1
@@ -102,8 +111,5 @@ def cb_input_ev(
 
 
 if __name__ == '__main__':
-    import numpy as np
-    states_input = np.zeros(7)
-    cb = cb_input_ev(states_input, verbose=True)
-    while True:
-        cb()
+    from unicon.inputs import test_cb_input
+    test_cb_input(cb_input_ev)

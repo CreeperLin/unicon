@@ -30,6 +30,10 @@ def cb_input_term(
         '6': 'BTN_B',
         't': 'BTN_X',
         'y': 'BTN_Y',
+        'n': 'ABS_HAT0X+',
+        'v': 'ABS_HAT0X-',
+        'b': 'ABS_HAT0Y+',
+        'g': 'ABS_HAT0Y-',
     }
     fd = sys.stdin.fileno()
 
@@ -111,9 +115,5 @@ def cb_input_term(
 
 
 if __name__ == '__main__':
-    import numpy as np
-    import time
-    cb = cb_input_term(np.zeros(8), verbose=True)
-    for i in range(1000):
-        cb()
-        time.sleep(0.02)
+    from unicon.inputs import test_cb_input
+    test_cb_input(cb_input_term)

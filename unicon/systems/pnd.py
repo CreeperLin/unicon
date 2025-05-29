@@ -14,7 +14,9 @@ def cb_pnd_recv_send_close(
     input_keys=None,
     # joint_pd_config=None,
     joint_pd_config=True,
-    err_exit=False,
+    # err_exit=False,
+    err_exit=True,
+    compute_quat=False,
     **states,
 ):
     import os
@@ -22,6 +24,13 @@ def cb_pnd_recv_send_close(
     import numpy as np
     import pnd_py
     import subprocess
+    import requests
+
+    power_info = requests.get('http://localhost:8086/table_refresh').json()
+    print('power_info', power_info)
+    assert power_info['bt_capacity'] > 20
+
+    from unicon.utils import rpy2quat_np
 
     abs_json_path = 'abs.json'
     lib_path = pnd_py.__file__
@@ -99,6 +108,8 @@ def cb_pnd_recv_send_close(
         _kp = kp.copy()
         _kd = kd.copy()
 
+    _kp[joint_names.index('ankleRoll_Right')] = 0.
+    _kp[joint_names.index('ankleRoll_Left')] = 0.
     print('kp', _kp)
     print('kd', _kd)
     if _kp is not None:
@@ -113,7 +124,9 @@ def cb_pnd_recv_send_close(
         r.getState(0, d)
         # print(d.imu_data_)
         states_rpy[:] = d.imu_data_[[2, 1, 0]]
-        states_quat[:] = 0
+        # states_quat[:] = 0
+        if compute_quat:
+            states_quat[:] = rpy2quat_np(states_rpy)
         states_ang_vel[:] = d.imu_data_[[3, 4, 5]]
         states_q[:] = d.q_a_[-num_dofs:]
         states_qd[:] = d.q_dot_a_[-num_dofs:]

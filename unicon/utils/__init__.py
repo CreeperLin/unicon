@@ -8,17 +8,22 @@ from threading import Event
 _default_time_fn = time.perf_counter
 
 
-def find(root='.', name=None):
+def find(root='.', name=None, wholename=None, follow_links=True):
     if root == '~':
         root = os.environ["HOME"]
     import subprocess
     PIPE = subprocess.PIPE
     args = [
         'find',
-        root,
     ]
+    if follow_links:
+        args.append('-L')
+    args.append(root)
     if name is not None:
         args.extend(['-name', name])
+    if wholename is not None:
+        args.extend(['-wholename', wholename])
+    print(' '.join(args))
     res = subprocess.run(args, stdout=PIPE)
     out = res.stdout.decode()
     if not len(out):
@@ -213,10 +218,25 @@ def states_ts2dt(states_and_ts=None, states=None, tss=None, dt=0.02):
     return states_new
 
 
+def get_min_z(topo, base_link_name):
+
+    def dfs(link_name, cur_z: float = 0):
+        min_z = cur_z
+        joints = topo[link_name]
+        for joint in joints:
+            origin = joint.origin
+            joint_z = 0 if origin is None else origin[2, 3]
+            # print(link_name, joint.name, cur_z, joint_z, min_z)
+            min_z = min(min_z, dfs(joint.child, cur_z + joint_z))
+        return min_z
+
+    return dfs(base_link_name)
+
+
 def parse_urdf(
     urdf_path,
-    default_kp=40.1,
-    default_kd=2.1,
+    default_kp=43.2,
+    default_kd=4.2,
     default_q_min=-np.pi,
     default_q_max=np.pi,
     default_tau_limit=1000.,
@@ -232,8 +252,15 @@ def parse_urdf(
         urdf = URDF.load(urdf_path, load_meshes=False, build_scene_graph=False)
     else:
         urdf = URDF.from_xml_file(urdf_path)
-    # links = urdf.robot.links
+    links = urdf.robot.links
     joints = urdf.robot.joints
+    from collections import defaultdict
+    topo = defaultdict(list)
+    for j in joints:
+        topo[j.parent].append(j)
+    base_link_name = links[0].name
+    min_z = get_min_z(topo, base_link_name)
+    print('min_z', min_z)
     joints = [j for j in joints if j.type != 'fixed']
     dof_names = [j.name for j in joints]
     joint_limits = [j.limit for j in joints]
@@ -246,8 +273,6 @@ def parse_urdf(
     qd_limit = [(default_qd_limit if m is None else m.velocity) for m in joint_limits]
     damping = [(0 if d is None else d.damping) for d in joint_dynamics]
     friction = [(0 if d is None else d.friction) for d in joint_dynamics]
-    kps = [default_kp] * len(joints)
-    kds = [default_kd] * len(joints)
     num_dofs = len(dof_names)
     print('dof_names', num_dofs, dof_names)
     print('q_min', np.round(np.array(q_min), 2).tolist())
@@ -260,8 +285,8 @@ def parse_urdf(
     qd_limit = {k: v for k, v in zip(dof_names, qd_limit)}
     damping = {k: v for k, v in zip(dof_names, damping)}
     friction = {k: v for k, v in zip(dof_names, friction)}
-    kps = {k: v for k, v in zip(dof_names, kps)}
-    kds = {k: v for k, v in zip(dof_names, kds)}
+    kps = {'*': default_kp}
+    kds = {'*': default_kd}
     robot_def = {
         'NUM_DOFS': num_dofs,
         'DOF_NAMES': dof_names,
@@ -273,6 +298,7 @@ def parse_urdf(
         'KD': kds,
         'Q_DAMPING': damping,
         'Q_FRICTION': friction,
+        'INIT_Z': -min_z + 0.2,
     }
     return robot_def
 
@@ -280,6 +306,7 @@ def parse_urdf(
 def parse_robot_def(robot_def):
     if not isinstance(robot_def, dict):
         robot_def = {k: v for k, v in vars(robot_def).items() if k.isupper()}
+    print('robot_def', robot_def.keys())
     urdf_path = robot_def.get('URDF')
     mjcf_path = robot_def.get('MJCF')
     _default_asset_dir = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
@@ -325,7 +352,7 @@ def parse_robot_def(robot_def):
         if isinstance(v, (float, int)):
             v = [v] * num_dofs
         if isinstance(v, dict):
-            v = [v.get(n, ([vv for kk, vv in v.items() if kk in n] or [0])[0]) for n in dof_names]
+            v = [v.get(n, ([vv for kk, vv in v.items() if kk in n] or [v.get('*', 0.)])[0]) for n in dof_names]
         robot_def[k] = v
 
     def is_num_list(x):
@@ -1010,6 +1037,11 @@ UPDATE_RET_DEL = '__update_ret_del__'
 def obj_update(obj, updates, verbose=True):
     if not isinstance(updates, dict):
         return updates
+    obj_indexed = isinstance(obj, (list, tuple)) or hasattr(obj, 'tolist')
+    obj_keyed = isinstance(obj, dict)
+    upd_indexed = all(map(lambda x: isinstance(x, int), updates))
+    if upd_indexed and not obj_indexed:
+        return updates
     for key, val in updates.items():
         if isinstance(key, str) and key.startswith(UPDATE_PREFIX):
             fn = key.split(':')[1]
@@ -1017,9 +1049,9 @@ def obj_update(obj, updates, verbose=True):
                 print('update', type(obj), fn)
             getattr(obj, fn)(*val)
             continue
-        if isinstance(obj, dict):
+        if obj_keyed:
             src = obj.get(key, None)
-        elif isinstance(obj, (list, tuple)):
+        elif obj_indexed:
             src = obj[key]
         else:
             src = getattr(obj, key, None)
@@ -1035,7 +1067,7 @@ def obj_update(obj, updates, verbose=True):
             else:
                 delattr(obj, key)
         else:
-            if isinstance(obj, (dict, list, tuple)):
+            if obj_keyed or obj_indexed:
                 obj[key] = ret
             else:
                 setattr(obj, key, ret)

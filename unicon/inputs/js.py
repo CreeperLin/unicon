@@ -263,11 +263,5 @@ def cb_input_js(
 
 
 if __name__ == '__main__':
-    import time
-    import numpy as np
-    states_input = np.zeros(8)
-    cb = cb_input_js(states_input, verbose=True)
-    while True:
-        cb()
-        print('cb')
-        time.sleep(0.02)
+    from unicon.inputs import test_cb_input
+    test_cb_input(cb_input_js)

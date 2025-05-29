@@ -16,35 +16,38 @@ def cb_infer_gr1(
     up_axis_idx=2,
     device='cpu',
     dtype=None,
-    use_rpy=True,
+    use_rpy=None,
     flatten_hist=True,
     # flatten_hist=False,
     retained_obs=True,
     observe_gait_commands=None,
-    enable_gait_idx=False,
+    enable_gait_modes=None,
     adaptive_gait_frequency=None,
     stack_history_obs=None,
     flatten_obs=False,
-    gait_alt0=False,
+    # gait_alt0=False,
+    gait_alt0=True,
     dof_names=None,
     robot_def=None,
+    gravity_from_rpy=True,
 ):
     import torch
     import numpy as np
     from unicon.utils.torch import to_tensor
-    from unicon.utils import get_axis_params, quat_rotate_inverse_np
+    from unicon.utils import get_axis_params, quat_rotate_inverse_np, rpy2mat_np
     dtype = torch.float if dtype is None else dtype
     np_dtype = np.float32
-    use_rpy = env_cfg.get('use_rpy', use_rpy)
+    use_rpy = env_cfg.get('use_rpy', True) if use_rpy is None else use_rpy
     flatten_hist = env_cfg['env'].get('flatten_hist', flatten_hist)
     print('use_rpy', use_rpy)
+    print('gravity_from_rpy', gravity_from_rpy)
     print('flatten_hist', flatten_hist)
     num_actions = env_cfg['env']['num_actions']
-    if 'mix' in env_cfg.get('argv', []):
+    if any(['mix' in x for x in env_cfg.get('argv', [])]):
         NAME = robot_def['NAME']
         NAME = 's42' if NAME == 's45' else NAME
-        params = env_cfg['robot_params'][NAME]
-        init_joint_angles = params['default_joint_angles']
+        params = env_cfg['robot_params'].get(NAME, {})
+        init_joint_angles = params.get('default_joint_angles', {})
         print('mix env', NAME, init_joint_angles)
     else:
         init_joint_angles = env_cfg['init_state']['default_joint_angles']
@@ -86,28 +89,36 @@ def cb_infer_gr1(
     ]
     cmd_frequency = 1.2
     cmd_phase = 0.5
-    if env_cfg['env'].get('observe_frequency', True):
+    env_cfg_env = env_cfg['env']
+    observe_frequency = env_cfg_env.get('observe_frequency', True)
+    observe_phase = env_cfg_env.get('observe_phase', True)
+    observe_duration = env_cfg_env.get('observe_duration', True)
+    observe_foot_height = env_cfg_env.get('observe_foot_height', True)
+    observe_body_height = env_cfg_env.get('observe_body_height',)
+    observe_body_pitch = env_cfg_env.get('observe_body_pitch',)
+    observe_waist_roll = env_cfg_env.get('observe_waist_roll',)
+    if observe_frequency:
         cmds_scale.append(obs_scales['gait_freq_cmd'])
         cmd_frequency = 1.2
         default_commands.append(cmd_frequency)
-    if env_cfg['env'].get('observe_phase', True):
+    if observe_phase:
         cmds_scale.append(obs_scales['gait_phase_cmd'])
         cmd_phase = 0.5
         default_commands.append(cmd_phase)
-    if env_cfg['env'].get('observe_duration', True):
+    if observe_duration:
         cmds_scale.append(obs_scales.get('gait_duration_cmd', gait_phase_cmd))
         default_commands.append(0.5)
-    if env_cfg['env'].get('observe_foot_height', True):
+    if observe_foot_height:
         cmds_scale.append(obs_scales['footswing_height_cmd'])
         default_commands.append(0.12)
-    if env_cfg['env'].get('observe_body_height'):
+    if observe_body_height:
         cmds_scale.append(obs_scales['body_height_cmd'])  # Body Height Cmd (1 dim)
         default_commands.append(0.)
         # default_commands.append(0.1)
-    if env_cfg['env'].get('observe_body_pitch'):
+    if observe_body_pitch:
         cmds_scale.append(obs_scales['body_pitch_cmd'])  # Body Pitch Cmd (1 dim)
         default_commands.append(0.)
-    if env_cfg['env'].get('observe_waist_roll'):
+    if observe_waist_roll:
         cmds_scale.append(obs_scales['waist_roll_cmd'])  # Waist Roll (1 dim)
         default_commands.append(0.)
     if env_cfg['env'].get('interrupt_in_cmd'):
@@ -159,23 +170,25 @@ def cb_infer_gr1(
     dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
     print('dt', dt)
 
+    print(env_cfg['commands'])
+    num_commands = env_cfg['commands'].get('num_commands', 7)
+    num_commands = max(num_commands, 5)
+    print('num_commands', num_commands)
     num_cmds = len(states_cmd)
+    enable_gait_modes = (num_cmds == num_commands + 1) if enable_gait_modes is None else enable_gait_modes
+    print('enable_gait_modes', enable_gait_modes)
 
     if observe_gait_commands:
-        print(env_cfg['commands'])
-        num_commands = env_cfg['commands'].get('num_commands', 7)
-        num_commands = max(num_commands, 5)
-        print('num_commands', num_commands)
         commands = np.zeros(num_commands, dtype=np_dtype)
-        if enable_gait_idx:
+        if enable_gait_modes:
             keys = [
                 None,
                 None,
                 None,
-                'gait_frequency',
-                'phase',
+                'gait_frequency' if observe_frequency else None,
+                'phase' if observe_phase else None,
                 None,
-                'foot_swing_height',
+                'foot_swing_height' if observe_foot_height else None,
             ]
             for i, k in enumerate(keys):
                 if k is None:
@@ -188,14 +201,14 @@ def cb_infer_gr1(
         commands[:num_commands] = default_commands[:num_commands]
         gait_indices = np.zeros(1)
         print('commands', commands)
-        if num_cmds == num_commands:
+        if num_cmds == num_commands + (1 if enable_gait_modes else 0):
             print('using states_cmd')
             commands = states_cmd
     elif use_clock:
         gait_time = 0
     # import time
 
-    if enable_gait_idx:
+    if enable_gait_modes:
         clock_scale, last_gait, jump_switching = 0, 0, 0
 
     def step_fn():
@@ -209,8 +222,11 @@ def cb_infer_gr1(
         if use_rpy:
             rot_info = [states_rpy[:2], [0]]
         else:
-            quat = states_quat
-            projected_gravity = quat_rotate_inverse_np(quat, gravity_vec)
+            if gravity_from_rpy:
+                mat = rpy2mat_np(states_rpy)
+                projected_gravity = mat.T @ gravity_vec
+            else:
+                projected_gravity = quat_rotate_inverse_np(states_quat, gravity_vec)
             rot_info = [projected_gravity]
         # actions = np.array(last_actions)
         # actions = last_actions.numpy()
@@ -231,14 +247,16 @@ def cb_infer_gr1(
             # durations = commands[:, 5]
             gait_indices = np.modf(gait_indices + dt * frequencies)[0]
             # print(gait_indices)
-            if enable_gait_idx:
+            if enable_gait_modes:
                 gait_idx = states_cmd[-1]
                 nonlocal clock_scale, last_gait, jump_switching
                 if gait_idx == 0:  # Standing
                     clock_scale = max(0, clock_scale - 0.1)
                 else:  # Non-Standing
                     clock_scale = min(1, clock_scale + 0.1)
-                if gait_idx == 1:
+                # if gait_idx == 1:
+                # phases = cmd_phase
+                if gait_idx == 2:
                     phases = 0
                 left_phase, right_phase = [gait_indices + phases, gait_indices + 0]
                 if gait_idx != 3 and gait_idx != 4:
@@ -259,8 +277,9 @@ def cb_infer_gr1(
                 foot_phases = [clock_scale * left_phase, clock_scale * right_phase]
             else:
                 foot_phases = [gait_indices + phases, gait_indices]
-            if enable_gait_idx and gait_idx == 0 and gait_alt0:
-                clock_inputs = [np.sin([x]) for x in [1, 1]]
+            if enable_gait_modes and gait_idx == 0 and gait_alt0:
+                # clock_inputs = [np.sin([x]) for x in [1, 1]]
+                clock_inputs = [[1., 1.]]
             else:
                 clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
 

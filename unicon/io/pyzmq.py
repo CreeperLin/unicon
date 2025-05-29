@@ -1,5 +1,9 @@
 import os
 
+BUF_SIZE = 128
+RCVHWM = 32
+SNDHWM = 32
+
 
 def dump_json(states):
     import json
@@ -19,9 +23,10 @@ def cb_send_pyzmq(keys=None, port=1337, host='*', robot_def=None, **states):
     dump_fn = dump_json
     context = zmq.Context()
     pub = context.socket(zmq.PUB)
-    pub.setsockopt(zmq.CONFLATE, 1)
-    # pub.setsockopt(zmq.SNDHWM, 2)
-    # pub.setsockopt(zmq.SNDBUF, 2*1024)  # See: http://api.zeromq.org/4-2:zmq-setsockopt
+    # pub.setsockopt(zmq.CONFLATE, 1)
+    pub.setsockopt(zmq.SNDHWM, SNDHWM)
+    # See: http://api.zeromq.org/4-2:zmq-setsockopt
+    # pub.setsockopt(zmq.SNDBUF, BUF_SIZE)
     addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
     print('pyzmq', addr, keys)
     pub.bind(addr)
@@ -45,9 +50,9 @@ def cb_recv_pyzmq(keys=None, port=1337, host='localhost', robot_def=None, **stat
     import zmq
     context = zmq.Context()
     sub = context.socket(zmq.SUB)
-    # sub.setsockopt(zmq.RCVHWM, 2)
-    sub.setsockopt(zmq.CONFLATE, 1)
-    # sub.setsockopt(zmq.RCVBUF, 2*1024)
+    sub.setsockopt(zmq.RCVHWM, RCVHWM)
+    # sub.setsockopt(zmq.CONFLATE, 1)
+    # sub.setsockopt(zmq.RCVBUF, BUF_SIZE)
     addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
     print('pyzmq', addr, keys)
     sub.connect(addr)

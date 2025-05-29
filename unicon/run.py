@@ -64,7 +64,8 @@ def get_args():
     parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
     parser.add_argument('-ssh', '--sims_headless', action='store_true')
     parser.add_argument('-ssfb', '--sims_fixed_base', action='store_true')
-    parser.add_argument('-ssiz', '--sims_init_z', type=float, default=1.)
+    parser.add_argument('-ssdc', '--sims_decimation', type=int, default=20)
+    parser.add_argument('-ssiz', '--sims_init_z', type=float, default=None)
     parser.add_argument('-ssct', '--sims_compute_torque', action='store_true')
     parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
     parser.add_argument('-skwds', '--system_kwargs', default=None)
@@ -75,7 +76,7 @@ def get_args():
     parser.add_argument('-lrpt', '--lerp_time', type=float, default=5)
     parser.add_argument('-shm', '--shm', action='store_true')
     parser.add_argument('-shmc', '--shm_clear', action='store_true')
-    parser.add_argument('-rt', '--robot_type', default='gr1t2')
+    parser.add_argument('-rt', '--robot_type', default='none')
     parser.add_argument('-vr', '--verify_recv', action='store_true')
     parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
     parser.add_argument('-ff', '--fast', action='store_true')
@@ -167,20 +168,24 @@ def run(args=None):
         set_seed(args.seed)
 
     robot_type = args.robot_type
-    robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
-    robot_def = parse_robot_def(robot_def)
-    KP = robot_def.get('KP', None)
-    KD = robot_def.get('KD', None)
+    if robot_type == 'none':
+        robot_def = {}
+    else:
+        robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
+        robot_def = parse_robot_def(robot_def)
+    KP = robot_def.get('KP', [])
+    KD = robot_def.get('KD', [])
     Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
     Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
-    DOF_NAMES = robot_def.get('DOF_NAMES', None)
-    NUM_DOFS = robot_def.get('NUM_DOFS', None)
+    DOF_NAMES = robot_def.get('DOF_NAMES', [])
+    NUM_DOFS = robot_def.get('NUM_DOFS', 0)
     DOF_MAPS = robot_def.get('DOF_MAPS', None)
     TAU_LIMIT = robot_def.get('TAU_LIMIT', None)
     QD_LIMIT = robot_def.get('QD_LIMIT', None)
     Q_BOOT = robot_def.get('Q_BOOT', None)
     Q_RESET = robot_def.get('Q_RESET', None)
     DOF_NAMES_2 = robot_def.get('DOF_NAMES_2', None)
+    DOF_NAMES_STD = robot_def.get('DOF_NAMES_STD', None)
 
     if args.no_q_boot:
         Q_BOOT = None
@@ -214,19 +219,26 @@ def run(args=None):
     infer_load_run = args.infer_load_run
     infer_model_path = args.infer_model_path
     if infer_load_run is not None:
-        _default_infer_root = f'{os.environ["HOME"]}/GitRepo/GR1/logs/'
-        _default_infer_root = os.environ.get('UNICON_INFER_ROOT', _default_infer_root)
-        root = os.path.join(_default_infer_root, infer_load_run)
-        model_file_pat = 'policy_1.pt'
+        _default_infer_root = os.environ.get('UNICON_INFER_ROOT')
+        if _default_infer_root is None:
+            from unicon.utils import find
+            root = find(root='..', wholename=f'*{infer_load_run}')[0]
+            assert root is not None
+        else:
+            root = os.path.join(_default_infer_root, infer_load_run)
+        print('infer root', root)
+        model_file_pats = ['policy', 'trace']
         model_file = None
         for r, _, fs in os.walk(root):
             for f in fs:
-                if model_file_pat in f:
+                if any([p in f for p in model_file_pats]):
                     model_file = os.path.join(r, f)
                     break
+        print('model_file', model_file)
         if model_file is None:
             raise ValueError('model_file not found')
-        infer_model_path = os.path.join(root, model_file)
+        # infer_model_path = os.path.join(root, model_file)
+        infer_model_path = model_file
         from unicon.utils import md5sum
         infer_model_md5sum = md5sum(infer_model_path)
         saved_info['infer_model_md5sum'] = infer_model_md5sum
@@ -237,6 +249,8 @@ def run(args=None):
             if os.path.exists(env_cfg_path):
                 break
 
+    sim_kps = None
+    sim_kds = None
     env_cfg = None
     env_cfg_args = None
     if env_cfg_path is not None and os.path.exists(env_cfg_path):
@@ -256,7 +270,18 @@ def run(args=None):
         if env_dof_names is not None:
             dof_names = env_dof_names
         init_joint_angles = env_cfg['init_state']['default_joint_angles']
-        default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
+        sim_kps = env_cfg['control']['stiffness']
+        sim_kds = env_cfg['control']['damping']
+        sim_torque_limits = env_cfg['control'].get('torque_limits', None)
+        if any(['mix' in x for x in env_cfg.get('argv', [])]):
+            NAME = robot_def['NAME']
+            NAME = 's42' if NAME == 's45' else NAME
+            params = env_cfg['robot_params'].get(NAME, {})
+            init_joint_angles = params.get('default_joint_angles', {})
+            print('mix env', NAME, init_joint_angles)
+            sim_kps = params.get('stiffness', sim_kps)
+            sim_kds = params.get('damping', sim_kds)
+            sim_torque_limits = params.get('torque_limits', sim_torque_limits)
         ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
         env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
         print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
@@ -315,8 +340,9 @@ def run(args=None):
     shm_clear = args.shm_clear
     use_shm = args.shm or shm_clear
     load = use_shm and not shm_clear
+    save = use_shm
     reuse = True
-    states_init(use_shm=use_shm, load=load, reuse=reuse, clear=shm_clear)
+    states_init(use_shm=use_shm, save=save, load=load, reuse=reuse, clear=shm_clear)
 
     proc = None
 
@@ -390,8 +416,7 @@ def run(args=None):
         dof_names = [remap.get(n, n) for n in dof_names]
 
     if args.dof_names_std:
-        dof_names_std = robot_def['DOF_NAMES_STD']
-        dof_names_std_rev = {v: k for k, v in dof_names_std.items()}
+        dof_names_std_rev = {v: k for k, v in DOF_NAMES_STD.items()}
         dof_names = [dof_names_std_rev.get(n, n) for n in dof_names]
 
     dof_names_map = {k: nk for k, nk in zip(dof_names_ori, dof_names)}
@@ -412,7 +437,7 @@ def run(args=None):
         dof_map = [DOF_NAMES.index(n) for n in dof_names]
         dof_map_padded = dof_map
     num_dofs = len(dof_map)
-    assert num_dofs > 0
+    assert NUM_DOFS == 0 or num_dofs > 0
 
     _dof_map = dof_map
     dof_map = list2slice(dof_map)
@@ -421,6 +446,8 @@ def run(args=None):
     print('dof_map', dof_map)
     print('dof_src_map', dof_src_map)
 
+    if env_cfg is not None:
+        default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
     if default_dof_pos is not None:
         q_reset[dof_map] = default_dof_pos[dof_src_map]
     default_dof_pos = q_reset[dof_map] if default_dof_pos is None else default_dof_pos
@@ -957,16 +984,10 @@ def run(args=None):
     kd_r = args.kd_ratio
     print('kp_r', kp_r)
     print('kd_r', kd_r)
-    tau_limits = TAU_LIMIT.copy()
     kp = KP.copy()
     kd = KD.copy()
-    sim_kps = None
-    sim_kds = None
     use_sim_pd = args.use_sim_pd
     if env_cfg is not None and use_sim_pd:
-        sim_kps = env_cfg['control']['stiffness']
-        sim_kds = env_cfg['control']['damping']
-        sim_torque_limits = env_cfg['control'].get('torque_limits', None)
         nxs = []
         for x in [sim_kps, sim_kds, sim_torque_limits]:
             if x is None:
@@ -989,10 +1010,9 @@ def run(args=None):
     for x, ax in [[kp, args_kp], [kd, args_kd]]:
         if ax is not None:
             ax = load_obj(ax)
-        print(ax)
         if isinstance(ax, dict):
             for k, v in ax.items():
-                inds = match_keys(k, dof_names)
+                inds = match_keys(k, DOF_NAMES)
                 x[inds] = v
         elif isinstance(ax, list):
             x[:] = ax
@@ -1001,8 +1021,8 @@ def run(args=None):
         kd = kd if isinstance(kd, np.ndarray) else np.array(kd, dtype=np.float64)
         kp[:] *= kp_r
         kd[:] *= kd_r
-        print('kp', pp_arr(kp))
-        print('kd', pp_arr(kd))
+    print('kp', kp if kp is None else pp_arr(kp))
+    print('kd', kd if kd is None else pp_arr(kd))
     saved_info['kp'] = kp
     saved_info['kd'] = kd
 
@@ -1105,12 +1125,14 @@ def run(args=None):
         sims_config = args.sims_config
         if sims_config is None:
             sims_type = args.sims_type
-            init_z = args.sims_init_z
+            init_z = robot_def.get('INIT_Z', 1.)
+            init_z = init_z if args.sims_init_z is None else args.sims_init_z
             system_config = {
                 'type': sims_type,
                 'urdf_path': robot_def.get('URDF', robot_def.get('MJCF')),
                 'default_root_states': [0., 0., init_z, 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
-                'decimation': 20,
+                'decimation': args.sims_decimation,
+                # 'sim_device': 'cuda',
             }
             if sims_type == 'sims.systems.ig':
                 asset_options = robot_def.get('ASSET_OPTIONS')
@@ -1126,7 +1148,7 @@ def run(args=None):
         fix_base_link = fix_base_link or modes['sample']
         system_config['fix_base_link'] = fix_base_link
         default_dof_pos = system_config.get('default_dof_pos', {})
-        if rec_q is not None:
+        if rec_q is not None and args.sims_fixed_base:
             # init_q = rec_q_ctrl[0]
             init_q = rec_q[0]
             def_dof_pos = {n: init_q[i] for i, n in enumerate(sim_dof_names)}
@@ -1138,6 +1160,7 @@ def run(args=None):
         default_root_states = system_config.get('default_root_states')
         if fix_base_link and default_root_states is not None:
             default_root_states[2] += 0.5
+        print('default_root_states', default_root_states)
         if args.sims_headless:
             system_config['headless'] = True
         if args.sims_compute_torque:
@@ -1154,6 +1177,7 @@ def run(args=None):
                 system_config['torque_limits'].update(sim_torque_limits)
         sims_use_kpkd = ('Kp' not in system_config) or args.sims_use_kpd
         if sims_use_kpkd:
+            tau_limits = TAU_LIMIT.copy()
             # system_config['Kp'] = kp
             # system_config['Kd'] = kd
             system_config['Kp'] = {k: v for k, v in zip(sim_dof_names, kp)}

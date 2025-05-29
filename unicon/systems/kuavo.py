@@ -68,6 +68,7 @@ def cb_kuavo_recv_send_close(
     robot_def=None,
     launch=True,
     stop=None,
+    use_input=False,
     # use_h12=True,
     use_h12=False,
     deploy_path=None,
@@ -88,6 +89,7 @@ def cb_kuavo_recv_send_close(
     NAME = robot_def.get('NAME')
     robot_version = int(NAME[1:])
     print('robot_version', robot_version)
+    num_dofs = len(states_q)
 
     proc = None
     stop = launch if stop is None else stop
@@ -134,7 +136,6 @@ def cb_kuavo_recv_send_close(
     cmd_pub = rospy.Publisher('/joint_cmd', jointCmd, queue_size=10)
     stop_pub = rospy.Publisher('/stop_robot', Bool, queue_size=10)
 
-    num_dofs = len(states_q)
     base_ang_vel = np.zeros(3, dtype=np.float32)
     base_rpy = np.zeros(3, dtype=np.float32)
     base_quat = np.zeros(4, dtype=np.float32)
@@ -192,7 +193,7 @@ def cb_kuavo_recv_send_close(
         h12_channels[:] = msg.channels
 
     use_joy = False
-    if states_input is not None:
+    if states_input is not None and use_input:
         from unicon.inputs import _default_input_keys
         input_keys = _default_input_keys
         if use_h12:

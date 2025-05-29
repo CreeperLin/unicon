@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 _states_inds = {}
@@ -9,6 +10,7 @@ _states_shm = None
 _states_buf = None
 _states_name = 'states'
 _shm_reused = False
+_tmp_dir = os.environ.get('TMP', '/tmp')
 
 _dtype2str = {
     np.float32: 'f',
@@ -114,18 +116,16 @@ def states_get_inds():
 
 
 def states_save_specs(name=_states_name):
-    import os
     import json
     specs = _states_specs
-    path = os.path.join('/tmp', name + '.json')
+    path = os.path.join(_tmp_dir, name + '.json')
     with open(path, 'w') as f:
         json.dump(specs, f)
 
 
 def states_load_specs(name=_states_name):
-    import os
     import json
-    path = os.path.join('/tmp', name + '.json')
+    path = os.path.join(_tmp_dir, name + '.json')
     with open(path, 'r') as f:
         specs = json.load(f)
     inds = {}
@@ -137,8 +137,7 @@ def states_load_specs(name=_states_name):
 
 
 def states_remove_specs(name=_states_name):
-    import os
-    path = os.path.join('/tmp', name + '.json')
+    path = os.path.join(_tmp_dir, name + '.json')
     if os.path.exists(path):
         os.remove(path)
 
@@ -185,40 +184,3 @@ def autowired(func):
         return func(*args, **kwds)
 
     return wrapped
-
-
-if __name__ == '__main__':
-    import sys
-    a = sys.argv[1]
-    n = 16
-    if a == '0':
-        states_reset()
-        states_new('q', n)
-        states_new('qd', n)
-        states_new('qdd', n)
-        # inds = states_get_inds()
-        # print('inds', inds, _states_size)
-        states_save_specs()
-        states_init()
-        arr = states_get()
-        q = states_get('q')
-        qd = states_get('qd')
-        qdd = states_get('qdd')
-        q[:] = 10
-        qdd[:] = 20
-        print('arr', arr)
-        input()
-        states_destroy()
-    if a == '1':
-        # states_new('q', n)
-        # states_new('qd', n)
-        # states_new('qdd', n)
-        inds = {'q': slice(0, 16, None), 'qd': slice(16, 32, None), 'qdd': slice(32, 48, None)}
-        states_set_inds(inds)
-        states_init()
-        arr = states_get()
-        print('arr', arr)
-        q = states_get('q')
-        print('q', q)
-    if a == '2':
-        states_destroy(force=True)
