@@ -379,17 +379,6 @@ s42 = s45.copy()
 s42['NAME'] = 's42'
 s42['URDF'] = 'biped_s42/urdf/biped_s42_1.urdf'
 
-from unicon.defs import n1
-grmini = dict(
-    NAME='grmini',
-    DOF_NAMES=n1.DOF_NAMES,
-    DOF_NAMES_STD=n1.DOF_NAMES_STD,
-    KP=n1.KP,
-    KD=n1.KD,
-    NUM_DOFS=n1.NUM_DOFS,
-    URDF='GRMini1T1/urdf/GRMini1T1_full.urdf',
-)
-
 g1_23 = dict(
     NAME = 'g1_23',
     KP = [

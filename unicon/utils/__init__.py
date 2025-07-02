@@ -55,7 +55,6 @@ def find(root='.', name=None, wholename=None, follow_links=True):
 
 
 def load_model_torch(model_path, device=None):
-    import torch
     from unicon.utils.torch import torch_load_jit, torch_no_grad, torch_no_profiling
     torch_no_grad()
     torch_no_profiling()
@@ -65,7 +64,6 @@ def load_model_torch(model_path, device=None):
 
 def load_model_onnx2pytorch(model_path, device=None):
     import onnx
-    import torch
     from onnx2pytorch import ConvertModel
     onnx_model = onnx.load(model_path)
     model = ConvertModel(onnx_model)
@@ -611,44 +609,6 @@ def try_conn(address, port):
     finally:
         s.close()
     return fail
-
-
-def quat_rotate_np(q, v, w_first=False):
-    q_w, q_vec = (q[..., 0], q[..., 1:]) if w_first else (q[..., -1], q[..., :3])
-    a = v * (2.0 * q_w**2 - 1.0)[..., np.newaxis]
-    b = np.cross(q_vec, v) * q_w[..., np.newaxis] * 2.0
-    c = q_vec * np.sum(q_vec[..., np.newaxis, :] * v[..., np.newaxis, :], axis=-1) * 2.0
-    return a + b + c
-
-
-def quat_rotate_inverse_np(q, v, w_first=False):
-    q_w, q_vec = (q[..., 0], q[..., 1:]) if w_first else (q[..., -1], q[..., :3])
-    a = v * (2.0 * q_w**2 - 1.0)[..., np.newaxis]
-    b = np.cross(q_vec, v) * q_w[..., np.newaxis] * 2.0
-    c = q_vec * np.sum(q_vec[..., np.newaxis, :] * v[..., np.newaxis, :], axis=-1) * 2.0
-    return a - b + c
-
-
-def quat_mul_np(a, b, w_first=False):
-    assert a.shape == b.shape
-    shape = a.shape
-    a = a.reshape(-1, 4)
-    b = b.reshape(-1, 4)
-    i, j, k, w = ([1, 2, 3, 0] if w_first else [0, 1, 2, 3])
-    x1, y1, z1, w1 = a[:, i], a[:, j], a[:, k], a[:, w]
-    x2, y2, z2, w2 = b[:, i], b[:, j], b[:, k], b[:, w]
-    ww = (z1 + x1) * (x2 + y2)
-    yy = (w1 - y1) * (w2 + z2)
-    zz = (w1 + y1) * (w2 - z2)
-    xx = ww + yy + zz
-    qq = 0.5 * (xx + (z1 - x1) * (x2 - y2))
-    w = qq - ww + (z1 - y1) * (y2 - z2)
-    x = qq - xx + (x1 + w1) * (x2 + w2)
-    y = qq - yy + (w1 - x1) * (y2 + z2)
-    z = qq - zz + (z1 + y1) * (w2 - x2)
-    els = [w, x, y, z] if w_first else [x, y, z, w]
-    quat = np.stack(els, axis=-1).reshape(shape)
-    return quat
 
 
 def rpy_reorder(rpy, src='rpy', dest='rpy'):

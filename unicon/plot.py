@@ -373,7 +373,7 @@ def plot(args=None):
         plt.savefig(plot_prefix + f'sie.{ext}')
         plt.close()
         return
-    from unicon.utils import quat_rotate_inverse_np, quat_rotate_inverse_np2, rpy2quat_np, quat2rpy_np3
+    from unicon.utils import quat_rotate_inverse_np, rpy2quat_np, quat2rpy_np3
     from unicon.utils import quat_rotate_np
     states_imu = args.states_imu
     if states_imu:

@@ -1146,7 +1146,7 @@ def run(args=None):
         def cb_qtf_send():
             states_q_ctrl_sys[:] = states_q_ctrl * qtf_w + qtf_b
 
-    systems = {k: False for k in ['fake', 'roslibpy', 'sims', 'none']}
+    systems = {k: False for k in ['sims', 'none']}
     system_type = args.system
     system_type = {k[0]: k for k in systems.keys()}.get(system_type, system_type)
     print('system', system_type)
@@ -1165,30 +1165,13 @@ def run(args=None):
         states_pos=states_pos,
         states_input=states_input,
     )
+    states_sys = {}
+    states_sys.update(states_props_sys)
+    states_sys.update(states_ctrls_sys)
+    states_sys.update(states_extras_sys)
     cb_recv, cb_send, cb_close = None, None, None
     if systems['none']:
         pass
-    elif systems['fake']:
-        from unicon.systems.fake import cb_fake_recv_send_close
-        cb_recv, cb_send, cb_close = cb_fake_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            q_ctrl_min=q_ctrl_min,
-            q_ctrl_max=q_ctrl_max,
-            kp=kp,
-            kd=kd,
-            dt=dt,
-            **sys_kwds,
-        )
-    elif systems['roslibpy']:
-        from unicon.systems.roslibpy import cb_roblibpy_recv_send_close
-        cb_recv, cb_send, cb_close = cb_roblibpy_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
-            **sys_kwds,
-        )
     elif systems['sims']:
         sims_config = args.sims_config
         if sims_config is None:
@@ -1280,9 +1263,7 @@ def run(args=None):
         )
         from unicon.systems.sims import cb_sims_recv_send_close
         cb_recv, cb_send, cb_close = cb_sims_recv_send_close(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
+            **states_sys,
             dof_names=sim_dof_names,
             sims_kwds=sims_kwds,
             **sys_kwds,
@@ -1291,10 +1272,7 @@ def run(args=None):
         system_type = args.system
         print('importing system', system_type)
         sys_cls = import_obj(f'{system_type}:cb_{system_type}_recv_send_close', default_mod_prefix='unicon.systems')
-        cb_recv, cb_send, cb_close = sys_cls(
-            **states_props_sys,
-            **states_ctrls_sys,
-            **states_extras_sys,
+        cb_recv, cb_send, cb_close = autowired(sys_cls, states=states_sys)(
             kp=kp,
             kd=kd,
             q_ctrl_min=q_ctrl_min,
@@ -1439,14 +1417,6 @@ def run(args=None):
         )
         seq.append(cb)
 
-    states_all = dict(
-        **states_ctrls,
-        states_input=states_input,
-        **states_props,
-        **states_extras,
-    )
-
-    # states_tf = states_all
     transforms = args.transforms
     for i, tf in enumerate(transforms):
         tf_kwds = load_obj(tf)
@@ -1554,7 +1524,6 @@ def run(args=None):
 
     inputs = args.inputs
     outputs = args.outputs
-    # states_io = states_all
     for output_kwds in outputs:
         output_kwds = load_obj(output_kwds)
         output_kwds = {'type': output_kwds} if isinstance(output_kwds, str) else output_kwds

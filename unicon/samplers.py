@@ -1,3 +1,4 @@
+from functools import partial
 import numpy as np
 
 
@@ -47,7 +48,5 @@ def sampler_waveform(low, high, num_samples=100, freq=1, dt=0.02, wave_type='squ
         yield v
         t += 1
 
-
-from functools import partial
 
 sampler_triangle = partial(sampler_waveform, wave_type='sawtooth', wave_kwds=dict(width=0.5))

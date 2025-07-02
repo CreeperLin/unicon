@@ -222,7 +222,6 @@ def cb_cmd_vel(
     if use_pyaw_cmd:
         # pyaw_cmd = states_rpy[2] if pyaw_cmd_init is None else pyaw_cmd_init
         pyaw_cmd = pyaw_cmd_init
-        # cur_yaw = None
         print('use_pyaw_cmd', pyaw_cmd, states_rpy)
 
     states_input_hist = np.zeros(len(states_input), dtype=np.int32)
@@ -260,7 +259,7 @@ def cb_cmd_vel(
                 inp_pyaw = 0 if abs(inp_pyaw) < eps else inp_pyaw
                 pyaw_cmd = wrap(inp_pyaw * step_vel_size + pyaw_cmd)
                 if abs(inp_pyaw) > 0 and int(pyaw_cmd * 100) % 10 == 0:
-                    print('pyaw_cmd', pyaw_cmd, cur_yaw, vyaw_cmd)
+                    print('pyaw_cmd', pyaw_cmd)
             cur_yaw = states_rpy[2]
             yaw_error = wrap(pyaw_cmd - cur_yaw)
             vyaw_cmd = pyaw_cmd_kp * yaw_error

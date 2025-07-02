@@ -12,7 +12,7 @@ def chamfer_loss2(pred, true, alpha=0.5, compute_mode='donot_use_mm_for_euclid_d
         print(pred.shape, true.shape)
         pred = pred.view(-1, *true.shape)
         true = true.view(-1, *true.shape)
-    n = true.shape[-1]
+    # n = true.shape[-1]
     # print(n)
     # B M M
     dist = torch.cdist(pred, true, p=2, compute_mode=compute_mode)
@@ -33,7 +33,7 @@ def chamfer_loss(pred, true, alpha=0.5):
         print(pred.shape, true.shape)
         pred = pred.view(-1, *true.shape)
         true = true.view(-1, *true.shape)
-    n = true.shape[-1]
+    # n = true.shape[-1]
     # B M M
     dist = (pred.unsqueeze(-3) - true.unsqueeze(-2)).square().mean(dim=-1)
     dist = dist.view(-1, *dist.shape[-2:])
@@ -70,7 +70,7 @@ def mse_loss(pred, true):
 def unfolded_mse_loss(pred, true, step=1, sym=True, alpha=0.5):
     # B M N
     len_pred = pred.shape[1]
-    len_true = true.shape[1]
+    # len_true = true.shape[1]
     assert len(pred.shape) == 3
     # W
     w_size = len_pred // 2

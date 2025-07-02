@@ -1,5 +1,4 @@
 # yapf: disable
-import numpy as np
 
 NAME = 'h1'
 DOF_NAMES = [

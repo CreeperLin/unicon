@@ -152,13 +152,13 @@ def cb_pnd_recv_send_close(
         "reqTarget": "/",
     }
     reps = motors_get(msg, ips)
-    assert (all([r['status'] == 'OK' and r['motor_drive_ready'] == True for r in reps]))
+    assert (all([r['status'] == 'OK' and r['motor_drive_ready'] for r in reps]))
     msg = {
         "method": "GET",
         "reqTarget": "/m1/encoder/is_ready",
     }
     reps = motors_get(msg, ips)
-    assert (all([r['status'] == 'OK' and r['property'] == True for r in reps]))
+    assert (all([r['status'] == 'OK' and r['property'] for r in reps]))
 
     r.init()
 

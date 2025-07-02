@@ -97,7 +97,7 @@ def cb_t1_recv_send_close(
     send_mode='th',
     # send_mode='mp',
     compute_quat=False,
-    **states,
+    send_dt=0.001,
 ):
     import os
     import time
@@ -130,10 +130,6 @@ def cb_t1_recv_send_close(
     elif send_mode == 'recv':
         recv_send = True
     print('send_mode', send_mode)
-
-    send_dt = 0.001
-
-    # send_dt = 0.002
 
     def init_Cmd_T1(low_cmd: LowCmd):
         low_cmd.cmd_type = LowCmdType.SERIAL
@@ -168,6 +164,12 @@ def cb_t1_recv_send_close(
         for i, motor in enumerate(low_state_msg.motor_state_serial):
             dof_pos_latest[i] = motor.q
             dof_vel[i] = motor.dq
+        if states_q_temp is not None:
+            for i, motor in enumerate(low_state_msg.motor_state_serial):
+                states_q_temp[i] = motor.temperature
+        if states_q_tau is not None:
+            for i, motor in enumerate(low_state_msg.motor_state_serial):
+                states_q_tau[i] = motor.tau_est
         if mp_send:
             shared_q[:] = dof_pos_latest
         if recv_send and running:
@@ -213,9 +215,9 @@ def cb_t1_recv_send_close(
     ChannelFactory.Instance().Init(0, net)
     base_ang_vel = np.zeros(3, dtype=np.float32)
     base_rpy = np.zeros(3, dtype=np.float32)
-    dof_pos = np.zeros(B1JointCnt, dtype=np.float32)
+    # dof_pos = np.zeros(B1JointCnt, dtype=np.float32)
     dof_vel = np.zeros(B1JointCnt, dtype=np.float32)
-    dof_target = np.zeros(B1JointCnt, dtype=np.float32)
+    # dof_target = np.zeros(B1JointCnt, dtype=np.float32)
     filtered_dof_target = np.zeros(B1JointCnt, dtype=np.float32)
     dof_pos_latest = np.zeros(B1JointCnt, dtype=np.float32)
 
@@ -278,7 +280,7 @@ def cb_t1_recv_send_close(
         client = B1LocoClient()
         client.Init()
     except Exception as e:
-        logger.error(f"Failed to initialize communication: {e}")
+        print(f"Failed to initialize communication: {e}")
         raise
 
     def servo_off():
@@ -306,12 +308,6 @@ def cb_t1_recv_send_close(
         states_ang_vel[:] = base_ang_vel
         states_q[:] = dof_pos_latest
         states_qd[:] = dof_vel
-        if states_q_temp is not None:
-            for i, motor in enumerate(motor_state_serial):
-                states_q_temp[i] = motor.temperature
-        if states_q_tau is not None:
-            for i, motor in enumerate(motor_state_serial):
-                states_q_tau[i] = motor.tau_est
 
     def cb_send():
         nonlocal running

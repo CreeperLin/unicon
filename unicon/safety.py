@@ -209,6 +209,6 @@ def cb_safety_verify_imu(
             rpy2 = quat2rpy_np(states_quat)
             err = np.sum(np.square(rpy2 - states_rpy))
             if err > tol:
-                print('cb_safety_verify_imu', rpy2, rpy, err, tol)
+                print('cb_safety_verify_imu', rpy2, states_rpy, err, tol)
 
     return cb

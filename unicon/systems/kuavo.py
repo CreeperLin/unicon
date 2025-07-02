@@ -80,7 +80,7 @@ def cb_kuavo_recv_send_close(
     import rospy
     from std_msgs.msg import Bool
     from sensor_msgs.msg import Joy
-    from kuavo_msgs.msg import sensorsData, jointCmd, jointData, imuData
+    from kuavo_msgs.msg import sensorsData, jointCmd
     from h12pro_controller_node.msg import h12proRemoteControllerChannel
 
     from unicon.utils import quat2rpy_np
@@ -137,7 +137,7 @@ def cb_kuavo_recv_send_close(
     stop_pub = rospy.Publisher('/stop_robot', Bool, queue_size=10)
 
     base_ang_vel = np.zeros(3, dtype=np.float32)
-    base_rpy = np.zeros(3, dtype=np.float32)
+    # base_rpy = np.zeros(3, dtype=np.float32)
     base_quat = np.zeros(4, dtype=np.float32)
     dof_pos = np.zeros(num_dofs, dtype=np.float32)
     dof_vel = np.zeros(num_dofs, dtype=np.float32)
@@ -158,7 +158,7 @@ def cb_kuavo_recv_send_close(
         base_ang_vel[:] = imu_data.gyro.x, imu_data.gyro.y, imu_data.gyro.z
         base_quat[:] = imu_data.quat.x, imu_data.quat.y, imu_data.quat.z, imu_data.quat.w
 
-    sensor_sub = rospy.Subscriber('/sensors_data_raw', sensorsData, sensor_callback)
+    _ = rospy.Subscriber('/sensors_data_raw', sensorsData, sensor_callback)
 
     def joy_callback(msg):
         if time.monotonic() - last_recv_ts < callback_min_delay:
@@ -201,9 +201,9 @@ def cb_kuavo_recv_send_close(
             input_inds = [i for i, n in enumerate(input_keys) if n in h12_mapping]
             print('h12_inds', h12_inds)
             print('input_inds', input_inds)
-            joy_sub = rospy.Subscriber('/h12pro_channel', h12proRemoteControllerChannel, h12_callback)
+            _ = rospy.Subscriber('/h12pro_channel', h12proRemoteControllerChannel, h12_callback)
         else:
-            joy_sub = rospy.Subscriber('/joy', Joy, joy_callback)
+            _ = rospy.Subscriber('/joy', Joy, joy_callback)
             use_joy = True
     else:
         use_h12 = False
