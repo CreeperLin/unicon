@@ -75,9 +75,9 @@ def cb_prod(outer, inner):
 
 
 def cb_print():
-    from unicon.states import states_get, states_get_inds
+    from unicon.states import states_get, states_get_specs
     from unicon.utils import pp_arr
-    states = {k: states_get(k) for k in states_get_inds()}
+    states = {k: states_get(k) for k in states_get_specs()}
     steps = -1
 
     def cb():
@@ -201,16 +201,6 @@ def cb_replay(
             if use_tqdm:
                 pbar.update()
         rep -= 1
-        if pt >= end_pt:
-            print('end of play', end_pt)
-            if not loop:
-                if use_tqdm:
-                    pbar.close()
-                return True
-            pt = init_pt
-            if use_tqdm:
-                pbar.reset()
-                pbar.update(init_pt)
         if verbose:
             if (pt + 1) % (num_frames // 10) == 0:
                 print('rec pt', pt)
@@ -223,6 +213,16 @@ def cb_replay(
         else:
             for k in keys:
                 states[k][:] = frames[k][pt]
+        if pt >= end_pt - 1:
+            print('end of play', end_pt)
+            if not loop:
+                if use_tqdm:
+                    pbar.close()
+                return True
+            pt = init_pt - 1
+            if use_tqdm:
+                pbar.reset()
+                pbar.update(init_pt)
 
     return cb
 
@@ -366,15 +366,17 @@ def cb_wait_input(
     _pressed = 0
     _last_pressed = None
     _last_clicked = None
+    _last_prompt = 0
     pred = getattr(np, pred)
     import time
 
     def cb():
-        nonlocal _cur, _pressed, _last_pressed, _last_clicked, _pt
+        nonlocal _cur, _pressed, _last_pressed, _last_clicked, _last_prompt, _pt
         if prompt:
             _pt += 1
-            if _pt % 100 == 0:
+            if time.monotonic() - _last_prompt > 2:
                 print('waiting for input keys', keys)
+                _last_prompt = time.monotonic()
         if pred(states_input[inds] > press_th):
             if _pressed == 0:
                 _pressed = 1

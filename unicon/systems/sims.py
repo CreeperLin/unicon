@@ -33,7 +33,16 @@ def cb_sims_recv_send_close(
         'effort': np.zeros(num_dofs) if states_tau_ctrl is None else states_tau_ctrl,
     }
     s.cb_recv(send_msg)
-    dof_inds = None
+    recv_msg = s.cb_send()
+    name = recv_msg['name']
+    dof_inds = [dof_names.index(n) for n in name if n in dof_names]
+    dof_src_inds = [i for i, n in enumerate(name) if n in dof_names]
+    dof_inds = list2slice(dof_inds)
+    dof_src_inds = list2slice(dof_src_inds)
+    print('msg names', len(name), name)
+    print('dof names', len(dof_names), dof_names)
+    print('dof_inds', dof_inds)
+    print('dof_src_inds', dof_src_inds)
 
     def cb_send():
         if copy:
@@ -41,16 +50,10 @@ def cb_sims_recv_send_close(
         s.cb_recv(send_msg)
 
     def cb_recv():
-        nonlocal dof_inds
         recv_msg = s.cb_send()
-        if dof_inds is None:
-            name = recv_msg['name']
-            dof_inds = [dof_names.index(n) for n in name]
-            dof_inds = list2slice(dof_inds)
-            print('msg name', len(name), name, len(dof_names), dof_names, dof_inds)
-            # dof_inds = np.array(dof_inds, dtype=np.int32)
-        states_q[dof_inds] = recv_msg['position']
-        states_qd[dof_inds] = recv_msg['velocity']
+        # print('recv_msg', recv_msg)
+        states_q[dof_inds] = recv_msg['position'][dof_src_inds]
+        states_qd[dof_inds] = recv_msg['velocity'][dof_src_inds]
         root_states = recv_msg['root_states']
         # states_ang_vel[:] = root_states[10:13]
         imu = recv_msg['imu']
@@ -63,7 +66,7 @@ def cb_sims_recv_send_close(
         if states_pos is not None:
             states_pos[:] = root_states[0:3]
         if states_q_tau is not None:
-            states_q_tau[dof_inds] = recv_msg['effort']
+            states_q_tau[dof_inds] = recv_msg['effort'][dof_src_inds]
         if states_lin_acc is not None:
             # print(imu[3:6])
             states_lin_acc[:] = imu[3:6]

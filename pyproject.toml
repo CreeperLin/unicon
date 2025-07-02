@@ -40,3 +40,6 @@ include = ["unicon*"]
 [tool.yapf]
 based_on_style = "google"
 column_limit = 120
+
+[tool.ruff]
+line-length = 120

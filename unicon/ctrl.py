@@ -48,7 +48,7 @@ def cb_ctrl_q_from_target_lerp(
 
     t_fns = {
         'exp': lambda t: 1 - np.exp(-10 * t),
-        'hyper': lambda t: 1 - 1 / (30 * t + 1),
+        'hyp': lambda t: 1 - 1 / (30 * t + 1),
         'atan': lambda t: (2 / np.pi) * np.arctan(10 * t),
     }
     t_fn = t_fns[t_fn] if isinstance(t_fn, str) else t_fn

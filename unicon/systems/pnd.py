@@ -17,6 +17,8 @@ def cb_pnd_recv_send_close(
     # err_exit=False,
     err_exit=True,
     compute_quat=False,
+    robot_def=None,
+    zero_roll_kp=True,
     **states,
 ):
     import os
@@ -40,18 +42,24 @@ def cb_pnd_recv_send_close(
     print('script_path', script_path)
     os.system('sudo chmod 777 /dev/ttyUSB0')
     os.system('sudo rm -rf /tmp/log')
-    os.system(f'rm -rf source {abs_json_path}')
-    assert not os.path.exists(abs_json_path)
-    os.mkdir('source')
-    os.system(f'python3 {script_path}/read_abs.py')
-    time.sleep(1)
-    os.system(f'python3 {script_path}/read_abs.py')
-    res = subprocess.run(
-        f'python3 {script_path}/check_abs.py',
-        shell=True,
-        stdout=subprocess.PIPE,
-    )
-    res = res.stdout.decode().strip()
+
+    for i in range(3):
+        os.system(f'rm -rf source {abs_json_path}')
+        assert not os.path.exists(abs_json_path)
+        os.mkdir('source')
+        os.system(f'python3 {script_path}/read_abs.py')
+        time.sleep(1)
+        os.system(f'python3 {script_path}/read_abs.py')
+        res = subprocess.run(
+            f'python3 {script_path}/check_abs.py',
+            shell=True,
+            stdout=subprocess.PIPE,
+        )
+        res = res.stdout.decode().strip()
+        if res == 'True':
+            break
+        print('get abs failed', i)
+        time.sleep(5)
     assert res == 'True', res
     os.system(f'cp source/abs.json {abs_json_path}')
 
@@ -108,13 +116,49 @@ def cb_pnd_recv_send_close(
         _kp = kp.copy()
         _kd = kd.copy()
 
-    _kp[joint_names.index('ankleRoll_Right')] = 0.
-    _kp[joint_names.index('ankleRoll_Left')] = 0.
+    if zero_roll_kp:
+        _kp[joint_names.index('ankleRoll_Right')] = 0.
+        _kp[joint_names.index('ankleRoll_Left')] = 0.
     print('kp', _kp)
     print('kd', _kd)
     if _kp is not None:
         r.joint_Kp_ = _kp
         r.joint_Kd_ = _kd
+
+    import socket
+    import json
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0.5)
+    port = 2334
+
+    def motors_get(msg, ips):
+        msg = json.dumps(msg).encode()
+        reps = []
+        for ip in ips:
+            s.sendto(msg, (ip, port))
+            for i in range(10):
+                data, addr = s.recvfrom(1024)
+                if addr[0] == ip:
+                    break
+            rep = json.loads(data.decode())
+            print(f"ip: {ip} rep: {rep}")
+            reps.append(rep)
+        return reps
+
+    MOTOR_IPS = robot_def.get('MOTOR_IPS', [])
+    ips = MOTOR_IPS
+    msg = {
+        "method": "GET",
+        "reqTarget": "/",
+    }
+    reps = motors_get(msg, ips)
+    assert (all([r['status'] == 'OK' and r['motor_drive_ready'] == True for r in reps]))
+    msg = {
+        "method": "GET",
+        "reqTarget": "/m1/encoder/is_ready",
+    }
+    reps = motors_get(msg, ips)
+    assert (all([r['status'] == 'OK' and r['property'] == True for r in reps]))
 
     r.init()
 

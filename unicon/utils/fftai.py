@@ -371,7 +371,6 @@ def pcap2rec(path, dt=0.02, fsa_ips=None):
         'states_qd': states_qd,
         'states_q_cur': states_q_cur,
         'states_q_ctrl': states_q_ctrl,
-        'states_q_ctrl': states_q_ctrl,
         # 'states_quat': None,
         'send_ts': send_tss.T,
         'recv_ts': tss.T,

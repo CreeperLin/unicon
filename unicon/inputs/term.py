@@ -6,6 +6,7 @@ def cb_input_term(
     step=0.05,
     max_hold=5,
     release_gamma=0.98,
+    keymap=None,
 ):
     import termios
     import fcntl
@@ -13,8 +14,8 @@ def cb_input_term(
     import os
     import numpy as np
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
-    nabs_inds = [i for i, k in enumerate(input_keys) if not k.startswith('ABS')]
-    abs_inds = [i for i, k in enumerate(input_keys) if k.startswith('ABS')]
+    nabs_inds = [i for i, k in enumerate(input_keys) if not (k.startswith('ABS') and not k.startswith('ABS_HAT'))]
+    abs_inds = [i for i, k in enumerate(input_keys) if (k.startswith('ABS') and not k.startswith('ABS_HAT'))]
     mapping = {
         'd': 'ABS_X+',
         'a': 'ABS_X-',
@@ -26,15 +27,19 @@ def cb_input_term(
         'k': 'ABS_RY+',
         '1': 'BTN_TL',
         '0': 'BTN_TR',
-        '5': 'BTN_A',
-        '6': 'BTN_B',
-        't': 'BTN_X',
-        'y': 'BTN_Y',
+        'h': 'BTN_A',
+        'u': 'BTN_B',
+        'y': 'BTN_X',
+        '7': 'BTN_Y',
         'n': 'ABS_HAT0X+',
         'v': 'ABS_HAT0X-',
         'b': 'ABS_HAT0Y+',
         'g': 'ABS_HAT0Y-',
     }
+    if keymap is not None:
+        mapping.update(keymap)
+    print('cb_input_term', mapping)
+
     fd = sys.stdin.fileno()
 
     oldterm = termios.tcgetattr(fd)
@@ -57,6 +62,7 @@ def cb_input_term(
 
         def __call__(self):
             nonlocal hold
+            states_input[:] = s
             if hold == 0:
                 s[nabs_inds] = 0
                 # states_input[:] = s
@@ -96,10 +102,11 @@ def cb_input_term(
             s[nabs_inds] = 0
             if d is None:
                 val = 1
+            elif k.startswith('ABS_HAT'):
+                val = d
             else:
                 val = min(1, max(-1, s[idx] + d * step))
             s[idx] = val
-            states_input[:] = s
             hold = max_hold
             if verbose:
                 print('states_input', states_input.tolist())

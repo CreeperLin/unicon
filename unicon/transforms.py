@@ -46,7 +46,7 @@ def cb_tf_affine(params=None, keys=None, **states):
     return cb
 
 
-def cb_tf_mean(params=2, keys=None, **states):
+def cb_tf_conv(params=2, keys=None, **states):
     states = states if keys is None else {k: states[k] for k in keys}
     params = {k: params for k in states.keys()} if not isinstance(params, dict) else params
     windows = {}
@@ -55,11 +55,11 @@ def cb_tf_mean(params=2, keys=None, **states):
     for k, p in params.items():
         p = p if isinstance(p, (list, tuple)) else [p]
         wsize = p[0]
-        w = p[1] if len(p) > 1 else 1
-        w = np.array(w) if isinstance(w, list) else w
+        w = p[1] if len(p) > 1 else (1 / wsize)
+        w = np.array(w).reshape(-1, 1) if isinstance(w, list) else w
         ws[k] = w
         wsizes[k] = wsize
-    print('cb_tf_mean', params)
+    print('cb_tf_conv', params)
 
     def cb():
         for k, v in states.items():
@@ -71,7 +71,7 @@ def cb_tf_mean(params=2, keys=None, **states):
                 continue
             window[:-1] = window[1:]
             window[-1] = v
-            v_b = np.mean(window * ws[k], axis=0)
+            v_b = np.sum(window * ws[k], axis=0)
             v[:] = v_b
 
     return cb

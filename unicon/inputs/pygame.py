@@ -31,7 +31,7 @@ btn_mapping_xbox = {
     'BTN_TR': 5,
 }
 hat_mapping_xbox = {
-    'ABS_HAT0': 0,
+    'ABS_HAT0': (0, 1, -1),
 }
 
 axis_mapping_ps4 = {
@@ -86,7 +86,7 @@ def cb_input_pygame(
     pygame.joystick.init()
     assert pygame.joystick.get_init()
     count = pygame.joystick.get_count()
-    assert count > 0
+    assert count > 0, 'no pygame joystick found'
 
     js = None
     num_buttons = None
@@ -95,6 +95,7 @@ def cb_input_pygame(
     name = None
     instance_id = None
     axis_mapping, btn_mapping, hat_mapping = None, None, None
+    states = {}
 
     def init_js(dev_idx):
         nonlocal js
@@ -136,6 +137,14 @@ def cb_input_pygame(
 
     def cb():
         nonlocal js
+        for i, k in enumerate(input_keys):
+            if k.startswith('ABS_HAT'):
+                neg = states.get(k + '-', 0)
+                pos = states.get(k + '+', 0)
+                val = states.get(k, 0)
+                states_input[i] = val - neg + pos
+                continue
+            states_input[i] = states.get(k, 0)
         pygame.event.pump()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -156,7 +165,6 @@ def cb_input_pygame(
         btns = [js.get_button(i) for i in range(num_buttons)]
         hats = [js.get_hat(i) for i in range(num_hats)]
         # print(axes, btns, hats)
-        states = {}
         for k, v in axis_mapping.items():
             states[k] = axes[v]
         for k, v in btn_mapping.items():
@@ -167,14 +175,6 @@ def cb_input_pygame(
             hat = hats[idx]
             states[k + 'X'] = hat[0] * xd
             states[k + 'Y'] = hat[1] * yd
-        for i, k in enumerate(input_keys):
-            if k.startswith('ABS_HAT'):
-                neg = states.get(k + '-', 0)
-                pos = states.get(k + '+', 0)
-                val = states.get(k, 0)
-                states_input[i] = val - neg + pos
-                continue
-            states_input[i] = states.get(k, 0)
         if verbose:
             print('states_input', states_input.tolist())
 

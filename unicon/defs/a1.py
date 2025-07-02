@@ -1,6 +1,23 @@
 # yapf: disable
 import numpy as np
 
+NAME = 'a1'
+
+DOF_NAMES_STD = {
+    'FL_hip_joint': 'left_shoulder_yaw',
+    'RL_hip_joint': 'left_hip_yaw',
+    'FR_hip_joint': 'right_shoulder_yaw',
+    'RR_hip_joint': 'right_hip_yaw',
+    'FL_thigh_joint': 'left_shoulder_pitch',
+    'RL_thigh_joint': 'left_hip_pitch',
+    'FR_thigh_joint': 'right_shoulder_pitch',
+    'RR_thigh_joint': 'right_hip_pitch',
+    'FL_calf_joint': 'left_elbow_pitch',
+    'RL_calf_joint': 'left_knee_pitch',
+    'FR_calf_joint': 'right_elbow_pitch',
+    'RR_calf_joint': 'right_knee_pitch',
+}
+
 a1_Hip_max = 0.802
 a1_Hip_min = -0.802
 a1_Thigh_max = 4.19
@@ -64,3 +81,7 @@ TAU_LIMIT = np.array(TAU_LIMIT)
 
 URDF = 'a1/urdf/a1.urdf'
 # URDF = 'a1/urdf/a1_bip.urdf'
+
+ASSET_OPTIONS = {
+    'flip_visual_attachments': True,
+}

@@ -110,7 +110,7 @@ _default_mma = [60000] * 15
 _default_mms = [3000] * 15
 
 
-def cb_mini_recv_send_close(
+def cb_n1_recv_send_close(
     # states_prop,
     states_rpy,
     states_ang_vel,

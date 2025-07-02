@@ -3,9 +3,31 @@ import time
 import types
 import numpy as np
 import re
-from threading import Event
+import threading
 
 _default_time_fn = time.perf_counter
+
+
+class watchdog:
+
+    def __init__(self, timeout=20):
+        self.timeout = timeout
+
+    def __enter__(self):
+        timeout = self.timeout
+        self.running = True
+
+        def _th():
+            time.sleep(timeout)
+            if self.running:
+                print('watchdog barked', timeout)
+                force_quit()
+
+        th = threading.Thread(target=_th, daemon=True)
+        th.start()
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.running = False
 
 
 def find(root='.', name=None, wholename=None, follow_links=True):
@@ -262,6 +284,7 @@ def parse_urdf(
     min_z = get_min_z(topo, base_link_name)
     print('min_z', min_z)
     joints = [j for j in joints if j.type != 'fixed']
+    link_names = [k.name for k in links]
     dof_names = [j.name for j in joints]
     joint_limits = [j.limit for j in joints]
     joint_dynamics = [j.dynamics for j in joints]
@@ -275,6 +298,7 @@ def parse_urdf(
     friction = [(0 if d is None else d.friction) for d in joint_dynamics]
     num_dofs = len(dof_names)
     print('dof_names', num_dofs, dof_names)
+    print('link_names', len(link_names), link_names)
     print('q_min', np.round(np.array(q_min), 2).tolist())
     print('q_max', np.round(np.array(q_max), 2).tolist())
     print('tau_limit', np.round(np.array(tau_limit), 2).tolist())
@@ -290,6 +314,7 @@ def parse_urdf(
     robot_def = {
         'NUM_DOFS': num_dofs,
         'DOF_NAMES': dof_names,
+        'LINK_NAMES': link_names,
         'Q_CTRL_MIN': q_min,
         'Q_CTRL_MAX': q_max,
         'TAU_LIMIT': tau_limit,
@@ -298,7 +323,9 @@ def parse_urdf(
         'KD': kds,
         'Q_DAMPING': damping,
         'Q_FRICTION': friction,
-        'INIT_Z': -min_z + 0.2,
+        # 'INIT_Z': -min_z + 0.2,
+        'INIT_Z': -min_z * (1.2),
+        '_URDF': urdf,
     }
     return robot_def
 
@@ -342,6 +369,7 @@ def parse_robot_def(robot_def):
         except Exception:
             import traceback
             traceback.print_exc()
+    print('robot_def', robot_def.keys())
     num_dofs = robot_def['NUM_DOFS']
     dof_names = robot_def['DOF_NAMES']
     dof_attr_keys = ['QD_LIMIT', 'TAU_LIMIT', 'KP', 'KD', 'Q_CTRL_MIN', 'Q_CTRL_MAX', 'Q_RESET', 'Q_BOOT']
@@ -436,7 +464,7 @@ def import_obj(
         elif len(spec) == 2:
             mod, name = spec
         else:
-            raise ValueError
+            raise ValueError(f'invalid spec {spec}')
     default_mod_prefix = None if (mod is not None and '.' in mod) else default_mod_prefix
     path = [x for x in [default_mod_prefix, mod] if x is not None]
     mod_path = '.'.join(path)
@@ -682,7 +710,7 @@ def quat2rpy_np1(q, w_first=False):
     sinr_cosp = 2.0 * (qw * qx + qy * qz)
     cosr_cosp = qw * qw - qx * \
                 qx - qy * qy + qz * qz
-    roll = np.atan2(sinr_cosp, cosr_cosp)
+    roll = np.arctan2(sinr_cosp, cosr_cosp)
     # pitch (y-axis rotation)
     sinp = 2.0 * (qw * qy - qz * qx)
     pitch = np.where(np.abs(sinp) >= 1, np.copysign(np.pi / 2, sinp), np.asin(sinp))
@@ -690,7 +718,7 @@ def quat2rpy_np1(q, w_first=False):
     siny_cosp = 2.0 * (qw * qz + qx * qy)
     cosy_cosp = qw * qw + qx * \
                 qx - qy * qy - qz * qz
-    yaw = np.atan2(siny_cosp, cosy_cosp)
+    yaw = np.arctan2(siny_cosp, cosy_cosp)
     return np.stack((roll, pitch, yaw), axis=-1)
 
 
@@ -782,14 +810,18 @@ def mat2rpy_np(m):
     cy = np.sqrt(m00 * m00 + m10 * m10)
     # _EPS = np.finfo(float).eps * 4.0
     # if cy > _EPS:
-    ax = np.atan2(m21, m22)
-    ay = np.atan2(-m20, cy)
-    az = np.atan2(m10, m00)
+    ax = np.arctan2(m21, m22)
+    ay = np.arctan2(-m20, cy)
+    az = np.arctan2(m10, m00)
     # else:
     # ax = np.atan2(-m12, m11)
     # ay = np.atan2(-m20, cy)
     # az = 0.0
     return np.stack([ax, ay, az], axis=-1)
+
+
+def mat2pos_np(m):
+    return m[..., :3, 3]
 
 
 def rpy2mat_np(rpy):
@@ -948,7 +980,7 @@ def sleep_block(t0, s, time_fn=_default_time_fn):
         time.sleep(ts)
 
 
-_ev = Event()
+_ev = threading.Event()
 
 
 def sleep_wait(t0, s, time_fn=_default_time_fn):

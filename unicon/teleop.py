@@ -2,17 +2,26 @@ def cb_teleop_q(
     states_q_ctrl,
     states_q,
     states_input,
-    axis_inds=[0, 1, 2, 3],
-    cmd_idx_q_ctrl_next=4,
-    cmd_idx_axis_next=5,
-    cmd_idx_q_ctrl_prev=6,
-    cmd_idx_axis_prev=7,
+    axis_names=None,
+    cmd_key_q_ctrl_next='BTN_Y',
+    cmd_key_axis_next='BTN_B',
+    cmd_key_q_ctrl_prev='BTN_A',
+    cmd_key_axis_prev='BTN_X',
     # use_q=True,
     use_q=False,
     use_q_ctrl=False,
     axis_delta_q=0.01,
     q_ctrl_inds=None,
+    eps=0.1,
+    input_keys=None,
 ):
+    axis_names = [
+        'ABS_X',
+        'ABS_Y',
+        'ABS_RX',
+        'ABS_RY',
+    ] if axis_names is None else axis_names
+    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     import numpy as np
     last_cmd = np.zeros(len(states_input))
 
@@ -20,6 +29,7 @@ def cb_teleop_q(
         return last_cmd[idx] <= 0 and states_input[idx] > 0
 
     axis_pt = 0
+    axis_inds = [input_keys.index(n) for n in axis_names]
     num_axes = len(axis_inds)
     q_ctrl_inds = [1, 0, 0, 0] if q_ctrl_inds is None else q_ctrl_inds
 
@@ -35,6 +45,11 @@ def cb_teleop_q(
 
     _q_ctrl_inds = []
     _axes_inds = []
+
+    cmd_idx_q_ctrl_next = input_keys.index(cmd_key_q_ctrl_next)
+    cmd_idx_axis_next = input_keys.index(cmd_key_axis_next)
+    cmd_idx_q_ctrl_prev = input_keys.index(cmd_key_q_ctrl_prev)
+    cmd_idx_axis_prev = input_keys.index(cmd_key_axis_prev)
 
     def cb():
         nonlocal q_ctrl_inds, axis_pt
@@ -59,8 +74,9 @@ def cb_teleop_q(
             if x > 0:
                 _q_ctrl_inds.append(x - 1)
                 _axes_inds.append(i)
-        if np.any(np.abs(axes)) > 0 and len(_q_ctrl_inds):
-            ctrl = q_cur[_q_ctrl_inds] + axis_delta_q * axes[_axes_inds]
+        _axes = axes[_axes_inds]
+        if np.any(np.abs(_axes) > eps) and len(_q_ctrl_inds):
+            ctrl = q_cur[_q_ctrl_inds] + axis_delta_q * _axes
             print(
                 'cb_teleop_q',
                 _q_ctrl_inds,

@@ -44,6 +44,7 @@ def test_cb_input(cb_input_cls, input_keys=None):
     input_keys = _default_input_keys if input_keys is None else input_keys
     states_input = np.zeros(len(input_keys))
     cb = cb_input_cls(states_input)
+    assert cb is not None
     num_steps = int(3 // dt)
 
     def wait_for_input(idx, tgt):
@@ -60,8 +61,17 @@ def test_cb_input(cb_input_cls, input_keys=None):
             print('failed', idx, tgt, v)
         print('states_input', np.round(states_input, 2).tolist())
 
-    cb()
-    time.sleep(dt * 10)
+    # for _ in range(2**10):
+    #     cb()
+    #     time.sleep(dt)
+    #     print('states_input', np.round(states_input, 2).tolist())
+
+    for _ in range(num_steps):
+        cb()
+        time.sleep(dt)
+
+    if np.any(np.abs(states_input) > 0.1):
+        print('zero test failed', np.round(states_input, 2).tolist())
 
     for i, key in enumerate(input_keys):
         if 'ABS' not in key:

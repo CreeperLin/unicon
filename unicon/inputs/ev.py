@@ -9,11 +9,13 @@ def cb_input_ev(
     abs_type=0,
     dev_path='/dev/input',
     z2r=True,
+    use_nesw=True,
 ):
     import os
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
 
     input_states = {}
+    states = {}
 
     if not os.path.exists(dev_path):
         print(f'{dev_path} not exist')
@@ -28,41 +30,78 @@ def cb_input_ev(
         device = os.path.join(dev_root, sorted(filter(lambda x: 'event' in x, os.listdir(dev_root)))[-1])
 
     import evdev
-    kbs = {}
-    kbs.update(evdev.ecodes.BTN)
-    kbs.update(evdev.ecodes.KEY)
+    ecodes_kb = {}
+    ecodes_kb.update(evdev.ecodes.BTN)
+    ecodes_kb.update(evdev.ecodes.KEY)
+
+    if use_nesw:
+        abxy2nesw = {
+            'BTN_A': 'BTN_SOUTH',
+            'BTN_B': 'BTN_EAST',
+            'BTN_X': 'BTN_WEST',
+            'BTN_Y': 'BTN_NORTH',
+        }
+        input_keys = [abxy2nesw.get(k, k) for k in input_keys]
 
     ecodes_abs = evdev.ecodes.ABS.copy()
     if z2r:
-        ecodes_abs[2] = ['ABS_Z', 'ABS_RX']
-        ecodes_abs[5] = ['ABS_RZ', 'ABS_RY']
+        ecodes_abs[evdev.ecodes.ABS_Z] = ['ABS_Z', 'ABS_RX']
+        ecodes_abs[evdev.ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_RY']
 
     code_maps = {
-        evdev.ecodes.EV_KEY: kbs,
+        evdev.ecodes.EV_KEY: ecodes_kb,
         evdev.ecodes.EV_ABS: ecodes_abs,
         evdev.ecodes.EV_REL: evdev.ecodes.REL,
         evdev.ecodes.EV_MSC: evdev.ecodes.MSC,
     }
 
+    print('cb_input_ev', use_nesw, z2r)
+    print('ecodes_kb', [ecodes_kb.get(getattr(evdev.ecodes, k)) for k in input_keys if k.startswith('BTN')])
+    print('ecodes_abs', [ecodes_abs.get(getattr(evdev.ecodes, k)) for k in input_keys if k.startswith('ABS')])
+
     print('opening event device', device)
-    os.system(f'sudo chmod 666 {device}')
-    device = evdev.InputDevice(device)
+
+    # os.system('sudo usermod -a -G input $USER')
+    if os.system(f'test -r {device}'):
+        raise RuntimeError(f'no read permission on {device}')
+
+    dev = evdev.InputDevice(device)
 
     def read_nonblocking():
+        nonlocal dev
         while True:
             try:
-                ev = device.read_one()
+                ev = dev.read_one()
             except Exception as e:
                 print('evdev read error', e)
+                dev = None
                 return
             if ev is None:
                 return
             yield ev
 
-    gen = device.read_loop if blocking else read_nonblocking
+    n_fails = 0
+    retry_intv = 100
+    retry_pt = 0
 
     def cb():
-        nonlocal abs_type
+        nonlocal abs_type, dev, retry_pt, n_fails
+        for i, k in enumerate(input_keys):
+            states_input[i] = states.get(k, 0)
+        if dev is None:
+            if retry_pt:
+                retry_pt -= 1
+                return
+            try:
+                dev = evdev.InputDevice(device)
+                print('evdev reopened', device)
+                n_fails = 0
+            except Exception as e:
+                n_fails += 1
+                retry_pt = retry_intv
+                print('evdev reopen error', n_fails, e, device)
+                return
+        gen = dev.read_loop if blocking else read_nonblocking
         for event in gen():
             # print(event)
             ecode = event.code
@@ -102,10 +141,9 @@ def cb_input_ev(
                 else:
                     v = 0 if v is None else v
                 v = min(v, 1, max(v, -1))
-                states_input[i] = v
-            # print('states_input', states_input.tolist())
-            if verbose:
-                print('states_input', states_input.tolist())
+                states[k] = v
+        if verbose:
+            print('states_input', states_input.tolist())
 
     return cb
 

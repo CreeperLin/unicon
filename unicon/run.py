@@ -64,7 +64,7 @@ def get_args():
     parser.add_argument('-ssd2', '--sims_dof_names_2', action='store_true')
     parser.add_argument('-ssh', '--sims_headless', action='store_true')
     parser.add_argument('-ssfb', '--sims_fixed_base', action='store_true')
-    parser.add_argument('-ssdc', '--sims_decimation', type=int, default=20)
+    parser.add_argument('-ssdc', '--sims_decimation', type=int, default=10)
     parser.add_argument('-ssiz', '--sims_init_z', type=float, default=None)
     parser.add_argument('-ssct', '--sims_compute_torque', action='store_true')
     parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
@@ -78,6 +78,8 @@ def get_args():
     parser.add_argument('-shmc', '--shm_clear', action='store_true')
     parser.add_argument('-rt', '--robot_type', default='none')
     parser.add_argument('-vr', '--verify_recv', action='store_true')
+    parser.add_argument('-pr', '--pre_recv', type=int, default=0)
+    parser.add_argument('-ps', '--pre_send', type=int, default=0)
     parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
     parser.add_argument('-ff', '--fast', action='store_true')
     parser.add_argument('-sqm', '--safety_q_margin', type=float, default=0.)
@@ -94,6 +96,7 @@ def get_args():
     parser.add_argument('-ldt', '--loop_dt', type=float, default=None)
     parser.add_argument('-sqe', '--states_q_extras', action='store_true')
     parser.add_argument('-sxe', '--states_x_extras', action='store_true')
+    parser.add_argument('-sxe2', '--states_x_extras2', action='store_true')
     parser.add_argument('-tc', '--tau_ctrl', action='store_true')
     parser.add_argument('-cct', '--cb_ctrl_tau', default=None)
     parser.add_argument('-cdt', '--ctrl_dt', type=float, default=None)
@@ -121,6 +124,7 @@ def get_args():
     parser.add_argument('-ptf', '--post_transforms', default=[], action='append')
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
+    parser.add_argument('-qru', '--q_reset_update', default=None)
     args, _ = parser.parse_known_args()
     return args
 
@@ -133,11 +137,11 @@ def run(args=None):
         del isaacgym
     except ImportError:
         pass
-    from unicon.states import states_init, states_news, states_new, states_get, states_destroy
+    from unicon.states import states_init, states_news, states_new, states_get, states_destroy, autowired
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
-        import_obj, parse_robot_def, load_obj, match_keys
+        import_obj, parse_robot_def, load_obj, match_keys, obj_update
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
     if args.sudo:
@@ -186,12 +190,12 @@ def run(args=None):
     Q_RESET = robot_def.get('Q_RESET', None)
     DOF_NAMES_2 = robot_def.get('DOF_NAMES_2', None)
     DOF_NAMES_STD = robot_def.get('DOF_NAMES_STD', None)
+    LINK_NAMES = robot_def.get('LINK_NAMES', None)
 
     if args.no_q_boot:
         Q_BOOT = None
 
     q_reset = np.zeros(NUM_DOFS) if Q_RESET is None else Q_RESET
-    q_boot = q_reset if Q_BOOT is None else Q_BOOT
 
     if args.dof_names_2:
         DOF_NAMES = DOF_NAMES_2
@@ -251,8 +255,12 @@ def run(args=None):
 
     sim_kps = None
     sim_kds = None
+    sim_torque_limits = None
+    init_joint_angles = None
     env_cfg = None
     env_cfg_args = None
+    env_num_commands = None
+    env_command_keys = None
     if env_cfg_path is not None and os.path.exists(env_cfg_path):
         print('env_cfg_path', env_cfg_path)
         env_cfg = load_obj(env_cfg_path)
@@ -260,7 +268,6 @@ def run(args=None):
         env_cfg_override = args.env_cfg_override
         if env_cfg_override is not None:
             env_cfg_override = load_obj(env_cfg_override)
-            from unicon.utils import obj_update
             obj_update(env_cfg, env_cfg_override)
         env_cfg_env = env_cfg['env']
         num_acts = env_cfg_env['num_actions']
@@ -277,15 +284,47 @@ def run(args=None):
             NAME = robot_def['NAME']
             NAME = 's42' if NAME == 's45' else NAME
             params = env_cfg['robot_params'].get(NAME, {})
-            init_joint_angles = params.get('default_joint_angles', {})
+            init_joint_angles = params.get('default_joint_angles', None)
             print('mix env', NAME, init_joint_angles)
-            sim_kps = params.get('stiffness', sim_kps)
-            sim_kds = params.get('damping', sim_kds)
-            sim_torque_limits = params.get('torque_limits', sim_torque_limits)
+            sim_kps = params.get('stiffness', None)
+            sim_kds = params.get('damping', None)
+            sim_torque_limits = params.get('torque_limits', None)
         ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
         env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
         print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
         print('env_cfg_args', env_cfg_args)
+
+        env_num_commands = env_cfg['commands']['num_commands']
+        env_cfg_env = env_cfg['env']
+        observe_gait_commands = env_cfg_env.get('observe_gait_commands', True)
+        observe_frequency = env_cfg_env.get('observe_frequency', observe_gait_commands)
+        observe_phase = env_cfg_env.get('observe_phase', observe_gait_commands)
+        observe_duration = env_cfg_env.get('observe_duration', observe_gait_commands)
+        observe_foot_height = env_cfg_env.get('observe_foot_height', True)
+        observe_body_height = env_cfg_env.get('observe_body_height',)
+        observe_body_roll = env_cfg_env.get('observe_body_roll',)
+        observe_body_pitch = env_cfg_env.get('observe_body_pitch',)
+        observe_body_yaw = env_cfg_env.get('observe_body_yaw',)
+        env_command_keys = [
+            'lin_vel_x',
+            'lin_vel_y',
+            'ang_vel_yaw',
+            ('gait_frequency' if observe_frequency else None),
+            ('phase' if observe_phase else None),
+            ('duration' if observe_duration else None),
+            ('foot_swing_height' if observe_foot_height else None),
+            ('body_height' if observe_body_height else None),
+            ('body_roll' if observe_body_roll else None),
+            ('body_pitch' if observe_body_pitch else None),
+            ('body_yaw' if observe_body_yaw else None),
+        ]
+        env_command_keys = [x for x in env_command_keys if x is not None]
+        print('env_num_commands', env_num_commands)
+        print('env_command_keys', env_command_keys)
+        ranges = env_cfg['commands']['ranges']
+        print('env_cfg ranges', ranges)
+        env_command_ranges = [ranges.get(k) for k in env_command_keys]
+        print('env_command_ranges', env_command_ranges)
 
     ctrl_dt = dt if ctrl_dt is None else ctrl_dt
     dt = ctrl_dt if dt is None else dt
@@ -323,11 +362,18 @@ def run(args=None):
             ('q_temp', NUM_DOFS),
         ])
     x_extras = args.states_x_extras
-    if x_extras:
+    x_extras2 = args.states_x_extras2
+    num_links = 0 if LINK_NAMES is None else len(LINK_NAMES)
+    if x_extras or x_extras2:
         specs.extend([
             ('pos', 3),
             ('lin_vel', 3),
             ('lin_acc', 3),
+        ])
+    if num_links and x_extras2:
+        specs.extend([
+            ('x', (num_links, 4, 4)),
+            ('xd', (num_links, 6)),
         ])
     states_news(specs)
     states_new('q_target', NUM_DOFS)
@@ -335,6 +381,7 @@ def run(args=None):
     num_inputs = len(input_keys)
     states_new('input', num_inputs)
     num_commands = args.num_commands
+    num_commands = (env_num_commands - num_commands) if num_commands <= 0 else num_commands
     states_new('cmd', num_commands)
     use_shm = False
     shm_clear = args.shm_clear
@@ -379,6 +426,8 @@ def run(args=None):
         'states_pos': states_pos,
         'states_lin_vel': states_lin_vel,
         'states_lin_acc': states_lin_acc,
+        'states_x': states_get('x'),
+        'states_xd': states_get('xd'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
@@ -431,7 +480,6 @@ def run(args=None):
         dof_map_padded = [(DOF_NAMES.index(n) if n in DOF_NAMES else -1) for n in dof_names]
         print('dof_states_padded', dof_states_padded)
         print('dof_names_extra', len(dof_names_extra), dof_names_extra)
-        print('DOF_NAMES_extra', len(DOF_NAMES_extra), DOF_NAMES_extra)
         print('dof_map_padded', dof_map_padded)
     else:
         dof_map = [DOF_NAMES.index(n) for n in dof_names]
@@ -445,15 +493,26 @@ def run(args=None):
     print('num_dofs', num_dofs)
     print('dof_map', dof_map)
     print('dof_src_map', dof_src_map)
+    print('DOF_NAMES_extra', len(DOF_NAMES_extra), DOF_NAMES_extra)
 
-    if env_cfg is not None:
+    if init_joint_angles is not None:
         default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
     if default_dof_pos is not None:
         q_reset[dof_map] = default_dof_pos[dof_src_map]
+
+    q_reset_update = args.q_reset_update
+    if q_reset_update is not None:
+        q_reset_update = load_obj(q_reset_update)
+        if isinstance(q_reset_update, dict) and isinstance(list(q_reset_update.keys())[0], str):
+            q_reset_update = {DOF_NAMES.index(k): v for k, v in q_reset_update.items()}
+            obj_update(q_reset, q_reset_update)
+
     default_dof_pos = q_reset[dof_map] if default_dof_pos is None else default_dof_pos
+    q_boot = q_reset if Q_BOOT is None else Q_BOOT
 
     print('default_dof_pos', default_dof_pos.tolist())
     print('q_reset', q_reset.tolist())
+    print('q_boot', q_boot.tolist())
 
     if dof_states_padded:
         dtype = states_q_ctrl.dtype
@@ -549,6 +608,9 @@ def run(args=None):
                 smpl_dof_map = [int(smpl_dof_map)]
             elif isinstance(smpl_dof_map, str):
                 smpl_dof_map = DOF_MAPS[smpl_dof_map]
+            elif isinstance(smpl_dof_map, list):
+                if isinstance(smpl_dof_map[0], str):
+                    smpl_dof_map = [DOF_NAMES.index(n) for n in smpl_dof_map]
             smpl_r = 0.3 if args.sample_r is None else load_obj(args.sample_r)
             if isinstance(smpl_r, float):
                 print('mean', Q_CTRL_MAX + Q_CTRL_MIN)
@@ -751,12 +813,16 @@ def run(args=None):
                     policy_fn = model
 
             infer_kwds = load_obj(args.infer_kwargs or '') or {}
-            cb_infer, reset_fn = cb_infer_cls(
-                **states_props_inf,
-                # states_q_ctrl=states_q_ctrl,
-                states_q_ctrl=states_q_ctrl_inf,
-                **states_infer_extras,
-                states_cmd=states_cmd,
+            infer_states = {}
+            infer_states.update(states_props_inf)
+            infer_states.update(states_infer_extras)
+            infer_states.update(states_ctrls_inf)
+            cb_infer, reset_fn = autowired(cb_infer_cls, states=infer_states)(
+                # **states_props_inf,
+                # states_q_ctrl=states_q_ctrl_inf,
+                # **states_infer_extras,
+                # states_cmd=states_cmd,
+                # states_input=states_input,
                 policy_fn=policy_fn,
                 policy_reset_fn=policy_reset_fn,
                 # dof_map=dof_map,
@@ -904,8 +970,10 @@ def run(args=None):
     if wrapped:
         # if rec_q_ctrl is not None:
         # q_reset[:] = rec_q_ctrl[0]
+        q_lerp1 = q_reset.copy()
         if rec_q is not None:
-            q_reset[rep_dof_map] = frames[0]
+            # q_lerp1[rep_dof_map] = frames[0]
+            q_lerp1[rep_dof_map] = rec_q[0]
         lerp_steps = int((args.lerp_time + 0.01) // ctrl_dt)
         cb_lerp0 = None
         if Q_BOOT is not None:
@@ -919,7 +987,7 @@ def run(args=None):
             )
         cb_lerp1 = cb_ctrl_q_from_target_lerp(
             **states_ctrls,
-            states_q_target=q_reset,
+            states_q_target=q_lerp1,
             states_q=states_q,
             max_steps=lerp_steps,
             cycle=False,
@@ -1138,6 +1206,7 @@ def run(args=None):
                 asset_options = robot_def.get('ASSET_OPTIONS')
                 if asset_options is not None:
                     system_config.update({'asset_options': asset_options})
+            print('system_config', system_config)
         else:
             system_config = load_obj(sims_config)
         sim_dof_names = DOF_NAMES
@@ -1148,6 +1217,7 @@ def run(args=None):
         fix_base_link = fix_base_link or modes['sample']
         system_config['fix_base_link'] = fix_base_link
         default_dof_pos = system_config.get('default_dof_pos', {})
+        system_config['default_dof_pos'] = default_dof_pos
         if rec_q is not None and args.sims_fixed_base:
             # init_q = rec_q_ctrl[0]
             init_q = rec_q[0]
@@ -1157,10 +1227,12 @@ def run(args=None):
         if Q_BOOT is not None and wrapped:
             for i, n in enumerate(sim_dof_names):
                 default_dof_pos[n] = Q_BOOT[i]
+        elif not wrapped:
+            for i, n in enumerate(sim_dof_names):
+                default_dof_pos[n] = q_reset[i]
         default_root_states = system_config.get('default_root_states')
         if fix_base_link and default_root_states is not None:
             default_root_states[2] += 0.5
-        print('default_root_states', default_root_states)
         if args.sims_headless:
             system_config['headless'] = True
         if args.sims_compute_torque:
@@ -1172,9 +1244,14 @@ def run(args=None):
             # system_config['Kp'].update(sim_kps)
             # system_config['Kd'] = system_config.get('Kd', {})
             # system_config['Kd'].update(sim_kds)
+            system_config['Kp'] = sim_kps
+            system_config['Kd'] = sim_kds
             if sim_torque_limits is not None:
-                system_config['torque_limits'] = system_config.get('torque_limits', {})
-                system_config['torque_limits'].update(sim_torque_limits)
+                # system_config['torque_limits'] = system_config.get('torque_limits', {})
+                # system_config['torque_limits'].update(sim_torque_limits)
+                system_config['torque_limits'] = sim_torque_limits
+        system_config['torque_limits'] = sim_torque_limits
+        print('sim_torque_limits', sim_torque_limits)
         sims_use_kpkd = ('Kp' not in system_config) or args.sims_use_kpd
         if sims_use_kpkd:
             tau_limits = TAU_LIMIT.copy()
@@ -1186,8 +1263,10 @@ def run(args=None):
         system_config['dt'] = dt
         sims_override = args.sims_override
         sims_override = load_obj(sims_override or '') or {}
-        from unicon.utils import obj_update
         obj_update(system_config, sims_override)
+        print('default_root_states', system_config.get('default_root_states'))
+        print('default_dof_pos', system_config.get('default_dof_pos'))
+        print('torque_limits', system_config.get('torque_limits'))
         # system_config.update(sims_override)
         wrapper_config = []
         if args.sims_auto_reset:
@@ -1257,7 +1336,6 @@ def run(args=None):
         exit(0)
 
     verify_recv = args.verify_recv
-    verify_recv = verify_recv and fft_sys
 
     if verify_recv:
         print('verify_recv')
@@ -1305,12 +1383,16 @@ def run(args=None):
             close_fn()
             return
 
-    # pre_recv = 1
-    pre_recv = 0
+    pre_recv = args.pre_recv
     if pre_recv and cb_recv is not None:
         print('pre_recv', pre_recv)
         for _ in range(pre_recv):
             cb_recv()
+    pre_send = args.pre_send
+    if pre_send and cb_send is not None:
+        print('pre_send', pre_send)
+        for _ in range(pre_send):
+            cb_send()
 
     if ctrl_dt > dt:
         intv = int(ctrl_dt // dt)
@@ -1364,13 +1446,13 @@ def run(args=None):
         **states_extras,
     )
 
-    states_tf = states_all
+    # states_tf = states_all
     transforms = args.transforms
     for i, tf in enumerate(transforms):
         tf_kwds = load_obj(tf)
         tf_type = tf_kwds.pop('type')
         tf_cls = import_obj(tf_type, default_name_prefix='cb_tf', default_mod_prefix='unicon.transforms')
-        cb = tf_cls(**states_tf, **tf_kwds)
+        cb = autowired(tf_cls)(**tf_kwds)
         seq.insert(i, cb)
 
     imu_transform = args.imu_transform
@@ -1420,7 +1502,7 @@ def run(args=None):
         tf_kwds = load_obj(tf)
         tf_type = tf_kwds.pop('type')
         tf_cls = import_obj(tf_type, default_name_prefix='cb_tf', default_mod_prefix='unicon.transforms')
-        cb = tf_cls(**states_tf, **tf_kwds)
+        cb = autowired(tf_cls)(**tf_kwds)
         seq.append(cb)
 
     if q_transform is not None:
@@ -1437,6 +1519,16 @@ def run(args=None):
 
         seq.append(cb_ctrl_q_clip)
 
+    clear_input = True
+    if clear_input:
+
+        def cb_input_clear():
+            states_input[:] = 0.
+
+        seq.extend([
+            cb_input_clear,
+        ])
+
     seq = [cb_recv] + seq + [cb_send]
     seq = [c for c in seq if c is not None]
 
@@ -1448,33 +1540,7 @@ def run(args=None):
         seq.insert(0, cb0)
         seq.insert(-1, cb1)
 
-    inputs = args.inputs
-    outputs = args.outputs
-    states_io = states_all
-    for output_kwds in outputs:
-        output_kwds = load_obj(output_kwds)
-        output_kwds = {'type': output_kwds} if isinstance(output_kwds, str) else output_kwds
-        output_type = output_kwds.pop('type')
-        print('output_type', output_type)
-        cb_output_cls = import_obj(output_type, default_name_prefix='cb_send', default_mod_prefix='unicon.io')
-        cb = cb_output_cls(**states_io, robot_def=robot_def, **output_kwds)
-        seq.append(cb)
-    for input_kwds in inputs:
-        input_kwds = load_obj(input_kwds)
-        input_kwds = {'type': input_kwds} if isinstance(input_kwds, str) else input_kwds
-        input_type = input_kwds.pop('type')
-        print('input_type', input_type)
-        cb_input_cls = import_obj(input_type, default_name_prefix='cb_recv', default_mod_prefix='unicon.io')
-        cb = cb_input_cls(**states_io, robot_def=robot_def, **input_kwds)
-        seq.append(cb)
-
-    if rec_post_send and rec_output is not None:
-        seq.append(_cb_rec)
-
-    if verbose:
-        seq.append(cb_print())
-
-    if input_dev_type:
+    if input_dev_type is not None:
         fallback_input_types = ['term']
         for t in [input_dev_type] + fallback_input_types:
             print('input_dev_type', t)
@@ -1485,6 +1551,37 @@ def run(args=None):
         seq.extend([
             cb_input,
         ])
+
+    inputs = args.inputs
+    outputs = args.outputs
+    # states_io = states_all
+    for output_kwds in outputs:
+        output_kwds = load_obj(output_kwds)
+        output_kwds = {'type': output_kwds} if isinstance(output_kwds, str) else output_kwds
+        output_type = output_kwds.pop('type')
+        print('output_type', output_type)
+        cb_output_cls = import_obj(output_type, default_name_prefix='cb_send', default_mod_prefix='unicon.io')
+        cb = autowired(cb_output_cls)(robot_def=robot_def, **output_kwds)
+        seq.append(cb)
+    for input_kwds in inputs:
+        input_kwds = load_obj(input_kwds)
+        input_kwds = {'type': input_kwds} if isinstance(input_kwds, str) else input_kwds
+        input_type = input_kwds.pop('type')
+        print('input_type', input_type)
+        cb_input_cls = import_obj(input_type, default_name_prefix='cb_recv', default_mod_prefix='unicon.io')
+        cb = autowired(cb_input_cls)(robot_def=robot_def, **input_kwds)
+        seq.append(cb)
+
+    if x_extras2:
+        from unicon.kinematics import cb_kinematics_fwd
+        cb = autowired(cb_kinematics_fwd)(robot_def=robot_def)
+        seq.append(cb)
+
+    if rec_post_send and rec_output is not None:
+        seq.append(_cb_rec)
+
+    if verbose:
+        seq.append(cb_print())
 
     outer_input_stop = not args.no_outer_input_stop
     if outer_input_stop:
@@ -1507,14 +1604,18 @@ def run(args=None):
         if cir is not None:
             cir = int(cir)
             kwds['init_range_pt'] = cir
-        if cmd_type == 'vel' and env_cfg is not None:
-            kwds['env_cfg'] = env_cfg
+        if env_cfg is not None:
+            if cmd_type == 'vel':
+                kwds['env_cfg'] = env_cfg
+            elif cmd_type == 'wb':
+                kwds['cmd_keys'] = env_command_keys
+                kwds['cmd_ranges'] = env_command_ranges
         if cmd_type == 'replay':
             rec_cmd = loaded_rec.get('states_cmd')
             kwds['frames'] = rec_cmd
         kwds.update(cmd_kwds)
         if cb_cmd_cls is not None:
-            cb_cmd = cb_cmd_cls(states_input=states_input, states_cmd=states_cmd, input_keys=input_keys, **kwds)
+            cb_cmd = autowired(cb_cmd_cls)(input_keys=input_keys, **kwds)
             cb_cmd()
             cmd_max_steps = args.cmd_max_steps
             if cmd_max_steps is not None:

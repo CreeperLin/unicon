@@ -4,13 +4,14 @@ import numpy as np
 def cb_cmd_vel(
     states_input,
     states_cmd,
+    states_rpy,
     range_lin_vel_x=None,
     range_lin_vel_y=None,
     range_ang_vel_yaw=None,
     # step_vel=True,
     step_vel=False,
     step_vel_size=0.01,
-    eps=0.03,
+    eps=0.05,
     input_keys=None,
     cmd=[0.0, 0.0, 0.0],
     init_range_pt=0,
@@ -20,26 +21,32 @@ def cb_cmd_vel(
     lin_vel_x=None,
     lin_vel_y=None,
     ang_vel_yaw=None,
-    num_modes=5,
-    init_mode=0,
+    # num_gait_modes=5,
+    num_gait_modes=2,
+    init_gait_mode=0,
+    # init_gait_mode=1,
     env_cfg=None,
-    # init_mode=-1,
     enable_gait_modes=None,
     cmd_ranges=None,
     cmd_keys=None,
     cmd_orig_values=None,
     enable_extra_commands=None,
+    extra_cmd_w_coef=0.8,
     num_vel_cmds=3,
     use_dpad=True,
     dpad_step=0.02,
-    no_vy_cmd=True,
+    # no_vy_cmd=True,
+    no_vy_cmd=False,
+    use_pyaw_cmd=False,
+    pyaw_cmd_kp=1.,
+    pyaw_cmd_init=None,
 ):
     inp_min = -1.
     inp_max = 1.
     import numpy as np
     import time
     _default_ranges = {
-        'frequency': [0.5, 0.5],
+        'frequency': [1.2, 1.2],
         'phase': [0.5, 0.5],
         'duration': [0.5, 0.5],
         'foot_trajectory': [0.18, 0.18],
@@ -48,20 +55,25 @@ def cb_cmd_vel(
         'lin_vel_x',
         'lin_vel_y',
         'ang_vel_yaw',
-        'frequency',
+        # 'frequency',
+        'gait_frequency',
         'phase',
         'duration',
         'foot_trajectory',
         'body_height',
+        'body_roll',
         'body_pitch',
+        'body_yaw',
         'waist_yaw',
         'waist_roll',
         'waist_pitch',
     ]
     _default_cmd_orig_values = {
+        # 'body_height': 0.2,
         'body_height': 0.,
         'body_pitch': 0.,
         'frequency': 1.2,
+        'gait_frequency': 1.2,
     }
     _def_range = [-0.42, 0.42]
     cmd_keys = _default_cmd_keys if cmd_keys is None else cmd_keys
@@ -70,13 +82,24 @@ def cb_cmd_vel(
     num_commands = num_cmd
     if env_cfg is not None:
         env_cfg_env = env_cfg['env']
-        observe_frequency = env_cfg_env.get('observe_frequency', True)
-        observe_phase = env_cfg_env.get('observe_phase', True)
-        observe_duration = env_cfg_env.get('observe_duration', True)
+        observe_gait_commands = env_cfg['env'].get('observe_gait_commands', True)
+        observe_frequency = env_cfg_env.get('observe_frequency', observe_gait_commands)
+        observe_phase = env_cfg_env.get('observe_phase', observe_gait_commands)
+        observe_duration = env_cfg_env.get('observe_duration', observe_gait_commands)
         observe_foot_height = env_cfg_env.get('observe_foot_height', True)
         observe_body_height = env_cfg_env.get('observe_body_height',)
+        observe_body_roll = env_cfg_env.get('observe_body_roll',)
         observe_body_pitch = env_cfg_env.get('observe_body_pitch',)
+        observe_body_yaw = env_cfg_env.get('observe_body_yaw',)
         observe_waist_roll = env_cfg_env.get('observe_waist_roll',)
+        if not observe_body_height:
+            cmd_keys.pop(cmd_keys.index('body_height'))
+        if not observe_body_pitch:
+            cmd_keys.pop(cmd_keys.index('body_pitch'))
+        if not observe_body_roll:
+            cmd_keys.pop(cmd_keys.index('body_roll'))
+        if not observe_body_yaw:
+            cmd_keys.pop(cmd_keys.index('body_yaw'))
         if not observe_phase:
             cmd_keys.pop(cmd_keys.index('phase'))
         if not observe_duration:
@@ -98,8 +121,8 @@ def cb_cmd_vel(
         inp_span = inp_max - inp_min
         w_cmd = cmd_span / inp_span
         b_cmd = (cmd_min * inp_span - inp_min * cmd_span) / inp_span
-        orig_ids = [cmd_keys.index(k) for k in cmd_orig_values]
-        orig_vals = [v for v in cmd_orig_values.values()]
+        orig_ids = [cmd_keys.index(k) for k in cmd_orig_values if k in cmd_keys]
+        orig_vals = [v for k, v in cmd_orig_values.items() if k in cmd_keys]
         print('orig_ids', orig_ids, orig_vals)
         b_cmd[orig_ids] = orig_vals
         w_cmd[orig_ids] *= 2
@@ -117,6 +140,7 @@ def cb_cmd_vel(
     idx_vx = input_keys.index('ABS_Y')
     idx_vy = input_keys.index('ABS_X')
     idx_vyaw = input_keys.index('ABS_RX')
+    idx_pyaw = input_keys.index('ABS_RY')
     idx_btn_a = input_keys.index('BTN_A')
     idx_btn_b = input_keys.index('BTN_B')
     idx_btn_x = input_keys.index('BTN_X')
@@ -145,9 +169,9 @@ def cb_cmd_vel(
 
     enable_gait_modes = (num_cmd == num_commands + 1) if enable_gait_modes is None else enable_gait_modes
     if enable_gait_modes:
-        init_mode = (num_modes + init_mode) if init_mode < 0 else init_mode
-        states_cmd[-1] = init_mode
-        print('gait_modes', init_mode, num_modes)
+        init_gait_mode = (num_gait_modes + init_gait_mode) if init_gait_mode < 0 else init_gait_mode
+        states_cmd[-1] = init_gait_mode
+        print('gait_modes', init_gait_mode, num_gait_modes)
 
     if enable_extra_commands is None:
         enable_extra_commands = num_cmd > num_vel_cmds and num_cmd == num_commands + (1 if enable_gait_modes else 0)
@@ -166,7 +190,7 @@ def cb_cmd_vel(
         extra_beg = num_vel_cmds
         extra_end = num_vel_cmds + num_extra_cmds
         extra_inds = slice(extra_beg, extra_end)
-        w_extra = w_cmd[extra_beg:]
+        w_extra = w_cmd[extra_beg:] * extra_cmd_w_coef
         b_extra = b_cmd[extra_beg:]
         print('num_extra_cmds', num_extra_cmds, extra_cmd_pt, idx_extra_cmd, w_extra.shape)
         states_cmd[extra_inds] = input_extra * w_extra + b_extra + cmd_const[extra_beg:]
@@ -195,38 +219,54 @@ def cb_cmd_vel(
     ctrl_lin_vel_y = 0
     ctrl_ang_vel_yaw = 0
 
+    if use_pyaw_cmd:
+        # pyaw_cmd = states_rpy[2] if pyaw_cmd_init is None else pyaw_cmd_init
+        pyaw_cmd = pyaw_cmd_init
+        # cur_yaw = None
+        print('use_pyaw_cmd', pyaw_cmd, states_rpy)
+
     states_input_hist = np.zeros(len(states_input), dtype=np.int32)
 
     update_ctrl_wb()
 
-    def clamp(x, lo=0, hi=1):
-        return min(x, max(x, lo), hi)
+    def wrap(x):
+        return (x + np.pi) % (2 * np.pi) - np.pi
 
     def cb():
         states_input_hist[:] = np.clip(states_input_hist / 2 + states_input * 2, -3, 3)
         nonlocal cmd, ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw, range_pt, last_chg
+        nonlocal pyaw_cmd
         inp_vx = states_input[idx_vx]
         inp_vy = states_input[idx_vy]
         inp_vyaw = states_input[idx_vyaw]
         inp_vx, inp_vy, inp_vyaw = [0 if abs(x) < eps else x for x in (inp_vx, inp_vy, inp_vyaw)]
         inp_vy = 0 if no_vy_cmd else inp_vy
         if step_vel:
-            ctrl_lin_vel_x = ctrl_lin_vel_x + step_vel_size * inp_vx
-            ctrl_lin_vel_y = ctrl_lin_vel_y + step_vel_size * inp_vy
-            ctrl_ang_vel_yaw = ctrl_ang_vel_yaw + step_vel_size * inp_vyaw
+            ctrl_lin_vel_x = ctrl_lin_vel_x + step_vel_size * -inp_vx
+            ctrl_lin_vel_y = ctrl_lin_vel_y + step_vel_size * -inp_vy
+            ctrl_ang_vel_yaw = ctrl_ang_vel_yaw + step_vel_size * -inp_vyaw
             if states_input[idx_btn_a] == 1:
                 ctrl_lin_vel_x = ctrl_lin_vel_y = ctrl_ang_vel_yaw = 0
         else:
-            ctrl_lin_vel_x = inp_vx
-            ctrl_lin_vel_y = inp_vy
-            ctrl_ang_vel_yaw = inp_vyaw
-        ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw = [
-            clamp(x) for x in [ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw]
-        ]
-        cmd[0] = -ctrl_lin_vel_x
-        cmd[1] = -ctrl_lin_vel_y
-        cmd[2] = -ctrl_ang_vel_yaw
-        cmd *= ctrl_w
+            ctrl_lin_vel_x = -inp_vx
+            ctrl_lin_vel_y = -inp_vy
+            ctrl_ang_vel_yaw = -inp_vyaw
+        cmd[0] = ctrl_lin_vel_x
+        cmd[1] = ctrl_lin_vel_y
+        cmd[2] = ctrl_ang_vel_yaw
+        if use_pyaw_cmd and pyaw_cmd is not None:
+            if range_pt == num_ranges - 1:
+                inp_pyaw = states_input[idx_pyaw]
+                inp_pyaw = 0 if abs(inp_pyaw) < eps else inp_pyaw
+                pyaw_cmd = wrap(inp_pyaw * step_vel_size + pyaw_cmd)
+                if abs(inp_pyaw) > 0 and int(pyaw_cmd * 100) % 10 == 0:
+                    print('pyaw_cmd', pyaw_cmd, cur_yaw, vyaw_cmd)
+            cur_yaw = states_rpy[2]
+            yaw_error = wrap(pyaw_cmd - cur_yaw)
+            vyaw_cmd = pyaw_cmd_kp * yaw_error
+            cmd[2] += vyaw_cmd
+
+        cmd[:] = np.clip(cmd, -1., 1.) * ctrl_w
         out_cmd = cmd + cmd_const[:num_vel_cmds]
         out_cmd[np.abs(out_cmd) < min_vel] = 0
         states_cmd[:num_vel_cmds] = out_cmd
@@ -236,11 +276,14 @@ def cb_cmd_vel(
             d = 1 if states_input_hist[idx_btn_a] else -1
             range_pt = (range_pt + d + num_ranges) % num_ranges
             update_ctrl_wb()
+            if use_pyaw_cmd and range_pt == num_ranges - 1:
+                pyaw_cmd = states_rpy[2] if pyaw_cmd_init is None else pyaw_cmd_init
+                print('pyaw_cmd reset', pyaw_cmd)
             last_chg = time.time()
         if enable_gait_modes:
             if (states_input_hist[idx_btn_x] == 2 or states_input_hist[idx_btn_y] == 2) and chg:
                 d = 1 if states_input_hist[idx_btn_x] else -1
-                mode_pt = (states_cmd[-1] + d + num_modes) % num_modes
+                mode_pt = (states_cmd[-1] + d + num_gait_modes) % num_gait_modes
                 print('mode_pt', mode_pt)
                 states_cmd[-1] = mode_pt
                 last_chg = time.time()
@@ -271,8 +314,132 @@ def cb_cmd_vel(
             input_extra[extra_cmd_pt] = inp_extra
             states_cmd[extra_inds] = np.clip(input_extra * w_extra + b_extra + cmd_const[extra_inds],
                                              cmd_min[extra_inds], cmd_max[extra_inds])
-            if int(inp_extra * 100) % 10 == 0:
-                print('input_extra', extra_cmd_pt, round(inp_extra, 3), cmd_keys[cmd_pt], round(states_cmd[cmd_pt], 3))
+            if int(round(inp_extra, 2) * 100) % 10 == 0:
+                print('input_extra', extra_cmd_pt, round(inp_extra, 2), cmd_keys[cmd_pt], round(states_cmd[cmd_pt], 3))
+
+    return cb
+
+
+def cb_cmd_wb(
+    states_input,
+    states_cmd,
+    axis_names=None,
+    axis_cmd_keys=None,
+    axis_cmd_inds=None,
+    axis_dir=None,
+    cmd_def_vals=None,
+    cmd_keys=None,
+    cmd_ranges=None,
+    input_keys=None,
+    input_key_reset='BTN_A',
+    input_key_gait_next='BTN_X',
+    dpad_step=0.02,
+    num_gait_modes=2,
+    init_gait_mode=0,
+    enable_gait_mode=True,
+):
+
+    def rising_edge(s0, s1, idx):
+        return s0[idx] == 0 and s1[idx] == 1
+
+    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    num_cmds = len(states_cmd)
+    if axis_names is None:
+        axis_names = [
+            'ABS_X',
+            'ABS_Y',
+            'ABS_RX',
+            'ABS_RY',
+            'ABS_HAT0X',
+            'ABS_HAT0Y',
+        ]
+    if cmd_keys is None:
+        cmd_keys = [
+            'lin_vel_x',
+            'lin_vel_y',
+            'ang_vel_yaw',
+            'gait_frequency',
+            'phase',
+            'duration',
+            'foot_trajectory',
+            'body_height',
+            'body_roll',
+            'body_pitch',
+            'body_yaw',
+        ][:num_cmds]
+    num_commands = len(cmd_keys)
+    if axis_cmd_keys is None:
+        axis_cmd_keys = ['ang_vel_yaw', 'lin_vel_x', 'body_roll', 'body_pitch', 'body_yaw', 'body_height']
+    axis_cmd_inds = [cmd_keys.index(x) for x in axis_cmd_keys] if axis_cmd_inds is None else axis_cmd_inds
+    num_inputs = len(states_input)
+    axis_inds = [input_keys.index(n) for n in axis_names]
+    num_axes = len(axis_names)
+    axis_dir = ([-1] * num_inputs) if axis_dir is None else axis_dir
+    cmd_w = np.zeros((num_commands, num_axes))
+    cmd_b = np.zeros(num_commands)
+    inp_min = -1
+    inp_max = +1
+    inp_span = inp_max - inp_min
+    if cmd_ranges is None:
+        cmd_ranges = [[-1, 1] for _ in range(num_commands)]
+    cmd_ranges = np.array(cmd_ranges)
+    cmd_min = cmd_ranges[:, 0]
+    cmd_max = cmd_ranges[:, 1]
+    cmd_span = cmd_max - cmd_min
+    if cmd_def_vals is None:
+        cmd_def_vals = cmd_min + cmd_span * 0.5
+    cmd_b[:len(cmd_def_vals)] = cmd_def_vals
+    cmd_def_zero_keys = [
+        'lin_vel_x',
+        'lin_vel_y',
+        'ang_vel_yaw',
+        'body_height',
+        'body_roll',
+        'body_pitch',
+        'body_yaw',
+    ]
+    cmd_def_zero_inds = [cmd_keys.index(n) for n in cmd_def_zero_keys]
+    cmd_b[cmd_def_zero_inds] = 0.
+    input_states = np.zeros_like(states_input)
+    last_input = np.zeros_like(states_input)
+    hat_inds = [input_keys.index(n) for n in input_keys if 'HAT' in n]
+    inp_reset = input_keys.index(input_key_reset)
+    inp_gait_next = input_keys.index(input_key_gait_next)
+    gait_mode = init_gait_mode
+
+    enable_gait_mode = enable_gait_mode and (num_commands < num_cmds)
+    print('cb_cmd_wb', num_inputs, num_axes, num_cmds, num_commands, enable_gait_mode)
+
+    def update_wb():
+        for ci, ai in zip(axis_cmd_inds, axis_inds):
+            w = cmd_span[ci] / inp_span * axis_dir[ai]
+            cmd_w[ci, ai] = w
+            # cmd_b[ci] = (cmd_min[ci] * inp_span - inp_min * cmd_span[ci]) / inp_span
+        print(f'cmd_w {cmd_w.shape}\n{cmd_w}')
+        print(f'cmd_b {cmd_b.shape}\n{cmd_b}')
+
+    update_wb()
+
+    def cb():
+        s_hat = input_states[hat_inds]
+        input_states[:] = states_input
+        input_states[hat_inds] = np.clip(states_input[hat_inds] * dpad_step + s_hat, -1, 1)
+        cmd = cmd_w @ input_states[axis_inds] + cmd_b
+        cmd = np.clip(cmd, cmd_min, cmd_max)
+        states_cmd[:len(cmd)] = cmd
+
+        if rising_edge(last_input, states_input, inp_reset):
+            input_states[:] = 0.
+            print('input_states reset')
+
+        if rising_edge(last_input, states_input, inp_gait_next):
+            nonlocal gait_mode
+            gait_mode = (gait_mode + 1) % num_gait_modes
+            print('gait_mode', gait_mode)
+        if enable_gait_mode:
+            states_cmd[-1] = gait_mode
+
+        last_input[:] = states_input
 
     return cb
 

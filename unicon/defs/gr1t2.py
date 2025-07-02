@@ -172,6 +172,34 @@ DOF_MAPS = {
     'left_arm': range(18, 25),
     'right_arm': range(25, 32),
 }
+DOF_NAMES_STD = {
+    'left_hip_roll_joint': 'left_hip_roll',
+    'left_hip_yaw_joint': 'left_hip_yaw',
+    'left_hip_pitch_joint': 'left_hip_pitch',
+    'left_knee_pitch_joint': 'left_knee_pitch',
+    'left_ankle_pitch_joint': 'left_ankle_pitch',
+    'left_ankle_roll_joint': 'left_ankle_roll',
+    'right_hip_roll_joint': 'right_hip_roll',
+    'right_hip_yaw_joint': 'right_hip_yaw',
+    'right_hip_pitch_joint': 'right_hip_pitch',
+    'right_knee_pitch_joint': 'right_knee_pitch',
+    'right_ankle_pitch_joint': 'right_ankle_pitch',
+    'right_ankle_roll_joint': 'right_ankle_roll',
+    'waist_yaw_joint': 'waist_yaw',
+    'waist_pitch_joint': 'waist_pitch',
+    'waist_roll_joint': 'waist_roll',
+    'head_roll_joint': 'head_roll',
+    'head_pitch_joint': 'head_pitch',
+    'head_yaw_joint': 'head_yaw',
+    'left_shoulder_pitch_joint': 'left_shoulder_pitch',
+    'left_shoulder_roll_joint': 'left_shoulder_roll',
+    'left_shoulder_yaw_joint': 'left_shoulder_yaw',
+    'left_elbow_pitch_joint': 'left_elbow_pitch',
+    'right_shoulder_pitch_joint': 'right_shoulder_pitch',
+    'right_shoulder_roll_joint': 'right_shoulder_roll',
+    'right_shoulder_yaw_joint': 'right_shoulder_yaw',
+    'right_elbow_pitch_joint': 'right_elbow_pitch',
+}
 
 URDF = 'gr2/urdf/GR1T2.urdf'
 

@@ -1,43 +1,49 @@
 import os
 import numpy as np
+import inspect
 
-_states_inds = {}
 _states_arrs = {}
 _states_specs = {}
 _states_size = 0
-_states_arr = None
 _states_shm = None
 _states_buf = None
 _states_name = 'states'
 _shm_reused = False
 _tmp_dir = os.environ.get('TMP', '/tmp')
 
+_dtype2size = {
+    np.float32: 4,
+    np.float64: 8,
+    np.int32: 4,
+}
 _dtype2str = {
     np.float32: 'f',
     np.float64: 'd',
     np.int32: 'i',
-    # np.float: 'd',
 }
+_str2dtype = {v: k for k, v in _dtype2str.items()}
 
 
 def states_reset():
     global _states_size
     states_destroy(force=True)
-    _states_inds.clear()
     _states_arrs.clear()
     _states_specs.clear()
     _states_size = 0
 
 
-def states_new(name, numel, dtype=np.float32):
-    assert _states_arr is None
+def states_new(name, shape, dtype=np.float32):
+    assert _states_buf is None
     global _states_size
-    assert name not in _states_inds
-    size = numel
+    assert name not in _states_specs
+    shape = (shape,) if isinstance(shape, int) else shape
+    numel = 1
+    for x in shape:
+        numel *= x
+    size = numel * _dtype2size[dtype]
     st = _states_size
     ed = _states_size + size
-    _states_inds[name] = slice(st, ed)
-    _states_specs[name] = (st, ed, numel, _dtype2str[dtype])
+    _states_specs[name] = (st, ed, numel, shape, _dtype2str[dtype])
     _states_size += size
     return st
 
@@ -73,20 +79,17 @@ def states_create(size, use_shm=False, max_size=0, reuse=False, clear=False, nam
             states_destroy(force=True)
             shm = shared_memory.SharedMemory(name=name, create=True, size=num_bytes)
         _states_shm = shm
-        arr = np.ndarray((num_floats,), dtype=np.float32, buffer=shm.buf)
+        buf = shm.buf
     else:
         buf = bytearray(num_bytes)
-        # arr = np.zeros((num_floats,), dtype=np.float32)
-        arr = np.ndarray((num_floats,), dtype=np.float32, buffer=buf)
 
-    return arr
+    return buf
 
 
 def states_destroy(force=False):
-    global _states_arr, _states_shm, _states_buf
+    global _states_shm, _states_buf
     if not force and _states_shm is None:
         return
-    _states_arr = None
     _states_buf = None
     if _shm_reused:
         print('not destroying reused shm')
@@ -103,16 +106,8 @@ def states_destroy(force=False):
         print('shm destroy failed', e)
 
 
-def states_set_inds(inds):
-    states_destroy()
-    global _states_inds, _states_size
-    _states_inds = inds
-    _states_size = max([(inds.stop if isinstance(inds, slice) else max(inds)) for inds in _states_inds.values()])
-    print('_states_size', _states_size)
-
-
-def states_get_inds():
-    return _states_inds
+def states_get_specs():
+    return _states_specs
 
 
 def states_save_specs(name=_states_name):
@@ -131,9 +126,11 @@ def states_load_specs(name=_states_name):
     inds = {}
     for k, v in specs.items():
         inds[k] = slice(v[0], v[1])
-    global _states_specs
+    global _states_specs, _states_size
     _states_specs = specs
-    states_set_inds(inds)
+    _states_size = max([spec[1] for spec in specs.values()])
+    print('_states_size', _states_size)
+    states_destroy()
 
 
 def states_remove_specs(name=_states_name):
@@ -142,33 +139,30 @@ def states_remove_specs(name=_states_name):
         os.remove(path)
 
 
-def states_init(save=True, load=False, name=_states_name, **kwds):
+def states_init(save=True, load=False, states_name=_states_name, **kwds):
     if load:
-        states_load_specs(name=name)
+        states_load_specs(name=states_name)
+    print('states_init', _states_specs)
     save = save and not load
-    global _states_arr
-    if _states_arr is None:
-        _states_arr = states_create(_states_size, name=name, **kwds)
+    global _states_buf
+    if _states_buf is None:
+        _states_buf = states_create(_states_size, name=states_name, **kwds)
     if save:
-        states_save_specs(name=name)
-
-
-def states_get_ind(name):
-    return _states_inds[name]
+        states_save_specs(name=states_name)
 
 
 def states_get(name=None):
-    assert _states_arr is not None
+    assert _states_buf is not None
     if name is None:
-        return _states_arr
-        # return _states_buf
+        return _states_buf
     arr = _states_arrs.get(name)
     if arr is None:
-        inds = _states_inds.get(name)
-        if inds is None:
+        spec = _states_specs.get(name)
+        if spec is None:
             return None
-        arr = _states_arr[inds]
-        # arr = np.ndarray((), buffer=_states_buf[_states_inds[name]])
+        st, ed, numel, shape, dtype = spec
+        dtype = _str2dtype[dtype]
+        arr = np.frombuffer(_states_buf, dtype=dtype, count=numel, offset=st).reshape(*shape)
         _states_arrs[name] = arr
     return arr
 
@@ -178,9 +172,32 @@ def states_set(name, v):
     s[:] = v
 
 
-def autowired(func):
+def autowired(func, states=None):
+    sig = inspect.signature(func)
+    skwds = {}
+    states_prefix = 'states_'
+    for k, v in sig.parameters.items():
+        if not k.startswith(states_prefix):
+            continue
+        s = None
+        if states is not None:
+            s = states.get(k)
+        if s is None:
+            s = states_get(k.replace(states_prefix, ''))
+        if s is None:
+            if v.default is inspect._empty:
+                raise ValueError(f'missing states param {k} for func {func}')
+        else:
+            skwds[k] = s
+    states_var = sig.parameters.get('states')
+    if states_var is not None and states_var.kind == states_var.VAR_KEYWORD:
+        if states is not None:
+            skwds.update(states)
+        else:
+            skwds.update({states_prefix + k: states_get(k) for k in _states_specs})
 
     def wrapped(*args, **kwds):
-        return func(*args, **kwds)
+
+        return func(*args, **kwds, **skwds)
 
     return wrapped

@@ -29,6 +29,7 @@ def cb_unitree_recv_send_close(
     robot_def=None,
     **states,
 ):
+    import time
     NAME = robot_def.get('NAME')
     num_dofs = len(states_q)
     motor_inds = range(num_dofs)
@@ -36,6 +37,8 @@ def cb_unitree_recv_send_close(
         msg_type = 'go'
         motor_inds = list(range(num_dofs + 1))
         motor_inds.pop(9)
+    if NAME == 'go2':
+        msg_type = 'go'
     assert kp is not None and kd is not None
     from unitree_sdk2py.core.channel import (
         ChannelPublisher,
@@ -115,6 +118,14 @@ def cb_unitree_recv_send_close(
                 c.kp = 0
                 c.kd = 0
                 c.tau = 0
+        elif NAME == 'go2':
+            for i, c in enumerate(motor_cmd):
+                c.mode = 0x01
+                c.q = PosStopF
+                c.qd = VelStopF
+                c.kp = 0
+                c.kd = 0
+                c.tau = 0
         else:
             for i, c in enumerate(motor_cmd):
                 c.mode = 0x0A
@@ -153,13 +164,45 @@ def cb_unitree_recv_send_close(
         'left',
     ]
 
-    import time
-    while True:
+    print('disabling motion')
+    from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
+    from unitree_sdk2py.go2.sport.sport_client import SportClient
+    sc = SportClient()
+    sc.SetTimeout(5.0)
+    sc.Init()
+    msc = MotionSwitcherClient()
+    msc.SetTimeout(5.0)
+    msc.Init()
+    status, result = msc.CheckMode()
+    for i in range(10):
+        sc.StandDown()
+        msc.ReleaseMode()
+        status, result = msc.CheckMode()
+        if result is None or not result['name']:
+            break
+        time.sleep(1)
+
+    if NAME == 'go2':
+        print('disabling lidar')
+        from unitree_sdk2py.idl.default import std_msgs_msg_dds__String_
+        from unitree_sdk2py.idl.std_msgs.msg.dds_ import String_
+        lidar_pub = ChannelPublisher("rt/utlidar/switch", String_)
+        lidar_pub.Init()
+        lidar_cmd = std_msgs_msg_dds__String_()
+        lidar_cmd.data = "OFF"
+        lidar_pub.Write(lidar_cmd)
+        del lidar_pub
+        del lidar_cmd
+
+    for i in range(10):
+        print('waiting for sub', i)
         state = sub.Read()
         print(state.tick)
         if state.tick > 0:
             break
         time.sleep(1)
+    else:
+        raise RuntimeError('sub read timeout')
 
     if msg_type == 'hg' and mode_machine is None:
         mode_machine = state.mode_machine

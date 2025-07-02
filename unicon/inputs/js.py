@@ -208,6 +208,8 @@ def cb_input_js(
 
     def cb():
         nonlocal jsdev, n_fails, retry_pt
+        for i, k in enumerate(input_keys):
+            states_input[i] = states.get(k, 0)
         if jsdev is None:
             if retry_pt:
                 retry_pt -= 1
@@ -254,8 +256,6 @@ def cb_input_js(
                     print(time, 'axis', axis, value, fvalue)
             elif verbose:
                 print('unknown js ev', typ)
-            for i, k in enumerate(input_keys):
-                states_input[i] = states.get(k, 0)
             if verbose:
                 print('states_input', states_input.tolist())
 

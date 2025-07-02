@@ -1,3 +1,11 @@
+import numpy as np
+try:
+    from matplotlib import pyplot as plt
+    import matplotlib.animation as animation
+except ImportError:
+    plt = None
+
+
 def get_plot_args(args=None):
     import argparse
     parser = argparse.ArgumentParser()
@@ -19,6 +27,7 @@ def get_plot_args(args=None):
     parser.add_argument('-sie', '--states_i_extras', action='store_true')
     parser.add_argument('-sqe', '--states_q_extras', action='store_true')
     parser.add_argument('-sxe', '--states_x_extras', action='store_true')
+    parser.add_argument('-sxe2', '--states_x_extras2', action='store_true')
     parser.add_argument('-awf', '--acc_world_frame', action='store_true')
     parser.add_argument('-nd', '--no_dof_states', action='store_true')
     parser.add_argument('-g', '--g', type=float, default=-9.85)
@@ -35,15 +44,56 @@ def get_plot_args(args=None):
     return args
 
 
+def plot_states_x_extras2(
+    rec_names,
+    recs,
+    st,
+    ed,
+    robot_def,
+):
+    t = list(range(st, ed))
+    nplts = 4
+    LINK_NAMES = robot_def['LINK_NAMES']
+    num_links = len(LINK_NAMES)
+    links = list(range(num_links))
+    fig, axes = plt.subplots(num_links, nplts, figsize=(10 * nplts, 10 * num_links))
+    axes = axes.reshape(-1, nplts)
+    print('axes', axes.shape)
+    from unicon.utils import mat2rpy_np, mat2pos_np
+    for k, (link_idx, axs) in enumerate(zip(links, axes)):
+        link_name = LINK_NAMES[link_idx]
+        ax1, ax2, ax3 = axs[:3]
+        ax4 = axs[3]
+        for i, rec in enumerate(recs):
+            x = rec['states_x'][st:ed, link_idx]
+            xd = rec['states_xd'][st:ed, link_idx]
+            xpos = mat2pos_np(x)
+            xrpy = mat2rpy_np(x)
+            xpos_ref = np.zeros((1, 3))
+
+            for d in range(3):
+                ax = axs[d]
+                if i == 0:
+                    ax.plot(t[0], xpos_ref[0, d])
+                ax.plot(t, xpos[:, d])
+
+        # ax1.set_ylim([-x_max, x_max])
+        # ax3.set_ylim([-x_max, x_max])
+        ax1.legend(['ref'] + rec_names, loc="lower right")
+        ax1.set_title(link_name + ' pos')
+    fig.tight_layout()
+    return fig
+
+
 def plot(args=None):
     if args is None:
         args = get_plot_args()
     import os
-    import numpy as np
     motion_output = args.motion_output
     states_i_extras = args.states_i_extras
     states_q_extras = args.states_q_extras
     states_x_extras = args.states_x_extras
+    states_x_extras2 = args.states_x_extras2
     eval_loss = args.eval_loss
     if eval_loss:
         import unicon.losses
@@ -143,6 +193,7 @@ def plot(args=None):
     num_steps_data = [rec['states_q'].shape[0] for rec in recs]
     num_steps = args.num_steps or states_q.shape[0]
     st = args.start
+    st = 0 if max(num_steps_data) < st else st
     ed = min(num_steps + st, min(num_steps_data))
     print('num_steps_data', num_steps_data, st, ed)
     num_steps = ed - st
@@ -156,9 +207,11 @@ def plot(args=None):
         print('auto dofs', len(dofs), dofs)
     dofs = eval(dofs) if isinstance(dofs, str) else dofs
     dofs = list(range(num_dofs)) if dofs is None else dofs
-    dofs = list(dofs) if isinstance(dofs, (slice, range)) else dofs
+    dofs = list(dofs) if isinstance(dofs, range) else dofs
+    dofs = list(range(num_dofs))[dofs] if isinstance(dofs, slice) else dofs
     dofs = [dofs] if not isinstance(dofs, (list, tuple)) else dofs
     dofs = dofs[:len(DOF_NAMES)]
+    print('dofs', dofs)
     num_dofs = len(dofs)
     print('DOF_NAMES', [DOF_NAMES[i] for i in dofs])
     diff_qc = 0
@@ -275,8 +328,6 @@ def plot(args=None):
                 print('max', _max)
                 print('med', _med)
         return
-    from matplotlib import pyplot as plt
-    import matplotlib.animation as animation
     plot_root = args.plot_root
     os.makedirs(plot_root, exist_ok=True)
     if states_i_extras:
@@ -564,6 +615,13 @@ def plot(args=None):
         plt.savefig(plot_prefix + f'sxe.{ext}')
         plt.close()
         return
+    if states_x_extras2:
+        fig = plot_states_x_extras2(rec_names, recs, st, ed, robot_def)
+        plot_dir = f'{plot_root}/'
+        plot_prefix = plot_dir
+        plt.savefig(plot_prefix + f'sxe2.{ext}')
+        plt.close()
+        return
     if states_q_extras:
         for n, rec in zip(rec_names, recs):
             print(n)
@@ -660,7 +718,7 @@ def plot(args=None):
                         ax4.plot(t, [30] * len(t))
                     ax4.plot(t, q_temp)
             name = DOF_NAMES[d]
-            tau_max = TAU_LIMIT[idx]
+            tau_max = TAU_LIMIT[k]
             # ax1.set_ylim([-mmc * 4, mmc * 4])
             ax1.set_ylim([-tau_max, tau_max])
             # ax2.set_ylim([-mmc * 2, mmc * 2])
