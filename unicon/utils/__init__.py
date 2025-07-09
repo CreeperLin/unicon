@@ -262,11 +262,7 @@ def parse_urdf(
     default_tau_limit=1000.,
     default_qd_limit=30.,
 ):
-    try:
-        from yourdfpy import URDF
-    except ImportError as e:
-        print(e)
-        return {}
+    from unicon.utils.yourdfpy import URDF
     print('parse_urdf', urdf_path)
     if hasattr(URDF, 'load'):
         urdf = URDF.load(urdf_path, load_meshes=False, build_scene_graph=False)
@@ -281,6 +277,7 @@ def parse_urdf(
     base_link_name = links[0].name
     min_z = get_min_z(topo, base_link_name)
     print('min_z', min_z)
+    min_z = -1.23 if min_z <= 0 else min_z
     joints = [j for j in joints if j.type != 'fixed']
     link_names = [k.name for k in links]
     dof_names = [j.name for j in joints]
@@ -292,8 +289,9 @@ def parse_urdf(
     q_max = [(3.14 if q is None else q) for q in q_max]
     tau_limit = [(default_tau_limit if m is None else m.effort) for m in joint_limits]
     qd_limit = [(default_qd_limit if m is None else m.velocity) for m in joint_limits]
-    damping = [(0 if d is None else d.damping) for d in joint_dynamics]
-    friction = [(0 if d is None else d.friction) for d in joint_dynamics]
+    damping = [(0 if (d is None or d.damping is None) else float(d.damping)) for d in joint_dynamics]
+    friction = [(0 if (d is None or d.friction is None) else float(d.friction)) for d in joint_dynamics]
+    armature = [(0 if (d is None or d.armature is None) else float(d.armature)) for d in joint_dynamics]
     num_dofs = len(dof_names)
     print('dof_names', num_dofs, dof_names)
     print('link_names', len(link_names), link_names)
@@ -301,12 +299,16 @@ def parse_urdf(
     print('q_max', np.round(np.array(q_max), 2).tolist())
     print('tau_limit', np.round(np.array(tau_limit), 2).tolist())
     print('qd_limit', np.round(np.array(qd_limit), 2).tolist())
+    print('damping', np.round(np.array(damping), 2).tolist())
+    print('friction', np.round(np.array(friction), 2).tolist())
+    print('armature', np.round(np.array(armature), 2).tolist())
     q_min = {k: v for k, v in zip(dof_names, q_min)}
     q_max = {k: v for k, v in zip(dof_names, q_max)}
     tau_limit = {k: v for k, v in zip(dof_names, tau_limit)}
     qd_limit = {k: v for k, v in zip(dof_names, qd_limit)}
     damping = {k: v for k, v in zip(dof_names, damping)}
     friction = {k: v for k, v in zip(dof_names, friction)}
+    armature = {k: v for k, v in zip(dof_names, armature)}
     kps = {'*': default_kp}
     kds = {'*': default_kd}
     robot_def = {
@@ -321,7 +323,7 @@ def parse_urdf(
         'KD': kds,
         'Q_DAMPING': damping,
         'Q_FRICTION': friction,
-        # 'INIT_Z': -min_z + 0.2,
+        'Q_ARMATURE': armature,
         'INIT_Z': -min_z * (1.2),
         '_URDF': urdf,
     }
@@ -351,8 +353,7 @@ def parse_robot_def(robot_def):
         mjcf_path = mjcf_path if mjcf_path.startswith('/') else os.path.join(_default_asset_dir, mjcf_path)
         robot_def['MJCF'] = mjcf_path
         try:
-            from mjcf_urdf_simple_converter import convert
-            # from unicon.utils.mjcf2urdf import convert_mjcf_to_urdf
+            from unicon.utils.mjcf2urdf import convert
             import tempfile
             with tempfile.TemporaryDirectory() as urdf_tmp_dir:
                 urdf_path = os.path.join(urdf_tmp_dir, os.path.basename(mjcf_path.replace('.xml', '.urdf')))
@@ -817,6 +818,15 @@ def rpy2quat_np(rpy):
     z = c * d * h + f * g * e
     w = c * d * e - f * g * h
     return np.stack([x, y, z, w], axis=-1)
+
+
+def compose_mat_np(xyz=None, rpy=None):
+    mat = np.eye(4)
+    if rpy is not None:
+        mat[:3, :3] = rpy2mat_np(rpy)
+    if xyz is not None:
+        mat[:3, 3] = xyz
+    return mat
 
 
 def pp_arr(arr):

@@ -72,7 +72,7 @@ def cb_kuavo_recv_send_close(
     # use_h12=True,
     use_h12=False,
     deploy_path=None,
-    **states,
+    **kwds,
 ):
     import time
     import numpy as np

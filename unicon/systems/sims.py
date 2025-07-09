@@ -15,7 +15,7 @@ def cb_sims_recv_send_close(
     states_tau_ctrl=None,
     copy=False,
     sims_kwds=None,
-    **states,
+    **kwds,
 ):
     import numpy as np
     from sims.run import run

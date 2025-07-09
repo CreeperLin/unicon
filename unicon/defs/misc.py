@@ -10,6 +10,7 @@ adam = {
     'NAME': 'adam',
     'URDF': 'adam/adam_lite/urdf/adam_lite_1_1.urdf',
     # 'URDF': 'adam/adam_lite/urdf/adam_lite_1_2.urdf',
+    'MJCF': 'adam/adam_lite_mj/sence_1.xml',
     'DOF_NAMES': [
         'hipPitch_Left',
         'hipRoll_Left',
@@ -379,8 +380,8 @@ s42 = s45.copy()
 s42['NAME'] = 's42'
 s42['URDF'] = 'biped_s42/urdf/biped_s42_1.urdf'
 
-g1_23 = dict(
-    NAME = 'g1_23',
+g1d23 = dict(
+    NAME = 'g1d23',
     KP = [
         100.0, 100.0, 100.0, 150.0, 40.0, 40.0,
         100.0, 100.0, 100.0, 150.0, 40.0, 40.0,

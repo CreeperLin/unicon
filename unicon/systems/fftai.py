@@ -59,7 +59,7 @@ def cb_fftai_recv_send_close(
     init_send_zeros=False,
     use_pd_control=False,
     reboot=True,
-    **states,
+    **kwds,
 ):
     import time
     import socket

@@ -157,6 +157,7 @@ def cb_input_pygame(
             if event.type == pygame.JOYDEVICEREMOVED:
                 if event.instance_id == instance_id:
                     js = None
+                    states_input[:] = 0.
                 print(f"Joystick {event.instance_id} disconnected {js}")
 
         if js is None:

@@ -17,7 +17,14 @@ def load_json(msg):
     return json.loads(msg.decode())
 
 
-def cb_send_pyzmq(keys=None, port=1337, norm_th=None, host='*', robot_def=None, **states):
+def cb_send_pyzmq(keys=None,
+                  port=1337,
+                  norm_th=None,
+                  host='*',
+                  robot_def=None,
+                  topic=None,
+                  send_key_map=None,
+                  **states):
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
     import zmq
@@ -29,22 +36,29 @@ def cb_send_pyzmq(keys=None, port=1337, norm_th=None, host='*', robot_def=None, 
     # See: http://api.zeromq.org/4-2:zmq-setsockopt
     # pub.setsockopt(zmq.SNDBUF, BUF_SIZE)
     addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
-    print('cb_send_pyzmq', addr, keys, norm_th)
+    if topic is None or isinstance(topic, str):
+        topic = {topic: keys}
+    topic = {(k if k is None else k.encode()): v for k, v in topic.items()}
+    print('cb_send_pyzmq', addr, keys, norm_th, topic)
     pub.bind(addr)
     n_send = 0
+    send_key_map = {} if send_key_map is None else send_key_map
 
     class cb:
 
         def __call__(self):
             nonlocal n_send
-            _states = states
-            if norm_th is not None:
-                _states = {k: v for k, v in _states.items() if np.sum(np.abs(v)) / len(v) > norm_th}
-                if not len(_states):
-                    return
-                print('_states', n_send, _states.keys())
-            msg = dump_fn(_states)
-            pub.send(msg)
+            for tp, ks in topic.items():
+                _states = {send_key_map.get(k, k): states[k] for k in ks}
+                if norm_th is not None:
+                    _states = {k: v for k, v in _states.items() if np.sum(np.abs(v)) / len(v) > norm_th}
+                    if not len(_states):
+                        return
+                    print('_states', n_send, _states.keys())
+                msg = dump_fn(_states)
+                if tp is not None:
+                    msg = tp + msg
+                pub.send(msg)
             n_send += 1
 
         def __del__(self):
@@ -54,7 +68,16 @@ def cb_send_pyzmq(keys=None, port=1337, norm_th=None, host='*', robot_def=None, 
     return cb()
 
 
-def cb_recv_pyzmq(keys=None, port=1337, host='localhost', recv_modes='+', repeats=3, robot_def=None, **states):
+def cb_recv_pyzmq(keys=None,
+                  port=1337,
+                  host='localhost',
+                  recv_modes='+',
+                  repeats=3,
+                  robot_def=None,
+                  topic=None,
+                  recv_key_map=None,
+                  match_len=False,
+                  **states):
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
     import zmq
@@ -64,15 +87,22 @@ def cb_recv_pyzmq(keys=None, port=1337, host='localhost', recv_modes='+', repeat
     # sub.setsockopt(zmq.CONFLATE, 1)
     # sub.setsockopt(zmq.RCVBUF, BUF_SIZE)
     addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
-    print('cb_recv_pyzmq', addr, keys)
+    print('cb_recv_pyzmq', addr, keys, topic)
+    topic = '' if topic is None else topic
+    if isinstance(topic, str):
+        topic = {topic: keys}
+    topic = {(k if k is None else k.encode()): v for k, v in topic.items()}
+    for tp in topic:
+        sub.setsockopt(zmq.SUBSCRIBE, tp)
     sub.connect(addr)
-    sub.setsockopt(zmq.SUBSCRIBE, b'')
     load_fn = load_json
     n_again = 0
     recv_modes = {} if recv_modes is None else recv_modes
     recv_modes = {k: recv_modes for k in keys} if isinstance(recv_modes, str) else recv_modes
     rem = repeats
     last_msg = None
+    ord_br = ord('{')
+    recv_key_map = {} if recv_key_map is None else recv_key_map
 
     class cb:
 
@@ -93,16 +123,32 @@ def cb_recv_pyzmq(keys=None, port=1337, host='localhost', recv_modes='+', repeat
                     return
                 rem -= 1
                 msg = last_msg
+            idx = msg.index(ord_br)
+            tp = msg[:idx]
+            ks = topic.get(tp)
+            if ks is None:
+                return
+            msg = msg[idx:]
+            if not len(msg):
+                return
             data = load_fn(msg)
-            for k, v in data.items():
-                s = states.get(k)
-                if k is None:
+            for k in ks:
+                v = data.get(k)
+                if v is None:
                     continue
+                k = recv_key_map.get(k, k)
+                s = states.get(k)
+                if s is None:
+                    continue
+                s_len = len(s)
+                v_len = len(v)
+                if match_len:
+                    assert s_len == v_len
                 mode = recv_modes.get(k)
                 if mode is None:
-                    s[:] = v
+                    s[:v_len] = v
                 elif mode == '+':
-                    s[:] = s + v
+                    s[:v_len] = s[:v_len] + v
 
         def __del__(_):
             sub.close()

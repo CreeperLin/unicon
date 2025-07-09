@@ -29,7 +29,7 @@ def cb_a1_recv_send_close(
     legged_type='A1',
     position_limit=True,
     position_protect=False,
-    **states,
+    **kwds,
 ):
     import a1_sdk as sdk
     num_dofs = len(states_q)

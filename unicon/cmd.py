@@ -369,7 +369,10 @@ def cb_cmd_wb(
     num_commands = len(cmd_keys)
     if axis_cmd_keys is None:
         axis_cmd_keys = ['ang_vel_yaw', 'lin_vel_x', 'body_roll', 'body_pitch', 'body_yaw', 'body_height']
-    axis_cmd_inds = [cmd_keys.index(x) for x in axis_cmd_keys] if axis_cmd_inds is None else axis_cmd_inds
+    if axis_cmd_inds is None:
+        axis_cmd_inds = [(cmd_keys.index(x) if x in cmd_keys else None) for x in axis_cmd_keys]
+    axis_names = [n for n, x in zip(axis_names, axis_cmd_inds) if x is not None]
+    axis_cmd_inds = [x for x in axis_cmd_inds if x is not None]
     num_inputs = len(states_input)
     axis_inds = [input_keys.index(n) for n in axis_names]
     num_axes = len(axis_names)
@@ -397,7 +400,7 @@ def cb_cmd_wb(
         'body_pitch',
         'body_yaw',
     ]
-    cmd_def_zero_inds = [cmd_keys.index(n) for n in cmd_def_zero_keys]
+    cmd_def_zero_inds = [cmd_keys.index(n) for n in cmd_def_zero_keys if n in cmd_keys]
     cmd_b[cmd_def_zero_inds] = 0.
     input_states = np.zeros_like(states_input)
     last_input = np.zeros_like(states_input)

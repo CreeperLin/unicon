@@ -111,7 +111,6 @@ _default_mms = [3000] * 15
 
 
 def cb_n1_recv_send_close(
-    # states_prop,
     states_rpy,
     states_ang_vel,
     states_quat,
@@ -149,7 +148,6 @@ def cb_n1_recv_send_close(
     use_fi_fsa=True,
     # init_servo_on=False,
     init_servo_on=True,
-    **states,
 ):
     fi_fsa = None
     if use_fi_fsa:

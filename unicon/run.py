@@ -296,11 +296,12 @@ def run(args=None):
 
         env_num_commands = env_cfg['commands']['num_commands']
         env_cfg_env = env_cfg['env']
-        observe_gait_commands = env_cfg_env.get('observe_gait_commands', True)
+        observe_clock_only = env_cfg.get('observe_clock_only', False)
+        observe_gait_commands = env_cfg_env.get('observe_gait_commands', True) and (not observe_clock_only)
         observe_frequency = env_cfg_env.get('observe_frequency', observe_gait_commands)
         observe_phase = env_cfg_env.get('observe_phase', observe_gait_commands)
         observe_duration = env_cfg_env.get('observe_duration', observe_gait_commands)
-        observe_foot_height = env_cfg_env.get('observe_foot_height', True)
+        observe_foot_height = env_cfg_env.get('observe_foot_height', observe_gait_commands)
         observe_body_height = env_cfg_env.get('observe_body_height',)
         observe_body_roll = env_cfg_env.get('observe_body_roll',)
         observe_body_pitch = env_cfg_env.get('observe_body_pitch',)
@@ -321,6 +322,7 @@ def run(args=None):
         env_command_keys = [x for x in env_command_keys if x is not None]
         print('env_num_commands', env_num_commands)
         print('env_command_keys', env_command_keys)
+        assert len(env_command_keys) == env_num_commands
         ranges = env_cfg['commands']['ranges']
         print('env_cfg ranges', ranges)
         env_command_ranges = [ranges.get(k) for k in env_command_keys]
@@ -343,15 +345,17 @@ def run(args=None):
     }
 
     tau_ctrl = args.tau_ctrl
-    specs = [
-        # ('prop', 3 + 3 + 4 + NUM_DOFS * 2),
-        ('rpy', 3),
-        ('ang_vel', 3),
-        ('quat', 4),
-        ('q', NUM_DOFS),
-        ('qd', NUM_DOFS),
-        ('q_ctrl', NUM_DOFS),
-    ]
+    specs = []
+    if NUM_DOFS:
+        specs.extend([
+            ('rpy', 3),
+            ('ang_vel', 3),
+            ('quat', 4),
+            ('q', NUM_DOFS),
+            ('qd', NUM_DOFS),
+            ('q_ctrl', NUM_DOFS),
+            ('q_target', NUM_DOFS),
+        ])
     if tau_ctrl:
         specs.append(('tau_ctrl', NUM_DOFS))
     q_extras = args.states_q_extras
@@ -376,13 +380,14 @@ def run(args=None):
             ('xd', (num_links, 6)),
         ])
     states_news(specs)
-    states_new('q_target', NUM_DOFS)
     input_keys = import_obj('unicon.inputs:_default_input_keys')
     num_inputs = len(input_keys)
     states_new('input', num_inputs)
     num_commands = args.num_commands
-    num_commands = (env_num_commands - num_commands) if num_commands <= 0 else num_commands
-    states_new('cmd', num_commands)
+    if env_num_commands is not None and num_commands <= 0:
+        num_commands = env_num_commands - num_commands
+    if num_commands > 0:
+        states_new('cmd', num_commands)
     use_shm = False
     shm_clear = args.shm_clear
     use_shm = args.shm or shm_clear
@@ -967,7 +972,9 @@ def run(args=None):
     chain = [cb]
 
     wrapped = not args.no_wrap
-    if wrapped:
+    if not NUM_DOFS:
+        pass
+    elif wrapped:
         # if rec_q_ctrl is not None:
         # q_reset[:] = rec_q_ctrl[0]
         q_lerp1 = q_reset.copy()
@@ -1189,6 +1196,8 @@ def run(args=None):
                 asset_options = robot_def.get('ASSET_OPTIONS')
                 if asset_options is not None:
                     system_config.update({'asset_options': asset_options})
+            if sims_type == 'sims.systems.mujoco':
+                system_config['xml_path'] = robot_def.get('MJCF')
             print('system_config', system_config)
         else:
             system_config = load_obj(sims_config)
