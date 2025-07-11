@@ -98,13 +98,14 @@ def parse_msg2(msg_type, data, ofs=0):
 
 def load(
     path=None,
-    robot_def=None,
     msg_specs=None,
     topic_names=None,
     states_map=None,
     dof_names=None,
     dt=None,
 ):
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
     robot_dof_names = robot_def.get('DOF_NAMES')
     if msg_specs is not None:
         _msg_specs.update(msg_specs)

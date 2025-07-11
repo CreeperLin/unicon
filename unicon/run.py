@@ -11,7 +11,7 @@ def get_args():
     parser.add_argument('-m', '--mode', action='append')
     parser.add_argument('-dt', '--dt', type=float, default=None)
     parser.add_argument('-n', '--num_steps', type=int, default=0)
-    parser.add_argument('-s', '--system', default='f')
+    parser.add_argument('-s', '--system', default='fake')
     parser.add_argument('-ro', '--rec_output', default=None)
     parser.add_argument('-it', '--infer_type', default='gr1')
     parser.add_argument('-di', '--input_dev_type', default='js')
@@ -48,7 +48,6 @@ def get_args():
     parser.add_argument('-rpfk', '--replay_frame_key', default='states_q_ctrl')
     parser.add_argument('-qcdm', '--q_ctrl_default_mask', action='store_true')
     parser.add_argument('-qcm', '--q_ctrl_mask', default=None)
-    parser.add_argument('-iv', '--infer_verify', action='store_true')
     parser.add_argument('-imp', '--infer_model_path', default=None)
     parser.add_argument('-ikwds', '--infer_kwargs', default=None)
     parser.add_argument('-wi', '--wait_input', action='store_true')
@@ -97,6 +96,7 @@ def get_args():
     parser.add_argument('-sqe', '--states_q_extras', action='store_true')
     parser.add_argument('-sxe', '--states_x_extras', action='store_true')
     parser.add_argument('-sxe2', '--states_x_extras2', action='store_true')
+    parser.add_argument('-scs', '--states_custom_specs', default=None)
     parser.add_argument('-tc', '--tau_ctrl', action='store_true')
     parser.add_argument('-cct', '--cb_ctrl_tau', default=None)
     parser.add_argument('-cdt', '--ctrl_dt', type=float, default=None)
@@ -141,7 +141,7 @@ def run(args=None):
     from unicon.general import cb_chain, cb_loop, cb_noop, cb_print, cb_prod, cb_zip, \
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
-        import_obj, parse_robot_def, load_obj, match_keys, obj_update
+        import_obj, parse_robot_def, load_obj, match_keys, obj_update, set_ctx
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
     if args.sudo:
@@ -343,6 +343,7 @@ def run(args=None):
         'hostname': __import__('platform').node(),
         'saved_info': saved_info,
     }
+    set_ctx(ctx)
 
     tau_ctrl = args.tau_ctrl
     specs = []
@@ -379,6 +380,11 @@ def run(args=None):
             ('x', (num_links, 4, 4)),
             ('xd', (num_links, 6)),
         ])
+    states_custom_specs = args.states_custom_specs
+    if states_custom_specs is not None:
+        states_custom_specs = load_obj(states_custom_specs)
+        print('states_custom_specs', states_custom_specs)
+        specs.extend(states_custom_specs)
     states_news(specs)
     input_keys = import_obj('unicon.inputs:_default_input_keys')
     num_inputs = len(input_keys)
@@ -560,7 +566,6 @@ def run(args=None):
         kwds = args.rec_kwds
         loaded_rec = mod.load(
             rec_path,
-            robot_def=robot_def,
             **(kwds or {}),
         )
     if loaded_rec is not None:
@@ -706,37 +711,7 @@ def run(args=None):
             rep_dof_map = dof_map
             replay_states_key = args.replay_states_key
             states_dest = states_get(replay_states_key)
-            if loaded_rec is None:
-                import torch
-                if actions_all is not None:
-                    actions_all = torch.from_numpy(actions_all)
-                elif actions_path.endswith('.npy'):
-                    r = np.load(actions_path, allow_pickle=True).item()
-                    actions_all = r['actions']
-                    actions_all = actions_all.squeeze()
-                    actions_all = torch.from_numpy(actions_all)
-                elif actions_path.endswith('.pt'):
-                    actions_all = torch.load(actions_path, map_location='cpu').squeeze()
-                print('actions_all', actions_all.shape)
-                retained_action_inds = env_cfg.get('retained_action_inds')
-                if retained_action_inds is not None:
-                    _dof_map = list(range(dof_map.start, dof_map.stop)) if isinstance(dof_map, slice) else dof_map
-                    print('retained_action_inds', retained_action_inds)
-                    dof_map_action = [_dof_map[i] for i in retained_action_inds]
-                    print('dof_map_action', dof_map_action)
-                    _actions = torch.zeros(len(actions_all), num_dofs)
-                    _actions[:, dof_map_action] = actions_all
-                    actions_all = _actions
-                assert actions_all.shape[1] == num_dofs
-                clip_actions = env_cfg['normalization']['clip_actions']
-                action_scale = env_cfg['control']['action_scale']
-                print('clip_actions', clip_actions)
-                print('action_scale', action_scale)
-                actions_all = torch.clip(actions_all, -clip_actions, clip_actions)
-                actions_all = actions_all * action_scale + torch.from_numpy(default_dof_pos).to(dtype=torch.float32)
-                actions_all = actions_all.numpy()
-                frames = actions_all
-            else:
+            if loaded_rec is not None:
                 replay_frame_key = args.replay_frame_key
                 rec_frames = loaded_rec.get(replay_frame_key)
                 rec_dof_names = loaded_rec.get('dof_names', dof_names)
@@ -833,32 +808,11 @@ def run(args=None):
                 # dof_map=dof_map,
                 dof_map=dof_map_padded,
                 dof_names=dof_names,
-                robot_def=robot_def,
                 env_cfg=env_cfg,
                 device=infer_device,
                 **infer_kwds,
             )
 
-            verify = args.infer_verify
-            if verify:
-                actions_all = torch.load(actions_path, map_location='cpu').squeeze().numpy()
-                print('actions_all', actions_all.shape)
-                obs_all = torch.load(obs_path, map_location='cpu').squeeze().numpy()
-                print('obs_all', obs_all.shape)
-                actions_pred = []
-                # policy_reset_fn()
-                reset_fn()
-                for obs in obs_all:
-                    actions = model(torch.from_numpy(obs).view(1, -1))
-                    actions_pred.append(actions)
-                actions_pred = torch.stack(actions_pred, dim=1).squeeze()
-                print(actions_pred.shape)
-                # print(actions_pred[0] - actions_all[0])
-                print('min', torch.min(actions_pred, dim=0)[0])
-                print('max', torch.max(actions_pred, dim=0)[0])
-                err = (actions_pred - actions_all).norm(dim=-1).mean()
-                print('err', err)
-                # return
             reset_fn()
             infer_profile = not args.infer_no_profile
             if infer_profile:
@@ -1524,7 +1478,7 @@ def run(args=None):
         for t in [input_dev_type] + fallback_input_types:
             print('input_dev_type', t)
             cb_input_cls = import_obj(t, default_name_prefix='cb_input', default_mod_prefix='unicon.inputs')
-            cb_input = cb_input_cls(states_input=states_input)
+            cb_input = autowired(cb_input_cls)()
             if cb_input is not None:
                 break
         seq.extend([
@@ -1539,7 +1493,7 @@ def run(args=None):
         output_type = output_kwds.pop('type')
         print('output_type', output_type)
         cb_output_cls = import_obj(output_type, default_name_prefix='cb_send', default_mod_prefix='unicon.io')
-        cb = autowired(cb_output_cls)(robot_def=robot_def, **output_kwds)
+        cb = autowired(cb_output_cls)(**output_kwds)
         seq.append(cb)
     for input_kwds in inputs:
         input_kwds = load_obj(input_kwds)
@@ -1547,12 +1501,12 @@ def run(args=None):
         input_type = input_kwds.pop('type')
         print('input_type', input_type)
         cb_input_cls = import_obj(input_type, default_name_prefix='cb_recv', default_mod_prefix='unicon.io')
-        cb = autowired(cb_input_cls)(robot_def=robot_def, **input_kwds)
+        cb = autowired(cb_input_cls)(**input_kwds)
         seq.append(cb)
 
     if x_extras2:
         from unicon.kinematics import cb_kinematics_fwd
-        cb = autowired(cb_kinematics_fwd)(robot_def=robot_def)
+        cb = autowired(cb_kinematics_fwd)()
         seq.append(cb)
 
     if rec_post_send and rec_output is not None:

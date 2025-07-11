@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def load(path=None, robot_def=None):
+def load(path=None):
     rec = np.loadz(path)
     return dict(rec)
 

@@ -65,7 +65,6 @@ def cb_kuavo_recv_send_close(
     input_keys=None,
     callback_min_delay=0.01,
     control_mode=2,
-    robot_def=None,
     launch=True,
     stop=None,
     use_input=False,
@@ -84,6 +83,8 @@ def cb_kuavo_recv_send_close(
     from h12pro_controller_node.msg import h12proRemoteControllerChannel
 
     from unicon.utils import quat2rpy_np
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
 
     tau_limit = robot_def.get('TAU_LIMIT').copy()
     NAME = robot_def.get('NAME')

@@ -1,17 +1,6 @@
 import numpy as np
 
 
-def cb_ctrl_q_from_target_id(
-    states_q_ctrl,
-    states_q_target,
-):
-
-    def cb():
-        states_q_ctrl[:] = states_q_target
-
-    return cb
-
-
 def cb_ctrl_q_mask(
     states_q_ctrl,
     default_mask=None,

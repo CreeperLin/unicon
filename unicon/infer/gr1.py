@@ -28,9 +28,10 @@ def cb_infer_gr1(
     # gait_alt0=False,
     gait_alt0=True,
     dof_names=None,
-    robot_def=None,
     gravity_from_rpy=True,
 ):
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
     import torch
     import numpy as np
     from unicon.utils.torch import to_tensor

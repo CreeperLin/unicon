@@ -100,81 +100,78 @@ def th_ros2_sub_cb(
     print('ros2 sub exit', node_name)
 
 
-def run_fn(
-    cb_init=None,
-    cb_recv=None,
-    cb_send=None,
+def cb_rclpy_send(
     pub_dt=0.1,
-    sub_dt=0.1,
-    sub_topic='/isaac_joint_commands',
-    pub_topic='/isaac_joint_states',
-    verbose=False,
+    pub_topic='/default',
+    keys=None,
+    msg_keys=None,
+    msg_type=None,
+    **states,
 ):
-    _ctx = None
-    if cb_init is not None:
-        _ctx = cb_init()
-
-    def set_msg(msg, ctx):
-        send_name = ctx.get('name')
-        send_position = ctx.get('position')
-        send_velocity = ctx.get('velocity')
-        send_effort = ctx.get('effort')
-        if send_name is None or send_position is None or send_velocity is None or send_effort is None:
-            print('invalid send msg', ctx)
-            return False
-        msg.name = send_name
-        msg.position = send_position
-        msg.velocity = send_velocity
-        msg.effort = send_effort
-
-    def cb_pub_init(msg, node):
-        if _ctx is not None:
-            set_msg(msg, _ctx)
+    msg_type = sensor_msgs.msg.JointState if msg_type is None else msg_type
 
     def cb_pub_tick(msg, node):
-        if cb_send is None:
-            return
-        ctx = cb_send()
-        if ctx is None:
-            return False
-        if set_msg(msg, ctx) is False:
-            return False
-        if verbose:
-            print('send', msg.header.stamp)
+        for k, mk in zip(keys, msg_keys):
+            setattr(msg, mk, states[k].tolist())
 
     running = True
     th_pub_fn = partial(
         th_ros2_pub_cb,
         topic=pub_topic,
-        msg_type=sensor_msgs.msg.JointState,
+        msg_type=msg_type,
         is_running=lambda: running,
-        cb_init=cb_pub_init,
         cb_tick=cb_pub_tick,
         intv=pub_dt,
     )
-    th_sub_fn = partial(
-        th_ros2_sub_cb,
-        topic=sub_topic,
-        msg_type=sensor_msgs.msg.JointState,
-        is_running=lambda: running,
-        cb_recv=cb_recv,
-        intv=sub_dt,
-    )
-    th_sub = threading.Thread(target=th_sub_fn)
-    th_pub = threading.Thread(target=th_pub_fn)
 
-    th_sub.start()
+    th_pub = threading.Thread(target=th_pub_fn)
     th_pub.start()
 
     def close_fn():
         nonlocal running
         running = False
-        cb_recv(True)
-        th_sub.join()
         th_pub.join()
         rclpy.try_shutdown()
 
-    return close_fn
+    return None, close_fn
+
+
+def cb_rclpy_recv(
+    sub_dt=0.1,
+    topic='/default',
+    keys=None,
+    msg_keys=None,
+    msg_type=None,
+    **states,
+):
+    msg_type = sensor_msgs.msg.JointState if msg_type is None else msg_type
+
+    def cb_recv(msg):
+        for k, mk in zip(keys, msg_keys):
+            m = msg.get(mk)
+            if m is None:
+                continue
+            states[k][:] = m
+
+    running = True
+    th_sub_fn = partial(
+        th_ros2_sub_cb,
+        topic=topic,
+        msg_type=msg_type,
+        is_running=lambda: running,
+        cb_recv=cb_recv,
+        intv=sub_dt,
+    )
+    th_sub = threading.Thread(target=th_sub_fn)
+    th_sub.start()
+
+    def close_fn():
+        nonlocal running
+        running = False
+        th_sub.join()
+        rclpy.try_shutdown()
+
+    return None, close_fn
 
 
 if __name__ == '__main__':

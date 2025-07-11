@@ -98,7 +98,6 @@ def cb_t1_recv_send_close(
     # send_mode='mp',
     compute_quat=False,
     send_dt=0.001,
-    robot_def=None,
 ):
     import os
     import time

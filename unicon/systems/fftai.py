@@ -55,7 +55,6 @@ def cb_fftai_recv_send_close(
     default_pd=True,
     zero_pd=False,
     fsa_time_out=0.01,
-    robot_def=None,
     init_send_zeros=False,
     use_pd_control=False,
     reboot=True,
@@ -82,6 +81,8 @@ def cb_fftai_recv_send_close(
     # buf_size = 64
     buf_size = 32
 
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
     fsa_sign = robot_def.FSA_SIGN
     fsa_ips = robot_def.FSA_IPS
     fse_ips = robot_def.FSE_IPS

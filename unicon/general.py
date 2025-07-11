@@ -402,3 +402,29 @@ def cb_wait_input(
                 return True
 
     return cb
+
+
+def cb_copy_merge(
+    merge_fn='sum',
+    merge_keys=None,
+    copy_nums=None,
+    **states,
+):
+    import numpy as np
+    copy_states = {}
+
+    merge_fn = getattr(np, merge_fn) if isinstance(merge_fn, str) else merge_fn
+
+    for k, n in zip(merge_keys, copy_nums):
+        s = states.get(k)
+        rs = np.zeros((n, *s.shape), dtype=s.dtype)
+        copy_states[k] = rs
+
+    def cb():
+        for k in merge_keys:
+            s = states.get(k)
+            rs = copy_states.get(k)
+            s[:] = merge_fn(rs, axis=0)
+
+    cb.copy_states = copy_states
+    return cb

@@ -144,11 +144,12 @@ def cb_n1_recv_send_close(
     # control_mode=6,
     # reboot=True,
     reboot=False,
-    robot_def=None,
     use_fi_fsa=True,
     # init_servo_on=False,
     init_servo_on=True,
 ):
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
     fi_fsa = None
     if use_fi_fsa:
         import socket

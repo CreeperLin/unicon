@@ -17,7 +17,6 @@ def cb_pnd_recv_send_close(
     # err_exit=False,
     err_exit=True,
     compute_quat=False,
-    robot_def=None,
     zero_roll_kp=True,
     **states,
 ):
@@ -33,6 +32,8 @@ def cb_pnd_recv_send_close(
     assert power_info['bt_capacity'] > 20
 
     from unicon.utils import rpy2quat_np
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
 
     abs_json_path = 'abs.json'
     lib_path = pnd_py.__file__

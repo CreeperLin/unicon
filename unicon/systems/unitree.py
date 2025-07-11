@@ -26,10 +26,11 @@ def cb_unitree_recv_send_close(
     msg_type='hg',
     mode_machine=None,
     mode_pr=0,
-    robot_def=None,
     **states,
 ):
     import time
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
     NAME = robot_def.get('NAME')
     num_dofs = len(states_q)
     motor_inds = range(num_dofs)

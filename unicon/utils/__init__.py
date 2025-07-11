@@ -7,6 +7,36 @@ import threading
 
 _default_time_fn = time.perf_counter
 
+_ctx = {}
+
+
+def set_ctx(ctx):
+    _ctx.clear()
+    _ctx.update(ctx)
+
+
+def get_ctx():
+    return _ctx
+
+
+def get_host_ip1():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    addr = s.getsockname()[0]
+    s.close()
+    return addr
+
+
+def get_host_ip2():
+    import socket
+    hostname = socket.gethostname()
+    addr = socket.gethostbyname(hostname)
+    return addr
+
+
+get_host_ip = get_host_ip1
+
 
 class watchdog:
 
@@ -446,6 +476,26 @@ def register_obj(
     print('register_obj', mod, full_name, obj)
 
 
+def import_file(path, name=None):
+    """Import modules from file."""
+    import sys
+    import importlib
+    name = '_default' if name is None else name
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    if name:
+        sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_registry = {}
+
+
+def register_obj(name, obj):
+    _registry[name] = obj
+
+
 def import_obj(
     spec=None,
     default_name_prefix=None,
@@ -464,17 +514,22 @@ def import_obj(
             mod, name = spec
         else:
             raise ValueError(f'invalid spec {spec}')
-    default_mod_prefix = None if (mod is not None and '.' in mod) else default_mod_prefix
-    path = [x for x in [default_mod_prefix, mod] if x is not None]
-    mod_path = '.'.join(path)
-    try:
-        mod = __import__(mod_path, fromlist=[''])
-    except ImportError:
-        if default_mod_prefix is not None and name is not None:
-            print('import failed', mod_path)
-            mod = __import__(default_mod_prefix, fromlist=[''])
-        else:
-            raise
+    if isinstance(name, str) and name in _registry:
+        return _registry.get(name)
+    if isinstance(mod, str) and mod[-3:] in ['.py', '.so']:
+        mod = import_file(mod)
+    else:
+        default_mod_prefix = None if (isinstance(mod, str) and '.' in mod) else default_mod_prefix
+        path = [x for x in [default_mod_prefix, mod] if x is not None]
+        mod_path = '.'.join(path)
+        try:
+            mod = __import__(mod_path, fromlist=[''])
+        except ImportError:
+            if default_mod_prefix is not None and name is not None:
+                print('import failed', mod_path)
+                mod = __import__(default_mod_prefix, fromlist=[''])
+            else:
+                raise
     names = [x for x in [default_name_prefix, name] if x is not None]
     full_name = '_'.join(names)
     if not len(full_name):

@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import json
 
 BUF_SIZE = 128
 RCVHWM = 32
@@ -7,24 +8,23 @@ SNDHWM = 32
 
 
 def dump_json(states):
-    import json
     data = {k: s.astype(np.float64).round(3).tolist() for k, s in states.items()}
     return json.dumps(data, indent=None, separators=(',', ':')).encode()
 
 
 def load_json(msg):
-    import json
     return json.loads(msg.decode())
 
 
-def cb_send_pyzmq(keys=None,
-                  port=1337,
-                  norm_th=None,
-                  host='*',
-                  robot_def=None,
-                  topic=None,
-                  send_key_map=None,
-                  **states):
+def cb_send_pyzmq(
+    keys=None,
+    port=1337,
+    norm_th=None,
+    host='*',
+    topic=None,
+    send_key_map=None,
+    **states,
+):
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
     import zmq
@@ -68,16 +68,17 @@ def cb_send_pyzmq(keys=None,
     return cb()
 
 
-def cb_recv_pyzmq(keys=None,
-                  port=1337,
-                  host='localhost',
-                  recv_modes='+',
-                  repeats=3,
-                  robot_def=None,
-                  topic=None,
-                  recv_key_map=None,
-                  match_len=False,
-                  **states):
+def cb_recv_pyzmq(
+    keys=None,
+    port=1337,
+    host='localhost',
+    recv_modes='+',
+    repeats=3,
+    topic=None,
+    recv_key_map=None,
+    match_len=False,
+    **states,
+):
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
     import zmq

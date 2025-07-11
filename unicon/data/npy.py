@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def load(path=None, robot_def=None):
+def load(path=None):
     rec = np.load(path, allow_pickle=True).item()
     return rec
 

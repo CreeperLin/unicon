@@ -5,7 +5,6 @@ def cb_send_swv(
     states_pos=None,
     host='localhost',
     port=6000,
-    robot_def=None,
     start_server=True,
     init_z=1.0,
     use_rpy=False,
@@ -13,6 +12,8 @@ def cb_send_swv(
     verbose=False,
     **states,
 ):
+    from unicon.utils import get_ctx
+    robot_def = get_ctx()['robot_def']
     dof_names = robot_def.get('DOF_NAMES')
     urdf_path = robot_def.get('URDF')
     import numpy as np
