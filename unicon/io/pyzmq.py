@@ -17,6 +17,7 @@ def load_json(msg):
     return json.loads(msg.decode())
 
 
+# TODO(Ming): accept also the intervention from tracker
 def cb_send_pyzmq(keys=None,
                   port=1337,
                   norm_th=None,
