@@ -18,18 +18,40 @@ def cb_pnd_recv_send_close(
     err_exit=True,
     compute_quat=False,
     zero_roll_kp=True,
+    reboot=True,
     **states,
 ):
     import os
     import time
     import numpy as np
-    import pnd_py
     import subprocess
     import requests
+
+    os.system('sudo chmod 555 -R /root/.adam')
+    os.system('sudo chmod 555 /root')
+    os.system('sudo chmod 777 /dev/ttyUSB0')
+    # os.system('sudo rm -rf /tmp/log')
+    os.system('sudo chmod 777 -R /tmp/log')
+
+    import pnd_py
 
     power_info = requests.get('http://localhost:8086/table_refresh').json()
     print('power_info', power_info)
     assert power_info['bt_capacity'] > 20
+
+    from unicon.utils import get_host_ip
+    ip = get_host_ip()
+    print('host_ip', ip)
+    if reboot:
+        print('servo off')
+        print(requests.post(f'http://{ip}:8626/robot_command/actuator_power', json={'on': 'false'}).text)
+        time.sleep(3)
+
+    res = requests.get(f'http://{ip}:8626/robot_command/actuator_status', json={'on': 'true'}).json()
+    if not res['data']['actuator_status']:
+        print('servo on')
+        print(requests.post(f'http://{ip}:8626/robot_command/actuator_power', json={'on': 'true'}).text)
+        time.sleep(11)
 
     from unicon.utils import rpy2quat_np
     from unicon.utils import get_ctx
@@ -41,8 +63,6 @@ def cb_pnd_recv_send_close(
     proj_dir = os.path.dirname(build_dir)
     script_path = os.path.join(proj_dir, 'python_scripts')
     print('script_path', script_path)
-    os.system('sudo chmod 777 /dev/ttyUSB0')
-    os.system('sudo rm -rf /tmp/log')
 
     for i in range(3):
         os.system(f'rm -rf source {abs_json_path}')
@@ -75,15 +95,17 @@ def cb_pnd_recv_send_close(
     pnd_py.global_init()
     pcfg = pnd_py.PConfig.getInst()
     joint_names = pcfg.jointNames()
-    print(joint_names)
+    print('joint_names', len(joint_names), joint_names)
     num_joints = len(joint_names)
     num_dofs = len(states_q)
-    assert num_dofs == num_joints
+    assert num_dofs == num_joints, f'{num_dofs}, {num_joints}'
 
     d = pnd_py.RobotData()
     print('kRobotDof', pnd_py.kRobotDof)
     print('kRobotDataSize', pnd_py.kRobotDataSize)
     sz = pnd_py.kRobotDataSize
+    ofs = sz - pnd_py.kRobotDof
+    data_inds = slice(ofs, ofs + num_dofs)
     assert num_dofs == pnd_py.kRobotDof
     zeros_sz = np.zeros(sz)
     d.q_d_ = zeros_sz
@@ -137,11 +159,14 @@ def cb_pnd_recv_send_close(
         reps = []
         for ip in ips:
             s.sendto(msg, (ip, port))
-            for i in range(10):
-                data, addr = s.recvfrom(1024)
-                if addr[0] == ip:
-                    break
-            rep = json.loads(data.decode())
+            try:
+                for i in range(10):
+                    data, addr = s.recvfrom(1024)
+                    if addr[0] == ip:
+                        break
+                rep = json.loads(data.decode())
+            except socket.timeout:
+                rep = None
             print(f"ip: {ip} rep: {rep}")
             reps.append(rep)
         return reps
@@ -153,13 +178,13 @@ def cb_pnd_recv_send_close(
         "reqTarget": "/",
     }
     reps = motors_get(msg, ips)
-    assert (all([r['status'] == 'OK' and r['motor_drive_ready'] for r in reps]))
+    assert (all([r is not None and r['status'] == 'OK' and r['motor_drive_ready'] for r in reps]))
     msg = {
         "method": "GET",
         "reqTarget": "/m1/encoder/is_ready",
     }
     reps = motors_get(msg, ips)
-    assert (all([r['status'] == 'OK' and r['property'] for r in reps]))
+    assert (all([r is not None and r['status'] == 'OK' and r['property'] for r in reps]))
 
     r.init()
 
@@ -173,16 +198,16 @@ def cb_pnd_recv_send_close(
         if compute_quat:
             states_quat[:] = rpy2quat_np(states_rpy)
         states_ang_vel[:] = d.imu_data_[[3, 4, 5]]
-        states_q[:] = d.q_a_[-num_dofs:]
-        states_qd[:] = d.q_dot_a_[-num_dofs:]
+        states_q[:] = d.q_a_[data_inds]
+        states_qd[:] = d.q_dot_a_[data_inds]
         if states_q_tau is not None:
-            states_q_tau[:] = d.tau_a_[-num_dofs:]
+            states_q_tau[:] = d.tau_a_[data_inds]
         if d.error_state_ and err_exit:
             print('error_state_')
             return True
 
     def cb_send():
-        _q_ctrl[-num_dofs:] = states_q_ctrl
+        _q_ctrl[data_inds] = states_q_ctrl
         d.q_d_ = _q_ctrl
         d.q_dot_d_ = zeros_sz
         d.tau_d_ = zeros_sz

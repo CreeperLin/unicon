@@ -66,12 +66,15 @@ def cb_fftai_recv_send_close(
     import sys
     import struct
     import os
-    HOME = os.environ['HOME']
-    sys.path.append(f'{HOME}/GitRepo/Wiki-FSA/sdk-python/v3')
+    from unicon.utils import find
+    fsa_path = find(root='~', name='Wiki-FSA')[0]
+    fsa_path = os.path.join(fsa_path, 'sdk-python/v3')
+    print('fsa_path', fsa_path)
+    sys.path.append(fsa_path)
+    import fi_fsa
     sys.argv = sys.argv[:1]
     if rcs_config is not None:
         sys.argv.extend(['--rcs_config', rcs_config])
-    import fi_fsa
     s = fi_fsa.s
     fsa_port_fast = fi_fsa.fsa_port_fast
     fsa_port_ctrl = fi_fsa.fsa_port_ctrl

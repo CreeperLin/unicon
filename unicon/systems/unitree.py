@@ -78,6 +78,8 @@ def cb_unitree_recv_send_close(
         'BTN_Y': 'Y',
         'BTN_TL': 'L1',
         'BTN_TR': 'R1',
+        'BTN_SELECT': 'SELECT',
+        'BTN_START': 'START',
         'ABS_HAT0Y-': 'up',
         'ABS_HAT0X+': 'right',
         'ABS_HAT0Y+': 'down',

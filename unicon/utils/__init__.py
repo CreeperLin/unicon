@@ -6,8 +6,20 @@ import re
 import threading
 
 _default_time_fn = time.perf_counter
-
 _ctx = {}
+_edge_memo = {}
+_registry = {}
+
+
+def is_rising_edge(x, idx=None, key=None):
+    if idx is not None:
+        x = float(x[idx])
+    key = idx if key is None else key
+    last_x = _edge_memo.get(key, 0)
+    r = last_x == 0 and x > 0
+    # print(_edge_memo, idx, key, r, last_x, x)
+    _edge_memo[key] = x
+    return r
 
 
 def set_ctx(ctx):
@@ -306,8 +318,8 @@ def parse_urdf(
         topo[j.parent].append(j)
     base_link_name = links[0].name
     min_z = get_min_z(topo, base_link_name)
+    min_z = -1.23 if min_z >= 0 else min_z
     print('min_z', min_z)
-    min_z = -1.23 if min_z <= 0 else min_z
     joints = [j for j in joints if j.type != 'fixed']
     link_names = [k.name for k in links]
     dof_names = [j.name for j in joints]
@@ -398,6 +410,7 @@ def parse_robot_def(robot_def):
         except Exception:
             import traceback
             traceback.print_exc()
+    robot_def['NUM_DOFS'] = len(robot_def['DOF_NAMES'])
     print('robot_def', robot_def.keys())
     num_dofs = robot_def['NUM_DOFS']
     dof_names = robot_def['DOF_NAMES']
@@ -454,6 +467,14 @@ def register_obj(
             raise ValueError
     default_mod_prefix = None if (mod is not None and '.' in mod) else default_mod_prefix
     path = [x for x in [default_mod_prefix, mod] if x is not None]
+    names = [x for x in [default_name_prefix, name] if x is not None]
+    full_name = '_'.join(names)
+    obj_name = getattr(obj, '__name__', None)
+    full_name = full_name if len(full_name) else obj_name
+    _registry[full_name] = obj
+    if not any(map(len, path)):
+        print('register_obj registry', mod, full_name, obj)
+        return
     mod_path = '.'.join(path)
     if isinstance(obj, types.ModuleType):
         import sys
@@ -468,12 +489,8 @@ def register_obj(
             mod = __import__(default_mod_prefix, fromlist=[''])
         else:
             raise
-    names = [x for x in [default_name_prefix, name] if x is not None]
-    obj_name = getattr(obj, '__name__', None)
-    full_name = '_'.join(names)
-    full_name = full_name if len(full_name) else obj_name
     setattr(mod, full_name, obj)
-    print('register_obj', mod, full_name, obj)
+    print('register_obj attr', mod, full_name, obj)
 
 
 def import_file(path, name=None):
@@ -487,13 +504,6 @@ def import_file(path, name=None):
         sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
-
-
-_registry = {}
-
-
-def register_obj(name, obj):
-    _registry[name] = obj
 
 
 def import_obj(

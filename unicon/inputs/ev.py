@@ -27,7 +27,8 @@ def cb_input_ev(
             device = os.path.join(dev_root, devices[0])
     if device is None:
         dev_root = dev_path
-        device = os.path.join(dev_root, sorted(filter(lambda x: 'event' in x, os.listdir(dev_root)))[-1])
+        devs = filter(lambda x: 'event' in x, os.listdir(dev_root))
+        device = os.path.join(dev_root, sorted(devs, key=lambda x: int(x[5:]))[-1])
 
     import evdev
     ecodes_kb = {}

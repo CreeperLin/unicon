@@ -19,10 +19,12 @@ def load_json(msg):
 def cb_send_pyzmq(
     keys=None,
     port=1337,
+    addr=None,
     norm_th=None,
     host='*',
     topic=None,
     send_key_map=None,
+    verbose=False,
     **states,
 ):
     keys = list(states.keys()) if keys is None else keys
@@ -35,7 +37,8 @@ def cb_send_pyzmq(
     pub.setsockopt(zmq.SNDHWM, SNDHWM)
     # See: http://api.zeromq.org/4-2:zmq-setsockopt
     # pub.setsockopt(zmq.SNDBUF, BUF_SIZE)
-    addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
+    # addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
+    addr = f'tcp://{host}:{port}' if addr is None else addr
     if topic is None or isinstance(topic, str):
         topic = {topic: keys}
     topic = {(k if k is None else k.encode()): v for k, v in topic.items()}
@@ -58,6 +61,8 @@ def cb_send_pyzmq(
                 msg = dump_fn(_states)
                 if tp is not None:
                     msg = tp + msg
+                if verbose:
+                    print('send', n_send, msg)
                 pub.send(msg)
             n_send += 1
 
@@ -72,11 +77,13 @@ def cb_recv_pyzmq(
     keys=None,
     port=1337,
     host='localhost',
+    addr=None,
     recv_modes='+',
     repeats=3,
     topic=None,
     recv_key_map=None,
     match_len=False,
+    verbose=False,
     **states,
 ):
     keys = list(states.keys()) if keys is None else keys
@@ -87,7 +94,8 @@ def cb_recv_pyzmq(
     sub.setsockopt(zmq.RCVHWM, RCVHWM)
     # sub.setsockopt(zmq.CONFLATE, 1)
     # sub.setsockopt(zmq.RCVBUF, BUF_SIZE)
-    addr = os.environ.get('UNICON_PYZMQ_ADDR', f'tcp://{host}:{port}')
+    addr = os.environ.get('UNICON_PYZMQ_ADDR') if addr is None else addr
+    addr = f'tcp://{host}:{port}' if addr is None else addr
     print('cb_recv_pyzmq', addr, keys, topic)
     topic = '' if topic is None else topic
     if isinstance(topic, str):
@@ -97,22 +105,25 @@ def cb_recv_pyzmq(
         sub.setsockopt(zmq.SUBSCRIBE, tp)
     sub.connect(addr)
     load_fn = load_json
-    n_again = 0
+    n_again = -1
     recv_modes = {} if recv_modes is None else recv_modes
     recv_modes = {k: recv_modes for k in keys} if isinstance(recv_modes, str) else recv_modes
     rem = repeats
     last_msg = None
     ord_br = ord('{')
     recv_key_map = {} if recv_key_map is None else recv_key_map
+    n_recv = 0
 
     class cb:
 
         def __call__(_):
-            nonlocal n_again, rem, last_msg
+            nonlocal n_again, rem, last_msg, n_recv
             try:
                 msg = sub.recv(flags=zmq.NOBLOCK)
                 last_msg = msg
                 rem = repeats
+                if n_again == -1:
+                    print('cb_recv_pyzmq connected')
                 if n_again > 1000:
                     print('cb_recv_pyzmq reconnected')
                 n_again = 0
@@ -133,6 +144,8 @@ def cb_recv_pyzmq(
             if not len(msg):
                 return
             data = load_fn(msg)
+            if verbose:
+                print('recv', n_recv, data)
             for k in ks:
                 v = data.get(k)
                 if v is None:
@@ -150,8 +163,10 @@ def cb_recv_pyzmq(
                     s[:v_len] = v
                 elif mode == '+':
                     s[:v_len] = s[:v_len] + v
+            n_recv += 1
 
         def __del__(_):
+            print('cb_recv_pyzmq destroy')
             sub.close()
             context.term()
 

@@ -10,6 +10,8 @@ _default_input_keys = [
     'BTN_B',
     'BTN_X',
     'BTN_Y',
+    'BTN_SELECT',
+    'BTN_START',
     'BTN_TL',
     'BTN_TR',
 ]
@@ -31,6 +33,8 @@ _key_descs = {
     'BTN_B': 'button east',
     'BTN_X': 'button west',
     'BTN_Y': 'button north',
+    'BTN_SELECT': 'button option left',
+    'BTN_START': 'button option right',
     'BTN_TL': 'left bumper',
     'BTN_TR': 'right bumper',
 }

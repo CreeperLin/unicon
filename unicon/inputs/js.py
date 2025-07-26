@@ -70,11 +70,6 @@ def cb_input_js(
             1: 'ABS_Y',
             2: 'ABS_Z'
         }
-        if z2r:
-            axis_names.update({
-                2: 'ABS_RX',
-                5: 'ABS_RY',
-            })
         button_names = {
             256: ['BTN_0', 'BTN_MISC'],
             257: 'BTN_1',
@@ -145,6 +140,11 @@ def cb_input_js(
             308: ['BTN_WEST', 'BTN_Y'],
             309: 'BTN_Z'
         }
+    if z2r:
+        axis_names.update({
+            2: 'ABS_RX',
+            5: 'ABS_RY',
+        })
 
     states = {}
     axis_map = []
@@ -247,13 +247,13 @@ def cb_input_js(
                 for n in btn_names:
                     states[n] = value
                 if verbose:
-                    print(time, "button: %s %s" % (btn_names, 'pressed' if value else 'released'))
+                    print(time, "button: %d %s %s" % (number, btn_names, 'pressed' if value else 'released'))
             elif typ & 0x02:
                 axis = axis_map[number]
                 fvalue = value / 32767.0
                 states[axis] = fvalue
                 if verbose:
-                    print(time, 'axis', axis, value, fvalue)
+                    print(time, 'axis', number, axis, value, fvalue)
             elif verbose:
                 print('unknown js ev', typ)
             if verbose:

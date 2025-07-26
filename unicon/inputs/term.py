@@ -31,6 +31,8 @@ def cb_input_term(
         'u': 'BTN_B',
         'y': 'BTN_X',
         '7': 'BTN_Y',
+        '4': 'BTN_SELECT',
+        '5': 'BTN_START',
         'n': 'ABS_HAT0X+',
         'v': 'ABS_HAT0X-',
         'b': 'ABS_HAT0Y+',

@@ -170,7 +170,8 @@ def cb_cmd_vel(
     enable_gait_modes = (num_cmd == num_commands + 1) if enable_gait_modes is None else enable_gait_modes
     if enable_gait_modes:
         init_gait_mode = (num_gait_modes + init_gait_mode) if init_gait_mode < 0 else init_gait_mode
-        states_cmd[-1] = init_gait_mode
+        # states_cmd[-1] = init_gait_mode
+        mode_pt = init_gait_mode
         print('gait_modes', init_gait_mode, num_gait_modes)
 
     if enable_extra_commands is None:
@@ -233,7 +234,7 @@ def cb_cmd_vel(
 
     def cb():
         states_input_hist[:] = np.clip(states_input_hist / 2 + states_input * 2, -3, 3)
-        nonlocal cmd, ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw, range_pt, last_chg
+        nonlocal cmd, ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw, range_pt, last_chg, mode_pt
         nonlocal pyaw_cmd
         inp_vx = states_input[idx_vx]
         inp_vy = states_input[idx_vy]
@@ -282,10 +283,10 @@ def cb_cmd_vel(
         if enable_gait_modes:
             if (states_input_hist[idx_btn_x] == 2 or states_input_hist[idx_btn_y] == 2) and chg:
                 d = 1 if states_input_hist[idx_btn_x] else -1
-                mode_pt = (states_cmd[-1] + d + num_gait_modes) % num_gait_modes
-                print('mode_pt', mode_pt)
-                states_cmd[-1] = mode_pt
+                mode_pt = (mode_pt + d + num_gait_modes) % num_gait_modes
+                print('gait mode_pt', mode_pt)
                 last_chg = time.time()
+            states_cmd[-1] = mode_pt
         if enable_extra_commands:
             nonlocal extra_cmd_pt
             if (states_input_hist[idx_extra_prev] == -2 or states_input_hist[idx_extra_next] == 2) and chg:
@@ -300,21 +301,25 @@ def cb_cmd_vel(
                     input_extra[:] = 0
                     states_cmd[extra_inds] = np.clip(b_extra + cmd_const[extra_inds], cmd_min[extra_inds],
                                                      cmd_max[extra_inds])
-            if extra_cmd_pt == -1:
-                return
-            cmd_pt = extra_beg + extra_cmd_pt
-            inp_extra = -1 * states_input[idx_extra_cmd]
-            inp_extra = 0 if abs(inp_extra) < eps else inp_extra
-            if inp_extra == 0:
-                return
-            if use_dpad:
-                inp_extra = np.clip(input_extra[extra_cmd_pt] + inp_extra * dpad_step, inp_min, inp_max)
-                # inp_extra = input_extra[extra_cmd_pt] + inp_extra * 0.02
-            input_extra[extra_cmd_pt] = inp_extra
+            inp_extra = 0
+            _inp_extra = 0
+            if extra_cmd_pt != -1:
+                cmd_pt = extra_beg + extra_cmd_pt
+                _inp_extra = -1 * states_input[idx_extra_cmd]
+                _inp_extra = 0 if abs(_inp_extra) < eps else _inp_extra
+                # if inp_extra == 0:
+                #     return
+                if use_dpad:
+                    inp_extra = np.clip(input_extra[extra_cmd_pt] + _inp_extra * dpad_step, inp_min, inp_max)
+                else:
+                    inp_extra = _inp_extra
+                    # inp_extra = input_extra[extra_cmd_pt] + inp_extra * 0.02
+                input_extra[extra_cmd_pt] = inp_extra
             states_cmd[extra_inds] = np.clip(input_extra * w_extra + b_extra + cmd_const[extra_inds],
                                              cmd_min[extra_inds], cmd_max[extra_inds])
-            if int(round(inp_extra, 2) * 100) % 10 == 0:
+            if _inp_extra != 0 and int(round(inp_extra, 2) * 100) % 10 == 0:
                 print('input_extra', extra_cmd_pt, round(inp_extra, 2), cmd_keys[cmd_pt], round(states_cmd[cmd_pt], 3))
+        # print('states_cmd', states_cmd)
 
     return cb
 
@@ -413,9 +418,11 @@ def cb_cmd_wb(
     print('cb_cmd_wb', num_inputs, num_axes, num_cmds, num_commands, enable_gait_mode)
 
     def update_wb():
-        for ci, ai in zip(axis_cmd_inds, axis_inds):
+        # print('axis_cmd_inds', axis_cmd_inds)
+        # print('axis_inds', axis_inds)
+        for wi, (ci, ai) in enumerate(zip(axis_cmd_inds, axis_inds)):
             w = cmd_span[ci] / inp_span * axis_dir[ai]
-            cmd_w[ci, ai] = w
+            cmd_w[ci, wi] = w
             # cmd_b[ci] = (cmd_min[ci] * inp_span - inp_min * cmd_span[ci]) / inp_span
         print(f'cmd_w {cmd_w.shape}\n{cmd_w}')
         print(f'cmd_b {cmd_b.shape}\n{cmd_b}')

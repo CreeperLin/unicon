@@ -375,7 +375,7 @@ def cb_wait_input(
         if prompt:
             _pt += 1
             if time.monotonic() - _last_prompt > 2:
-                print('waiting for input keys', keys)
+                print('waiting for input keys', _pt, keys)
                 _last_prompt = time.monotonic()
         if pred(states_input[inds] > press_th):
             if _pressed == 0:
@@ -427,4 +427,15 @@ def cb_copy_merge(
             s[:] = merge_fn(rs, axis=0)
 
     cb.copy_states = copy_states
+    return cb
+
+
+def cb_if(_cb, pred):
+    _pt = -1
+
+    def cb():
+        nonlocal _pt
+        _pt += 1
+        return _cb() if pred(_pt) else None
+
     return cb

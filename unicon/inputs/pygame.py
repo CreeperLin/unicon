@@ -11,6 +11,8 @@ btn_mapping_dinput = {
     'BTN_Y': 4,
     'BTN_TL': 6,
     'BTN_TR': 7,
+    'BTN_SELECT': 8,
+    'BTN_START': 9,
 }
 hat_mapping_dinput = {
     'ABS_HAT0': (0, 1, -1),
@@ -29,6 +31,8 @@ btn_mapping_xbox = {
     'BTN_Y': 3,
     'BTN_TL': 4,
     'BTN_TR': 5,
+    'BTN_SELECT': 6,
+    'BTN_START': 7,
 }
 hat_mapping_xbox = {
     'ABS_HAT0': (0, 1, -1),
@@ -47,6 +51,8 @@ btn_mapping_ps4 = {
     'BTN_Y': 3,
     'BTN_TL': 9,
     'BTN_TR': 10,
+    'BTN_SELECT': 4,
+    'BTN_START': 6,
     'ABS_HAT0Y-': 11,
     'ABS_HAT0Y+': 12,
     'ABS_HAT0X-': 13,
@@ -66,6 +72,8 @@ btn_mapping_switchpro = {
     'BTN_Y': 3,
     'BTN_TL': 9,
     'BTN_TR': 10,
+    'BTN_SELECT': 4,
+    'BTN_START': 6,
     'ABS_HAT0Y-': 11,
     'ABS_HAT0Y+': 12,
     'ABS_HAT0X-': 13,

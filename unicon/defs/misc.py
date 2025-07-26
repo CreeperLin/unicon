@@ -3,13 +3,11 @@
 hmn = {
     'NAME': 'humanoid',
     'URDF': 'humanoid/humanoid_1.urdf',
-# URDF = 'humanoid/humanoid_lower.urdf'
 }
 
 adam = {
     'NAME': 'adam',
     'URDF': 'adam/adam_lite/urdf/adam_lite_1_1.urdf',
-    # 'URDF': 'adam/adam_lite/urdf/adam_lite_1_2.urdf',
     'MJCF': 'adam/adam_lite_mj/sence_1.xml',
     'DOF_NAMES': [
         'hipPitch_Left',
@@ -234,11 +232,6 @@ t1 = {
         'Right_Shoulder_Pitch': 0.5,
         'Right_Shoulder_Roll': 1.4,
     },
-}
-
-dobot = {
-    'NAME': 'dobot',
-    'URDF': 'dobot/urdf/dobot_simplified_hand.urdf',
 }
 
 pm = {

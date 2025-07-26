@@ -26,6 +26,7 @@ def cb_fake_recv_send_close(
 ):
     from unicon.utils import get_ctx
     robot_def = get_ctx()['robot_def']
+    dt = get_ctx()['dt'] if dt is None else dt
     qd_limit = robot_def.get('QD_LIMIT', qd_limit)
     import time
     from unicon.utils import rpy2quat_np
@@ -64,5 +65,7 @@ def cb_fake_recv_send_close(
         states_ang_vel[:] = _states_ang_vel
         quat = rpy2quat_np(states_rpy)
         states_quat[:] = quat
+        if states_pos is not None:
+            states_pos[:] = [0., 0., 1.]
 
     return cb_recv, cb_send, None
