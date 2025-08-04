@@ -375,7 +375,7 @@ def cb_wait_input(
         if prompt:
             _pt += 1
             if time.monotonic() - _last_prompt > 2:
-                print('waiting for input keys', _pt, keys)
+                print('waiting for input keys', round(_last_prompt), keys)
                 _last_prompt = time.monotonic()
         if pred(states_input[inds] > press_th):
             if _pressed == 0:

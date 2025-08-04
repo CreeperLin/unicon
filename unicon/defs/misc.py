@@ -2,12 +2,68 @@
 
 hmn = {
     'NAME': 'humanoid',
-    'URDF': 'humanoid/humanoid_1.urdf',
+    # 'URDF': 'humanoid/humanoid_1.urdf',
+    'URDF': 'humanoid/humanoid.urdf',
+    'DOF_NAMES_STD': {
+        'root_chest_joint1': 'waist_roll',
+        'root_chest_joint2': 'waist_yaw',
+        'root_chest_joint3': 'waist_pitch',
+        'chest_neck_joint1': 'head_roll',
+        'chest_neck_joint2': 'head_yaw',
+        'chest_neck_joint3': 'head_pitch',
+        'root_right_hip_joint1': 'right_hip_roll',
+        'root_right_hip_joint2': 'right_hip_yaw',
+        'root_right_hip_joint3': 'right_hip_pitch',
+        'right_knee': 'right_knee_pitch',
+        'right_knee_right_ankle_joint1': 'ankle_roll',
+        'right_knee_right_ankle_joint2': 'ankle_yaw',
+        'right_knee_right_ankle_joint3': 'ankle_pitch',
+        'chest_right_shoulder_joint1': 'right_shoulder_roll',
+        'chest_right_shoulder_joint2': 'right_shoulder_yaw',
+        'chest_right_shoulder_joint3': 'right_shoulder_pitch',
+        'right_elbow': 'right_elbow_pitch',
+        'root_left_hip_joint1': 'left_hip_roll',
+        'root_left_hip_joint2': 'left_hip_yaw',
+        'root_left_hip_joint3': 'left_hip_pitch',
+        'left_knee': 'left_knee_pitch',
+        'left_knee_left_ankle_joint1': 'left_ankle_roll',
+        'left_knee_left_ankle_joint2': 'left_ankle_yaw',
+        'left_knee_left_ankle_joint3': 'left_ankle_pitch',
+        'chest_left_shoulder_joint1': 'left_shoulder_roll',
+        'chest_left_shoulder_joint2': 'left_shoulder_yaw',
+        'chest_left_shoulder_joint3': 'left_shoulder_pitch',
+        'left_elbow': 'left_elbow_pitch'
+    },
+    'KP': {
+        "hip": 80,
+        "ankle": 80,
+        "knee": 80,
+
+        "root_chest": 100,
+        "chest_neck": 50,
+
+        "shoulder": 50,
+        "elbow": 50,
+        "wrist": 30,
+    },
+    'KD': {
+        "hip": 8,
+        "ankle": 8,
+        "knee": 8,
+
+        "root_chest.": 10,
+        "chest_neck.": 5,
+
+        "shoulder": 5,
+        "elbow": 5,
+        "wrist": 3,
+    },
 }
 
 adam = {
     'NAME': 'adam',
-    'URDF': 'adam/adam_lite/urdf/adam_lite_1_1.urdf',
+    # 'URDF': 'adam/adam_lite/urdf/adam_lite_1_1.urdf',
+    'URDF': 'adam/adam_lite/urdf/adam_lite_1_2.urdf',
     'MJCF': 'adam/adam_lite_mj/sence_1.xml',
     'DOF_NAMES': [
         'hipPitch_Left',
@@ -477,3 +533,7 @@ g1d23 = dict(
     },
     URDF = 'g1_description/g1_23dof_rev_1_0.urdf'
 )
+
+g1d29 = g1d23.copy()
+g1d29['NAME'] = 'g1d29'
+g1d29['URDF'] = 'g1/urdf/g1_29dof_boxcollision_fix_inertia_1_unlocked.urdf'

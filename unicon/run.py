@@ -228,8 +228,11 @@ def run(args=None):
         _default_infer_root = os.environ.get('UNICON_INFER_ROOT')
         if _default_infer_root is None:
             from unicon.utils import find
-            root = find(root='..', wholename=f'*{infer_load_run}')[0]
+            root = find(root='..', wholename=f'*{infer_load_run}')
+            if root is None:
+                root = find(root='~', wholename=f'*{infer_load_run}')
             assert root is not None
+            root = root[0]
         else:
             root = os.path.join(_default_infer_root, infer_load_run)
         print('infer root', root)
@@ -720,8 +723,8 @@ def run(args=None):
                 rep_dof_map = list2slice(rep_dof_map)
                 rec_dof_src_map = [i for i, n in enumerate(rec_dof_names) if n in DOF_NAMES]
                 rep_dt = loaded_rec.get('rec_dt')
-                rep_dt = loaded_rec_args['get']('ctrl_dt') if rep_dt is None else rep_dt
-                rep_dt = loaded_rec_args['get']('dt', ctrl_dt) if rep_dt is None else rep_dt
+                rep_dt = loaded_rec_args.get('ctrl_dt') if rep_dt is None else rep_dt
+                rep_dt = loaded_rec_args.get('dt', ctrl_dt) if rep_dt is None else rep_dt
                 frames = rec_frames[:, rec_dof_src_map]
                 # frames = rec_frames
             print('rep_dt', rep_dt)

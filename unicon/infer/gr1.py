@@ -85,7 +85,6 @@ def cb_infer_gr1(
     if stack_history_obs is None:
         stack_history_obs = env_cfg['env']['stack_history_obs']
     print('stack_history_obs', stack_history_obs)
-    use_clock = env_cfg['env'].get('use_clock', True)
     cmds_scale = [
         scales_lin_vel,
         scales_lin_vel,
@@ -245,8 +244,6 @@ def cb_infer_gr1(
         if num_cmds == num_commands + (1 if enable_gait_modes else 0):
             print('using states_cmd')
             commands = states_cmd
-    elif use_clock:
-        gait_time = 0
 
     num_extra_obs = env_cfg.get('num_extra_obs', 0)
     if num_extra_obs > 0:
@@ -300,11 +297,11 @@ def cb_infer_gr1(
             states_cmd[:3] * cmds_scale[:3],
         ]
         if observe_gait_commands:
-            nonlocal gait_indices
+            # nonlocal gait_indices
             frequencies = cmd_frequency
             phases = cmd_phase
             # durations = commands[:, 5]
-            gait_indices = np.modf(gait_indices + dt * frequencies)[0]
+            gait_indices[:] = np.modf(gait_indices + dt * frequencies)[0]
             # print(gait_indices)
             if enable_gait_modes:
                 gait_idx = states_cmd[-1]
@@ -357,17 +354,6 @@ def cb_infer_gr1(
                 obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
             # print('clock_inputs', foot_phases, clock_inputs)
             obs_list.extend(clock_inputs)
-        elif use_clock:
-            nonlocal gait_time
-            gait_time += 1
-            freq = 1.2
-            phases = gait_time * (dt * freq)
-            clock_sin = np.sin(phases).reshape(1)
-            clock_cos = np.cos(phases).reshape(1)
-            obs_list.extend([
-                clock_sin,
-                clock_cos,
-            ])
         obs = np.concatenate(obs_list)
         # print('commands', commands)
         # print('gait_indices', gait_indices)
@@ -380,6 +366,7 @@ def cb_infer_gr1(
         # print(obs[:, -13:])
         # print('obs', time.time() - t0)
         if stack_history_obs:
+            # print(obs.shape, hist.shape)
             hist[:, :-1, :] = hist[:, 1:, :].clone()
             hist[:, -1, :] = obs
             obs = hist.view(1, -1) if flatten_hist else hist
@@ -406,10 +393,13 @@ def cb_infer_gr1(
         # print('acts', time.time() - t0)
 
     def reset_fn():
+        nonlocal clock_scale, last_gait, jump_switching
         if stack_history_obs:
             hist[:] = 0.
         last_actions[:] = 0.
         gait_indices[:] = 0.
+        if enable_gait_modes:
+            clock_scale, last_gait, jump_switching = 0, 0, 0
         if policy_reset_fn is not None:
             policy_reset_fn()
 
