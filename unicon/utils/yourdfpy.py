@@ -1,13 +1,11 @@
 # URDF class from yourdfpy, simplified
 
 import os
-import six
 import logging
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
-from lxml import etree
 from unicon.utils import compose_mat_np
 
 _logger = logging.getLogger(__name__)
@@ -15,6 +13,54 @@ _logger = logging.getLogger(__name__)
 
 def _str2float(s):
     return float(s) if s is not None else None
+
+
+def load_xml_lxml(fname_or_file):
+    from lxml import etree
+    try:
+        parser = etree.XMLParser(remove_blank_text=True)
+        tree = etree.parse(fname_or_file, parser=parser)
+        xml_root = tree.getroot()
+    except Exception as e:
+        _logger.error(e)
+        _logger.error('Using different parsing approach.')
+        events = ('start', 'end', 'start-ns', 'end-ns')
+        xml = etree.iterparse(fname_or_file, recover=True, events=events)
+        # Iterate through all XML elements
+        for action, elem in xml:
+            # Skip comments and processing instructions,
+            # because they do not have names
+            if not (isinstance(elem, etree._Comment) or isinstance(elem, etree._ProcessingInstruction)):
+                # Remove a namespace URI in the element's name
+                # elem.tag = etree.QName(elem).localname
+                if action == 'end' and ':' in elem.tag:
+                    elem.getparent().remove(elem)
+        xml_root = xml.root
+    # Remove comments
+    etree.strip_tags(xml_root, etree.Comment)
+    etree.cleanup_namespaces(xml_root)
+    return xml_root
+
+
+def load_xml_xml(fname_or_file):
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(fname_or_file)
+        xml_root = tree.getroot()
+    except ET.ParseError as e:
+        _logger.error(e)
+        _logger.error('Using different parsing approach.')
+
+        xml_root = None
+        for event, elem in ET.iterparse(fname_or_file, events=('start', 'end')):
+            if event == 'end':
+                if ':' in elem.tag:
+                    parent = elem.getparent() if hasattr(elem, 'getparent') else None
+                    if parent is not None:
+                        parent.remove(elem)
+            if xml_root is None:
+                xml_root = elem
+    return xml_root
 
 
 @dataclass(eq=False)
@@ -228,7 +274,7 @@ class URDF:
 
     @staticmethod
     def load(fname_or_file, **kwargs):
-        if isinstance(fname_or_file, six.string_types):
+        if isinstance(fname_or_file, str):
             if not os.path.isfile(fname_or_file):
                 raise ValueError('{} is not a file'.format(fname_or_file))
 
@@ -236,31 +282,10 @@ class URDF:
                 kwargs['mesh_dir'] = os.path.dirname(fname_or_file)
 
         try:
-            parser = etree.XMLParser(remove_blank_text=True)
-            tree = etree.parse(fname_or_file, parser=parser)
-            xml_root = tree.getroot()
+            xml_root = load_xml_lxml(fname_or_file)
         except Exception as e:
             _logger.error(e)
-            _logger.error('Using different parsing approach.')
-
-            events = ('start', 'end', 'start-ns', 'end-ns')
-            xml = etree.iterparse(fname_or_file, recover=True, events=events)
-
-            # Iterate through all XML elements
-            for action, elem in xml:
-                # Skip comments and processing instructions,
-                # because they do not have names
-                if not (isinstance(elem, etree._Comment) or isinstance(elem, etree._ProcessingInstruction)):
-                    # Remove a namespace URI in the element's name
-                    # elem.tag = etree.QName(elem).localname
-                    if action == 'end' and ':' in elem.tag:
-                        elem.getparent().remove(elem)
-
-            xml_root = xml.root
-
-        # Remove comments
-        etree.strip_tags(xml_root, etree.Comment)
-        etree.cleanup_namespaces(xml_root)
+            xml_root = load_xml_xml(fname_or_file)
 
         return URDF(robot=URDF._parse_robot(xml_element=xml_root), **kwargs)
 

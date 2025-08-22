@@ -126,6 +126,7 @@ def get_args():
 def run(args=None):
     if args is None:
         args = get_args()
+    if not isinstance(args, dict):
         args = vars(args)
     try:
         import isaacgym
