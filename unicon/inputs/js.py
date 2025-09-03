@@ -10,6 +10,7 @@ def cb_input_js(
     dev_path='/dev/input',
     z2r=True,
 ):
+    from unicon.utils import cmd
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     # Released by rdb under the Unlicense (unlicense.org)
     # Based on information from:
@@ -161,7 +162,7 @@ def cb_input_js(
         if not os.path.exists(device):
             continue
         print('Opening %s...' % device)
-        os.system(f'sudo chmod 666 {device}')
+        cmd('sudo chmod 666', [device])
         jsdev = open(device, 'rb')
         # Get the device name.
         buf = array.array('B', [0] * 64)

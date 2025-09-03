@@ -26,16 +26,17 @@ def cb_pnd_recv_send_close(
     import numpy as np
     import subprocess
     import requests
+    from unicon.utils import cmd
 
-    os.system('sudo chmod 555 -R /root/.adam')
-    os.system('sudo chmod 555 /root')
-    os.system('sudo chmod 777 /dev/ttyUSB0')
-    # os.system('sudo rm -rf /tmp/log')
-    os.system('sudo chmod 777 -R /tmp/log')
+    cmd('sudo chmod 555 -R /root/.adam')
+    cmd('sudo chmod 555 /root')
+    cmd('sudo chmod 777 /dev/ttyUSB0')
+    # cmd('sudo rm -rf /tmp/log')
+    cmd('sudo chmod 777 -R /tmp/log')
 
     import pnd_py
 
-    power_info = requests.get('http://localhost:8086/table_refresh').json()
+    power_info = requests.get('http://localhost:8086/table_refresh', timeout=5).json()
     print('power_info', power_info)
     assert power_info['bt_capacity'] > 20
 
@@ -44,13 +45,13 @@ def cb_pnd_recv_send_close(
     print('host_ip', ip)
     if reboot:
         print('servo off')
-        print(requests.post(f'http://{ip}:8626/robot_command/actuator_power', json={'on': 'false'}).text)
+        print(requests.post(f'http://{ip}:8626/robot_command/actuator_power', json={'on': 'false'}, timeout=5).text)
         time.sleep(3)
 
-    res = requests.get(f'http://{ip}:8626/robot_command/actuator_status', json={'on': 'true'}).json()
+    res = requests.get(f'http://{ip}:8626/robot_command/actuator_status', json={'on': 'true'}, timeout=5).json()
     if not res['data']['actuator_status']:
         print('servo on')
-        print(requests.post(f'http://{ip}:8626/robot_command/actuator_power', json={'on': 'true'}).text)
+        print(requests.post(f'http://{ip}:8626/robot_command/actuator_power', json={'on': 'true'}, timeout=5).text)
         time.sleep(11)
 
     from unicon.utils import rpy2quat_np
@@ -65,24 +66,20 @@ def cb_pnd_recv_send_close(
     print('script_path', script_path)
 
     for i in range(3):
-        os.system(f'rm -rf source {abs_json_path}')
+        cmd('rm -rf source', [abs_json_path])
         assert not os.path.exists(abs_json_path)
         os.mkdir('source')
-        os.system(f'python3 {script_path}/read_abs.py')
+        cmd('python3', [f'{script_path}/read_abs.py'])
         time.sleep(1)
-        os.system(f'python3 {script_path}/read_abs.py')
-        res = subprocess.run(
-            f'python3 {script_path}/check_abs.py',
-            shell=True,
-            stdout=subprocess.PIPE,
-        )
+        cmd('python3', [f'{script_path}/read_abs.py'])
+        res = cmd('python3', [f'{script_path}/check_abs.py'], capture_output=True)
         res = res.stdout.decode().strip()
         if res == 'True':
             break
         print('get abs failed', i)
         time.sleep(5)
     assert res == 'True', res
-    os.system(f'cp source/abs.json {abs_json_path}')
+    cmd('cp source/abs.json', [abs_json_path])
 
     assert os.path.exists(abs_json_path)
 
@@ -90,7 +87,7 @@ def cb_pnd_recv_send_close(
     if not os.path.exists(so_path):
         _so_path = 'src/pnd-cpp-sdk/pnd/lib/linux_x86_64/libpnd.so.1.5.1'
         so_path_orig = os.path.join(proj_dir, _so_path)
-        os.system(f'ln -s {so_path_orig} {so_path}')
+        cmd('ln -s', [so_path_orig, so_path])
 
     pnd_py.global_init()
     pcfg = pnd_py.PConfig.getInst()
@@ -118,7 +115,7 @@ def cb_pnd_recv_send_close(
     r = pnd_py.RealRobot()
 
     pnd_py.PndStateEstimateInit()
-    os.system(f'rm -f {so_path}')
+    cmd('rm -f', [so_path])
 
     _kp = None
     _kd = None

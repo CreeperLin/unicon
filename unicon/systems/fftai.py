@@ -66,7 +66,7 @@ def cb_fftai_recv_send_close(
     import sys
     import struct
     import os
-    from unicon.utils import find
+    from unicon.utils import find, cmd
     fsa_path = find(root='~', name='Wiki-FSA')[0]
     fsa_path = os.path.join(fsa_path, 'sdk-python/v3')
     print('fsa_path', fsa_path)
@@ -496,7 +496,7 @@ def cb_fftai_recv_send_close(
 
     if enable_imu:
         import os
-        os.system(f'sudo chmod 666 {imu_device}')
+        cmd('sudo chmod 666', [imu_device])
         import serial
         ser = serial.Serial(imu_device, 921600)
         import struct

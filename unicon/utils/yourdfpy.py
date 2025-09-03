@@ -1,4 +1,4 @@
-# URDF class from yourdfpy, simplified
+# URDF class from yourdfpy (https://github.com/clemense/yourdfpy), simplified
 
 import os
 import logging

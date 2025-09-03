@@ -208,7 +208,7 @@ def cb_t1_recv_send_close(
 
     if os.path.exists(cfg_file):
         with open(cfg_file, "r", encoding="utf-8") as f:
-            cfg = yaml.load(f.read(), Loader=yaml.FullLoader)
+            cfg = yaml.safe_load(f.read())
     else:
         cfg = _default_cfg
 

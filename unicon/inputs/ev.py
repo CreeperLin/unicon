@@ -11,6 +11,7 @@ def cb_input_ev(
     z2r=True,
     use_nesw=True,
 ):
+    from unicon.utils import cmd
     import os
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
 
@@ -62,8 +63,7 @@ def cb_input_ev(
 
     print('opening event device', device)
 
-    # os.system('sudo usermod -a -G input $USER')
-    if os.system(f'test -r {device}'):
+    if cmd('test -r', [device]):
         raise RuntimeError(f'no read permission on {device}')
 
     dev = evdev.InputDevice(device)

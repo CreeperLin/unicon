@@ -205,7 +205,7 @@ def plot(args=None):
         cond = diff > eps
         dofs = np.where(cond)[0].tolist()
         print('auto dofs', len(dofs), dofs)
-    dofs = eval(dofs) if isinstance(dofs, str) else dofs
+    dofs = __import__('ast').literal_eval(dofs) if isinstance(dofs, str) else dofs
     dofs = list(range(num_dofs)) if dofs is None else dofs
     dofs = list(dofs) if isinstance(dofs, range) else dofs
     dofs = list(range(num_dofs))[dofs] if isinstance(dofs, slice) else dofs

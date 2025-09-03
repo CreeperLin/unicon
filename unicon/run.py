@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument('-n', '--num_steps', type=int, default=0)
     parser.add_argument('-s', '--system', default='fake')
     parser.add_argument('-ro', '--rec_output', default=None)
-    parser.add_argument('-it', '--infer_type', default='gr1')
+    parser.add_argument('-it', '--infer_type', default='none')
     parser.add_argument('-di', '--input_dev_type', default='js')
     parser.add_argument('-pt', '--policy_type', default='none')
     parser.add_argument('-mt', '--model_type', default=None)
@@ -225,14 +225,15 @@ def run(args=None):
     env_cfg_path = args['env_cfg_path']
     infer_load_run = args['infer_load_run']
     infer_model_path = args['infer_model_path']
+    infer_type = args['infer_type']
     if infer_load_run is not None:
         _default_infer_root = os.environ.get('UNICON_INFER_ROOT')
         if _default_infer_root is None:
             from unicon.utils import find
-            root = find(root='..', wholename=f'*{infer_load_run}')
+            root = find(root='..', path=f'*{infer_load_run}')
             if root is None:
-                root = find(root='~', wholename=f'*{infer_load_run}')
-            assert root is not None
+                root = find(root='~', path=f'*{infer_load_run}')
+            assert root is not None, 'infer policy dir not found'
             root = root[0]
         else:
             root = os.path.join(_default_infer_root, infer_load_run)
@@ -270,6 +271,8 @@ def run(args=None):
         print('env_cfg_path', env_cfg_path)
         env_cfg = load_obj(env_cfg_path)
     if env_cfg is not None:
+        if infer_type is None:
+            infer_type = env_cfg.get('infer_type')
         env_cfg_override = args['env_cfg_override']
         if env_cfg_override is not None:
             env_cfg_override = load_obj(env_cfg_override)
@@ -767,7 +770,6 @@ def run(args=None):
                 loop=replay_loop,
             )
         elif modes['infer']:
-            infer_type = args['infer_type']
             print('infer_type', infer_type)
             cb_infer_cls = import_obj(infer_type, default_name_prefix='cb_infer', default_mod_prefix='unicon.infer')
 
@@ -1144,7 +1146,7 @@ def run(args=None):
                 asset_options = robot_def.get('ASSET_OPTIONS')
                 if asset_options is not None:
                     system_config.update({'asset_options': asset_options})
-            if sims_type == 'sims.systems.mujoco':
+            if sims_type in ['sims.systems.mujoco', 'sims.systems.brax']:
                 system_config['xml_path'] = robot_def.get('MJCF')
             print('system_config', system_config)
         else:

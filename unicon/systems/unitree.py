@@ -14,6 +14,7 @@ def cb_unitree_recv_send_close(
     states_lin_vel=None,
     states_lin_acc=None,
     states_pos=None,
+    states_rpy2=None,
     kp=None,
     kd=None,
     q_ctrl_min=None,
@@ -98,6 +99,11 @@ def cb_unitree_recv_send_close(
     cmd = low_cmd_def_cls()
     state = None
     crc = CRC()
+    go_motor_modes = {
+        'h1': [0x0A] * 9 + [0x01] * 10,
+        'go2': 0x01,
+        # 'h1_2': [0x0A, 0x0A, 0x0A, 0x0A, 0x01, 0x01] * 2 + [0x0A] + [0x01] * 14,
+    }
     if msg_type == 'go':
         cmd.head[0] = 0xFE
         cmd.head[1] = 0xEF
@@ -106,43 +112,22 @@ def cb_unitree_recv_send_close(
         PosStopF = 2.146e9
         VelStopF = 16000.0
         motor_cmd = cmd.motor_cmd
-        if NAME == 'h1':
-            for c in motor_cmd[:9]:
-                c.mode = 0x0A
-                c.q = PosStopF
-                c.qd = VelStopF
-                c.kp = 0
-                c.kd = 0
-                c.tau = 0
-            for c in motor_cmd[10:20]:
-                c.mode = 0x01
-                c.q = PosStopF
-                c.qd = VelStopF
-                c.kp = 0
-                c.kd = 0
-                c.tau = 0
-        elif NAME == 'go2':
-            for i, c in enumerate(motor_cmd):
-                c.mode = 0x01
-                c.q = PosStopF
-                c.qd = VelStopF
-                c.kp = 0
-                c.kd = 0
-                c.tau = 0
-        else:
-            for i, c in enumerate(motor_cmd):
-                c.mode = 0x0A
-                c.q = PosStopF
-                c.qd = VelStopF
-                c.kp = 0
-                c.kd = 0
-                c.tau = 0
+        modes = go_motor_modes.get(NAME, 0x0A)
+        modes = ([modes] * len(motor_inds)) if isinstance(modes, int) else modes
+        for i, mi in enumerate(motor_inds):
+            c = motor_cmd[mi]
+            c.mode = modes[i]
+            c.q = PosStopF
+            c.qd = VelStopF
+            c.kp = 0
+            c.kd = 0
+            c.tau = 0
     elif msg_type == 'hg':
         cmd.mode_machine = mode_machine
         cmd.mode_pr = mode_pr
         motor_cmd = cmd.motor_cmd
         for i, c in enumerate(motor_cmd):
-            c.mode = 1
+            c.mode = 0x01
             c.q = 0
             c.qd = 0
             c.kp = 0
