@@ -13,6 +13,7 @@ def cb_input_term(
     import sys
     import os
     import numpy as np
+    from unicon.utils import cmd
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     nabs_inds = [i for i, k in enumerate(input_keys) if not (k.startswith('ABS') and not k.startswith('ABS_HAT'))]
     abs_inds = [i for i, k in enumerate(input_keys) if (k.startswith('ABS') and not k.startswith('ABS_HAT'))]
@@ -118,7 +119,7 @@ def cb_input_term(
                 termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
             if fcntl and fcntl.fcntl:
                 fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
-            os.system('stty sane')
+            # cmd('stty sane')
 
     return cb_cls()
 

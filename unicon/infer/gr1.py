@@ -10,6 +10,7 @@ def cb_infer_gr1(
     policy_reset_fn,
     states_infer_acts=None,
     states_infer_obs=None,
+    states_rpy2=None,
     env_cfg=None,
     dof_map=None,
     # default_dof_pos=None,

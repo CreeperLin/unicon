@@ -4,11 +4,75 @@ import types
 import numpy as np
 import re
 import threading
+import subprocess
+import inspect
+import functools
 
 _default_time_fn = time.perf_counter
 _ctx = {}
 _edge_memo = {}
 _registry = {}
+stdargs = {
+    'stdin': subprocess.DEVNULL,
+    'stdout': subprocess.DEVNULL,
+    'stderr': subprocess.DEVNULL,
+}
+ori_print = print
+
+
+def println(*args, _name=None, _mod=True, _filename=False, _lineno=True, **kwds):
+    if _mod or _filename or _lineno:
+        frame = inspect.currentframe().f_back
+    pfs = []
+    if _name is not None:
+        pfs.append(str(_name))
+    if _mod:
+        module = getattr(inspect.getmodule(frame), '__name__', None)
+        if module is None:
+            _filename = True
+        else:
+            pfs.append(module)
+    if _filename:
+        filename = os.path.basename(frame.f_code.co_filename)
+        pfs.append(filename)
+    if _lineno:
+        lineno = frame.f_lineno
+        pfs.append(f'{lineno:>3d}')
+    if len(pfs):
+        pfs.append('')
+        prefix = ':'.join(pfs)
+        ori_print(prefix, *args, **kwds)
+    else:
+        ori_print(*args, **kwds)
+
+
+def get_print_fn(use_logger=False, use_println=True, name=None, **kwds):
+    if use_logger:
+        import logging
+        logging.setLevel(logging.DEBUG)
+        logger = logging.getLogger(name)
+        return logger.info
+    if use_println:
+        return functools.partial(println, _name=name, **kwds)
+    return ori_print
+
+
+def expect(cond, exc=None):
+    if not cond:
+        raise (RuntimeError(exc) if isinstance(exc, str) else exc)
+
+
+def cmd(*args, capture_output=False, timeout=None, **kwds):
+    run_args = sum([(x.split() if isinstance(x, str) else list(x)) for x in args], [])
+    if timeout is not None:
+        run_args = ['timeout', str(int(timeout))] + run_args
+    run_args = filter(len, map(str, run_args))
+    res = subprocess.run(run_args,
+                         shell=False,
+                         capture_output=capture_output,
+                         **({} if capture_output else stdargs),
+                         **kwds)
+    return res if capture_output else res.returncode
 
 
 def is_rising_edge(x, idx=None, key=None):
@@ -72,11 +136,9 @@ class watchdog:
         self.running = False
 
 
-def find(root='.', name=None, wholename=None, follow_links=True):
-    if root == '~':
+def find(root='.', name=None, path=None, follow_links=True, quit=True):
+    if root == '~' or os.path.abspath(root) == '/':
         root = os.environ["HOME"]
-    import subprocess
-    PIPE = subprocess.PIPE
     args = [
         'find',
     ]
@@ -85,10 +147,13 @@ def find(root='.', name=None, wholename=None, follow_links=True):
     args.append(root)
     if name is not None:
         args.extend(['-name', name])
-    if wholename is not None:
-        args.extend(['-wholename', wholename])
+    if path is not None:
+        args.extend(['-path', path])
+    args.append('-print')
+    if quit:
+        args.append('-quit')
     print(' '.join(args))
-    res = subprocess.run(args, stdout=PIPE)
+    res = cmd(*args, capture_output=True)
     out = res.stdout.decode()
     if not len(out):
         return None
@@ -176,7 +241,7 @@ def obj2dict(obj, memo=None):
     return dct
 
 
-def dump_policy_cfg(env=None, env_cfg=None, path=None, ppo_runner=None, train_cfg=None):
+def dump_policy_cfg(env=None, env_cfg=None, path=None, ppo_runner=None, train_cfg=None, infer_type=None):
     import os
     import sys
     import yaml
@@ -187,6 +252,8 @@ def dump_policy_cfg(env=None, env_cfg=None, path=None, ppo_runner=None, train_cf
     # os.system('git diff > {}'.format(os.path.join(path, 'diff.patch')))
     if env is not None:
         env_cfg.dof_names = env.dof_names
+    if infer_type is not None:
+        env_cfg.infer_type = infer_type
     if env_cfg is not None:
         env_cfg.argv = sys.argv
         with open(os.path.join(path, 'env_cfg.yaml'), 'w') as f:
@@ -378,11 +445,16 @@ def parse_robot_def(robot_def):
     print('robot_def', robot_def.keys())
     urdf_path = robot_def.get('URDF')
     mjcf_path = robot_def.get('MJCF')
-    _default_asset_dir = f'{os.environ["HOME"]}/GitRepo/GR1/resources/robots/'
-    _default_asset_dir = os.environ.get('UNICON_ASSET_DIR', _default_asset_dir)
-    if urdf_path is not None:
-        urdf_path = urdf_path if urdf_path.startswith('/') else os.path.join(_default_asset_dir, urdf_path)
-        robot_def['URDF'] = urdf_path
+    asset_dir = os.environ.get('UNICON_ASSET_DIR')
+    if asset_dir is None:
+        res = find('..', path='*resources/robots')
+        asset_dir = res[0]
+    print('asset_dir', asset_dir)
+    asset_paths = urdf_path, mjcf_path
+    urdf_path, mjcf_path = [(x if x is None or x.startswith('/') else os.path.join(asset_dir, x)) for x in asset_paths]
+    has_urdf_path = urdf_path is not None
+    has_mjcf_path = mjcf_path is not None
+    if has_urdf_path:
         try:
             urdf_def = parse_urdf(urdf_path)
             # urdf_def.update(robot_def)
@@ -391,9 +463,7 @@ def parse_robot_def(robot_def):
         except Exception:
             import traceback
             traceback.print_exc()
-    elif mjcf_path is not None:
-        mjcf_path = mjcf_path if mjcf_path.startswith('/') else os.path.join(_default_asset_dir, mjcf_path)
-        robot_def['MJCF'] = mjcf_path
+    if has_mjcf_path and not has_urdf_path:
         try:
             from unicon.utils.mjcf2urdf import convert
             import tempfile
@@ -402,14 +472,14 @@ def parse_robot_def(robot_def):
                 convert(mjcf_path, urdf_path)
                 # urdf_path = convert_mjcf_to_urdf(mjcf_path, urdf_tmp_dir)[-1]
                 print('urdf_path', urdf_path)
-                os.system(f'cp {urdf_path} tmp.urdf')
-                # robot_def['URDF'] = urdf_path
                 urdf_def = parse_urdf(urdf_path)
                 urdf_def.update(robot_def)
                 robot_def = urdf_def
         except Exception:
             import traceback
             traceback.print_exc()
+    robot_def['URDF'] = urdf_path
+    robot_def['MJCF'] = mjcf_path
     robot_def['NUM_DOFS'] = len(robot_def['DOF_NAMES'])
     print('robot_def', robot_def.keys())
     num_dofs = robot_def['NUM_DOFS']
@@ -442,9 +512,7 @@ def force_quit():
 
 
 def md5sum(path):
-    import subprocess
-    PIPE = subprocess.PIPE
-    return subprocess.run(['md5sum', path], stdout=PIPE).stdout.split()[0].decode()
+    return cmd('md5sum', [path], capture_output=True).stdout.split()[0].decode()
 
 
 def register_obj(
@@ -911,11 +979,11 @@ def set_cpu_affinity(cpu_affinity):
 
 
 def set_nice2(nice):
-    os.system(f'sudo renice -n {nice} -p {os.getpid()}')
+    cmd('sudo renice -n', [nice], '-p', os.getpid())
 
 
 def set_cpu_affinity2(cpu_affinity):
-    os.system(f'sudo taskset -cp {cpu_affinity} {os.getpid()}')
+    cmd('sudo taskset -cp', [cpu_affinity], os.getpid())
 
 
 def fn_lat(func, num_runs=2**16, time_fn=_default_time_fn):

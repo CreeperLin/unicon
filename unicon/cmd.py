@@ -175,7 +175,8 @@ def cb_cmd_vel(
         print('gait_modes', init_gait_mode, num_gait_modes)
 
     if enable_extra_commands is None:
-        enable_extra_commands = num_cmd > num_vel_cmds and num_cmd == num_commands + (1 if enable_gait_modes else 0)
+        enable_extra_commands = num_commands > num_vel_cmds and num_cmd == num_commands + (1
+                                                                                           if enable_gait_modes else 0)
     if enable_extra_commands:
         if use_dpad:
             idx_extra_cmd = input_keys.index('ABS_HAT0Y')

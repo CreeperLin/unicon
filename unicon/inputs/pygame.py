@@ -154,7 +154,12 @@ def cb_input_pygame(
                 continue
             states_input[i] = states.get(k, 0)
         pygame.event.pump()
-        for event in pygame.event.get():
+        try:
+            evs = list(pygame.event.get())
+        except SystemError:
+            js = None
+            evs = []
+        for event in evs:
             if event.type == pygame.QUIT:
                 return True
             if event.type == pygame.JOYDEVICEADDED:
