@@ -209,7 +209,6 @@ def run(args=None):
     })
 
     dof_names = None
-    default_dof_pos = None
 
     dofs = args['dofs']
     if dofs is not None:
@@ -292,7 +291,7 @@ def run(args=None):
         if 'robot_params' in env_cfg:
             params = env_cfg['robot_params'].get(NAME, {})
             init_joint_angles = params.get('default_joint_angles', None)
-            print('mix env', NAME, init_joint_angles)
+            print('robot_params', NAME, init_joint_angles)
             sim_kps = params.get('stiffness', None)
             sim_kds = params.get('damping', None)
             sim_torque_limits = params.get('torque_limits', None)
@@ -344,6 +343,9 @@ def run(args=None):
             'env_command_keys': env_command_keys,
             'env_command_ranges': env_command_ranges,
         })
+        if init_joint_angles is not None:
+            inds, vals = match_keys(init_joint_angles, DOF_NAMES)
+            q_reset[inds] = vals
 
     ctrl_dt = dt if ctrl_dt is None else ctrl_dt
     dt = ctrl_dt if dt is None else dt
@@ -515,10 +517,10 @@ def run(args=None):
     print('dof_src_map', dof_src_map)
     print('DOF_NAMES_extra', len(DOF_NAMES_extra), DOF_NAMES_extra)
 
-    if init_joint_angles is not None:
-        default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
-    if default_dof_pos is not None:
-        q_reset[dof_map] = default_dof_pos[dof_src_map]
+    # if init_joint_angles is not None:
+    #     default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
+    # if default_dof_pos is not None:
+    #     q_reset[dof_map] = default_dof_pos[dof_src_map]
 
     q_reset_update = args['q_reset_update']
     if q_reset_update is not None:
@@ -527,10 +529,8 @@ def run(args=None):
             q_reset_update = {DOF_NAMES.index(k): v for k, v in q_reset_update.items()}
             obj_update(q_reset, q_reset_update)
 
-    default_dof_pos = q_reset[dof_map] if default_dof_pos is None else default_dof_pos
     q_boot = q_reset if Q_BOOT is None else Q_BOOT
 
-    print('default_dof_pos', default_dof_pos.tolist())
     print('q_reset', q_reset.tolist())
     print('q_boot', q_boot.tolist())
 
@@ -1158,8 +1158,8 @@ def run(args=None):
         fix_base_link = system_config.get('fix_base_link', False) or args['sims_fixed_base']
         fix_base_link = fix_base_link or modes['sample']
         system_config['fix_base_link'] = fix_base_link
-        default_dof_pos = system_config.get('default_dof_pos', {})
-        system_config['default_dof_pos'] = default_dof_pos
+        sims_def_dof_pos = system_config.get('default_dof_pos', {})
+        system_config['default_dof_pos'] = sims_def_dof_pos
         if rec_q is not None and args['sims_fixed_base']:
             # init_q = rec_q_ctrl[0]
             init_q = rec_q[0]
@@ -1168,10 +1168,10 @@ def run(args=None):
             print('sims init_q', def_dof_pos)
         if Q_BOOT is not None and wrapped:
             for i, n in enumerate(sim_dof_names):
-                default_dof_pos[n] = Q_BOOT[i]
+                sims_def_dof_pos[n] = Q_BOOT[i]
         elif not wrapped:
             for i, n in enumerate(sim_dof_names):
-                default_dof_pos[n] = q_reset[i]
+                sims_def_dof_pos[n] = q_reset[i]
         default_root_states = system_config.get('default_root_states')
         if fix_base_link and default_root_states is not None:
             default_root_states[2] += 0.5

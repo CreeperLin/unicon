@@ -264,25 +264,31 @@ def dump_policy_cfg(env=None, env_cfg=None, path=None, ppo_runner=None, train_cf
 
 
 def match_keys(pats, keys, substr=True, regex=False):
+    vals = None
+    if isinstance(pats, dict):
+        pats, vals = list(pats.keys()), list(pats.values())
     if not isinstance(pats, (tuple, list)):
         pats = [pats]
     inds = []
+    pat_inds = []
     for i, k in enumerate(keys):
-        for pat in pats:
+        for j, pat in enumerate(pats):
             assert isinstance(pat, str)
+            matched = False
             if pat == k:
+                matched = True
+            elif substr and pat in k:
+                matched = True
+            elif regex and re.match(pat, k) is not None:
+                matched = True
+            if matched:
                 inds.append(i)
+                pat_inds.append(j)
                 break
-            if substr:
-                if pat in k:
-                    inds.append(i)
-                    break
-            if regex:
-                match = re.match(pat, k)
-                if match is not None:
-                    inds.append(i)
-                    break
-    return inds
+    if vals is None:
+        return inds
+    vals = [vals[i] for i in pat_inds]
+    return inds, vals
 
 
 def load_rec(rec_path, rec_type=None, load_kwds=None, robot_def=None):

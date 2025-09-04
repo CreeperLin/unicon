@@ -24,7 +24,6 @@ def cb_pnd_recv_send_close(
     import os
     import time
     import numpy as np
-    import subprocess
     import requests
     from unicon.utils import cmd
 
