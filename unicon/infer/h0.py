@@ -36,6 +36,7 @@ def cb_infer_h0(
     print = get_print_fn()
     robot_def = get_ctx()['robot_def']
     NAME = robot_def['NAME']
+    DOF_NAMES = robot_def['DOF_NAMES']
     DOF_NAMES_STD = robot_def['DOF_NAMES_STD']
     import torch
     import numpy as np
@@ -56,22 +57,34 @@ def cb_infer_h0(
     no_leg_def_pos = env_cfg.get('no_leg_def_pos', False)
     no_leg_def_pos = no_leg_def_pos and all(x not in NAME for x in ['a1', 'go2'])
     use_base_states = env_cfg.get('use_base_states', False)
+
+    print('apply_dof_dir', apply_dof_dir)
+    print('no_leg_def_pos', no_leg_def_pos)
+    print('use_base_states', use_base_states)
+
     robot_params = env_cfg.get('robot_params', {}).get(NAME, None)
 
     if apply_dof_dir:
-        dof_dir_asset = robot_params.get('dof_dir')
-        dof_dir_asset = {} if robot_params is None else robot_params
+        dof_dir_asset = None if robot_params is None else robot_params.get('dof_dir')
+        dof_dir_asset = {} if dof_dir_asset is None else robot_params
         dof_dir_asset = [dof_dir_asset.get(k, 1) for k in dof_names]
         dof_dir = np.array(dof_dir_asset, dtype=np_dtype)
 
+    default_joint_angles = env_cfg['init_state']['default_joint_angles']
+    print('default_joint_angles', default_joint_angles)
     if 'robot_params' in env_cfg:
         if robot_params is None:
-            init_joint_angles = robot_def.get('Q_RESET', {})
+            if all(n in default_joint_angles for n in DOF_NAMES):
+                init_joint_angles = default_joint_angles
+                print('using default_joint_angles')
+            else:
+                init_joint_angles = robot_def.get('Q_RESET', {})
+                print('using Q_RESET')
         else:
             init_joint_angles = robot_params.get('default_joint_angles', {})
         print('mix env', NAME, init_joint_angles)
     else:
-        init_joint_angles = env_cfg['init_state']['default_joint_angles']
+        init_joint_angles = default_joint_angles
     if isinstance(init_joint_angles, dict):
         if no_leg_def_pos:
             for k in init_joint_angles.keys():
@@ -80,7 +93,9 @@ def cb_infer_h0(
                     init_joint_angles[k] = 0.
         default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
     else:
-        expect(not no_leg_def_pos)
+        # expect(not no_leg_def_pos)
+        if no_leg_def_pos:
+            init_joint_angles[:12] = 0.
         default_dof_pos = init_joint_angles[dof_map]
     dof_map_action_dest = dof_map
     clip_actions = env_cfg['normalization']['clip_actions']

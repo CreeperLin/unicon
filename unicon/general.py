@@ -21,6 +21,9 @@ def cb_chain(*cbs, next_on=[True], verbose=True):
 
 
 def cb_zip(*cbs, return_on=[True], verbose=False):
+    if not len(cbs):
+        return lambda: None
+
     prev_cbs, last_cb = cbs[:-1], cbs[-1]
 
     def cb():

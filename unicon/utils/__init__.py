@@ -12,11 +12,6 @@ _default_time_fn = time.perf_counter
 _ctx = {}
 _edge_memo = {}
 _registry = {}
-stdargs = {
-    'stdin': subprocess.DEVNULL,
-    'stdout': subprocess.DEVNULL,
-    'stderr': subprocess.DEVNULL,
-}
 ori_print = print
 
 
@@ -59,18 +54,35 @@ def get_print_fn(use_logger=False, use_println=True, name=None, **kwds):
 
 def expect(cond, exc=None):
     if not cond:
-        raise (RuntimeError(exc) if isinstance(exc, str) else exc)
+        raise (RuntimeError(exc) if (exc is None or isinstance(exc, str)) else exc)
 
 
-def cmd(*args, capture_output=False, timeout=None, **kwds):
+def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
     run_args = sum([(x.split() if isinstance(x, str) else list(x)) for x in args], [])
     if timeout is not None:
         run_args = ['timeout', str(int(timeout))] + run_args
     run_args = filter(len, map(str, run_args))
+    stdargs = {}
+    capture_output = capture_output if capture_output is None else int(capture_output)
+    if capture_output == 0:
+        stdargs = {
+            'stdout': subprocess.DEVNULL,
+            'stderr': subprocess.DEVNULL,
+        }
+    elif capture_output == 1:
+        stdargs = {
+            'stdout': subprocess.PIPE,
+            'stderr': subprocess.PIPE,
+        }
+    elif capture_output == 3:
+        stdargs = {
+            'stdout': subprocess.PIPE,
+            'stderr': subprocess.STDOUT,
+        }
     res = subprocess.run(run_args,
                          shell=False,
-                         capture_output=capture_output,
-                         **({} if capture_output else stdargs),
+                         encoding=encoding,
+                         **stdargs,
                          **kwds)
     return res if capture_output else res.returncode
 
@@ -154,7 +166,7 @@ def find(root='.', name=None, path=None, follow_links=True, quit=True):
         args.append('-quit')
     print(' '.join(args))
     res = cmd(*args, capture_output=True)
-    out = res.stdout.decode()
+    out = res.stdout
     if not len(out):
         return None
     out = list(map(str.strip, out.split('\n')))[:-1]
@@ -518,7 +530,7 @@ def force_quit():
 
 
 def md5sum(path):
-    return cmd('md5sum', [path], capture_output=True).stdout.split()[0].decode()
+    return cmd('md5sum', [path], capture_output=True).stdout.split()[0]
 
 
 def register_obj(

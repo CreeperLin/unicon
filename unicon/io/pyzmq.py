@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import json
+import zmq
 
 BUF_SIZE = 128
 RCVHWM = 32
@@ -29,7 +30,6 @@ def cb_send_pyzmq(
 ):
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
-    import zmq
     dump_fn = dump_json
     context = zmq.Context()
     pub = context.socket(zmq.PUB)
@@ -88,7 +88,6 @@ def cb_recv_pyzmq(
 ):
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
-    import zmq
     context = zmq.Context()
     sub = context.socket(zmq.SUB)
     sub.setsockopt(zmq.RCVHWM, RCVHWM)
@@ -171,3 +170,11 @@ def cb_recv_pyzmq(
             context.term()
 
     return cb()
+
+
+if __name__ == '__main__':
+    import time
+    cb = cb_recv_pyzmq(verbose=True)
+    for _ in range(1000):
+        cb()
+        time.sleep(0.02)

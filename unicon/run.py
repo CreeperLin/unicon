@@ -116,6 +116,7 @@ def get_args():
     parser.add_argument('-itf', '--imu_transform', default=None)
     parser.add_argument('-tf', '--transforms', default=[], action='append')
     parser.add_argument('-ptf', '--post_transforms', default=[], action='append')
+    parser.add_argument('-pi', '--pre_imports', default=[], action='append')
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-qru', '--q_reset_update', default=None)
@@ -128,6 +129,12 @@ def run(args=None):
         args = get_args()
     if not isinstance(args, dict):
         args = vars(args)
+    for x in args['pre_imports']:
+        try:
+            r = __import__(x)
+        except ImportError as e:
+            r = e
+        print('pre_import', x, r)
     try:
         import isaacgym
         del isaacgym
@@ -173,7 +180,7 @@ def run(args=None):
     else:
         robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
         robot_def = parse_robot_def(robot_def)
-    NAME = robot_def['NAME']
+    NAME = robot_def.get('NAME')
     KP = robot_def.get('KP', [])
     KD = robot_def.get('KD', [])
     Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
@@ -227,37 +234,40 @@ def run(args=None):
     infer_model_path = args['infer_model_path']
     infer_type = args['infer_type']
     if infer_load_run is not None:
+        infer_load_run = infer_load_run.split(':')
+        load_run_path = infer_load_run[0]
+        model_file = infer_load_run[1] if len(infer_load_run) > 1 else None
         _default_infer_root = os.environ.get('UNICON_INFER_ROOT')
         if _default_infer_root is None:
             from unicon.utils import find
-            root = find(root='..', path=f'*{infer_load_run}')
+            root = find(root='..', path=f'*{load_run_path}')
             if root is None:
-                root = find(root='~', path=f'*{infer_load_run}')
+                root = find(root='~', path=f'*{load_run_path}')
             assert root is not None, 'infer policy dir not found'
             root = root[0]
         else:
-            root = os.path.join(_default_infer_root, infer_load_run)
-        print('infer root', root)
-        model_file_pats = ['policy', 'trace']
-        model_file = None
+            root = os.path.join(_default_infer_root, load_run_path)
+        print('infer root', root, model_file)
+        model_file_pats = ['policy', 'trace'] if model_file is None else [model_file]
         for r, _, fs in os.walk(root):
-            for f in fs:
+            for f in sorted(fs):
                 if any([p in f for p in model_file_pats]):
                     model_file = os.path.join(r, f)
                     break
-        print('model_file', model_file)
         if model_file is None:
             raise ValueError('model_file not found')
         infer_model_path = model_file
         from unicon.utils import md5sum
         infer_model_md5sum = md5sum(infer_model_path)
         ctx['infer_model_md5sum'] = infer_model_md5sum
-        print('infer_load_run', infer_load_run, infer_model_path, infer_model_md5sum)
+        print('infer_load_run', load_run_path, infer_model_path, infer_model_md5sum)
     if env_cfg_path is None and infer_model_path is not None:
         for ext in ['.json', '.yaml']:
             env_cfg_path = os.path.join(os.path.dirname(infer_model_path), 'env_cfg' + ext)
             if os.path.exists(env_cfg_path):
                 break
+        else:
+            print('env_cfg not found', infer_model_path)
 
     sim_kps = None
     sim_kds = None
@@ -284,17 +294,27 @@ def run(args=None):
         print('env dof_names', env_dof_names)
         if env_dof_names is not None:
             dof_names = env_dof_names
-        init_joint_angles = env_cfg['init_state']['default_joint_angles']
+        default_joint_angles = env_cfg['init_state']['default_joint_angles']
+        init_joint_angles = default_joint_angles
         sim_kps = env_cfg['control']['stiffness']
         sim_kds = env_cfg['control']['damping']
         sim_torque_limits = env_cfg['control'].get('torque_limits', None)
         if 'robot_params' in env_cfg:
-            params = env_cfg['robot_params'].get(NAME, {})
-            init_joint_angles = params.get('default_joint_angles', None)
-            print('robot_params', NAME, init_joint_angles)
-            sim_kps = params.get('stiffness', None)
-            sim_kds = params.get('damping', None)
-            sim_torque_limits = params.get('torque_limits', None)
+            params = env_cfg['robot_params'].get(NAME, None)
+            if params is not None:
+                init_joint_angles = params.get('default_joint_angles', None)
+                print('robot_params', NAME, init_joint_angles)
+                sim_kps = params.get('stiffness', None)
+                sim_kds = params.get('damping', None)
+                sim_torque_limits = params.get('torque_limits', None)
+            elif all(n in default_joint_angles for n in DOF_NAMES):
+                print('warning using env_cfg values for robot_params')
+            else:
+                print('no robot_params', NAME)
+                init_joint_angles = None
+                sim_kps = {}
+                sim_kds = {}
+                sim_torque_limits = None
         ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
         env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
         print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
@@ -987,11 +1007,12 @@ def run(args=None):
     input_dev_type = None if input_dev_type == 'none' else input_dev_type
     wait_input = args['wait_input']
     if wait_input:
-        key = 'BTN_TL'
+        # key = 'BTN_TL'
+        start_keys = ['BTN_SELECT', 'BTN_START']
         cb_idx = chain.index(cb)
         cb_wi = cb_wait_input(
             states_input=states_input,
-            keys=[key],
+            keys=start_keys,
             clicks=1,
             prompt=True,
         )

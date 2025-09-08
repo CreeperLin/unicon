@@ -1,3 +1,39 @@
+_ip2name_act = {
+    '10.10.10.70': 'hipPitch_Left',
+    '10.10.10.71': 'hipRoll_Left',
+    '10.10.10.72': 'hipYaw_Left',
+    '10.10.10.73': 'kneePitch_Left',
+    '10.10.10.74': 'anklePitch_Left',
+    '10.10.10.75': 'ankleRoll_Left',
+    '10.10.10.50': 'hipPitch_Right',
+    '10.10.10.51': 'hipRoll_Right',
+    '10.10.10.52': 'hipYaw_Right',
+    '10.10.10.53': 'kneePitch_Right',
+    '10.10.10.54': 'anklePitch_Right',
+    '10.10.10.55': 'ankleRoll_Right',
+    '10.10.10.90': 'waistRoll',
+    '10.10.10.91': 'waistPitch',
+    '10.10.10.92': 'waistYaw',
+    '10.10.10.10': 'shoulderPitch_Left',
+    '10.10.10.11': 'shoulderRoll_Left',
+    '10.10.10.12': 'shoulderYaw_Left',
+    '10.10.10.13': 'elbow_Left',
+    '10.10.10.14': 'wristYaw_Left',
+    '10.10.10.15': 'wristPitch_Left',
+    '10.10.10.16': 'wristRoll_Left',
+    '10.10.10.17': 'gripper_Left',
+    '10.10.10.30': 'shoulderPitch_Right',
+    '10.10.10.31': 'shoulderRoll_Right',
+    '10.10.10.32': 'shoulderYaw_Right',
+    '10.10.10.33': 'elbow_Right',
+    '10.10.10.34': 'wristYaw_Right',
+    '10.10.10.35': 'wristPitch_Right',
+    '10.10.10.36': 'wristRoll_Right',
+    '10.10.10.37': 'gripper_Right',
+}
+_ip2name_abs = {f'{k[:8]}.{int(k[-2:])+10}': 'ABS_'+v for k, v in _ip2name_act.items()}
+
+
 def cb_pnd_recv_send_close(
     states_q_ctrl,
     states_rpy,
@@ -19,19 +55,28 @@ def cb_pnd_recv_send_close(
     compute_quat=False,
     zero_roll_kp=True,
     reboot=True,
-    **states,
+    abort_timeout=0.1,
 ):
     import os
     import time
     import numpy as np
     import requests
+    import json
     from unicon.utils import cmd
+
+    print('_ip2name_act', _ip2name_act)
+    print('_ip2name_abs', _ip2name_abs)
 
     cmd('sudo chmod 555 -R /root/.adam')
     cmd('sudo chmod 555 /root')
     cmd('sudo chmod 777 /dev/ttyUSB0')
     # cmd('sudo rm -rf /tmp/log')
     cmd('sudo chmod 777 -R /tmp/log')
+
+    joint_abs_config = '/root/.adam/joint_abs_config.json'
+    with open(joint_abs_config, 'r') as f:
+        joint_abs_config = json.load(f)
+    print('joint_abs_config', {k: v['absolute_pos_zero'] for k, v in joint_abs_config.items()})
 
     import pnd_py
 
@@ -68,19 +113,25 @@ def cb_pnd_recv_send_close(
         cmd('rm -rf source', [abs_json_path])
         assert not os.path.exists(abs_json_path)
         os.mkdir('source')
-        cmd('python3', [f'{script_path}/read_abs.py'])
+        cmd('python3', [f'{script_path}/read_abs.py'], capture_output=False)
         time.sleep(1)
         cmd('python3', [f'{script_path}/read_abs.py'])
         res = cmd('python3', [f'{script_path}/check_abs.py'], capture_output=True)
-        res = res.stdout.decode().strip()
+        res = res.stdout.strip()
         if res == 'True':
             break
-        print('get abs failed', i)
+        print(i, res)
         time.sleep(5)
-    assert res == 'True', res
+    else:
+        raise RuntimeError('get abs failed')
     cmd('cp source/abs.json', [abs_json_path])
 
     assert os.path.exists(abs_json_path)
+    with open(abs_json_path, 'r') as f:
+        abs_json = json.load(f)
+    print('abs_json', {_ip2name_abs[k]: v['radian'] for k, v in abs_json.items()})
+
+    # return
 
     so_path = 'libpnd.so.1.5.1'
     if not os.path.exists(so_path):
@@ -125,7 +176,6 @@ def cb_pnd_recv_send_close(
         print('using joint_pd_config', joint_pd_config)
         _kp = np.zeros(len(joint_names))
         _kd = np.zeros(len(joint_names))
-        import json
         with open(joint_pd_config, 'r') as f:
             joint_pd_config = json.load(f)
         for i, n in enumerate(joint_names):
@@ -187,7 +237,14 @@ def cb_pnd_recv_send_close(
     _q_ctrl = np.zeros(sz)
 
     def cb_recv():
-        r.getState(0, d)
+        if abort_timeout is not None:
+            t0 = time.monotonic()
+            r.getState(0, d)
+            if time.monotonic() - t0 > abort_timeout:
+                print('abort_timeout', abort_timeout)
+                return True
+        else:
+            r.getState(0, d)
         # print(d.imu_data_)
         states_rpy[:] = d.imu_data_[[2, 1, 0]]
         # states_quat[:] = 0
@@ -210,9 +267,18 @@ def cb_pnd_recv_send_close(
         # print('d.q_d_', d.q_d_)
         # print('d.q_dot_d_', d.q_dot_d_)
         # print('d.tau_d_', d.tau_d_)
-        r.setCommand(d)
+        # r.setCommand(d)
+        if abort_timeout is not None:
+            t0 = time.monotonic()
+            r.setCommand(d)
+            if time.monotonic() - t0 > abort_timeout:
+                print('abort_timeout', abort_timeout)
+                return True
+        else:
+            r.setCommand(d)
 
     def cb_close():
+        # cmd('rm -rf source', [abs_json_path])
         r.disableAllJoints()
         time.sleep(1)
         r.disableAllJoints()
