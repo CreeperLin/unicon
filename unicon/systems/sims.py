@@ -71,6 +71,13 @@ def cb_sims_recv_send_close(
             # print(imu[3:6])
             states_lin_acc[:] = imu[3:6]
 
+        if 'states_rpy2' in kwds or 'states_ang_vel2' in kwds:
+            imu2 = recv_msg['imu2']
+            if 'states_rpy2' in kwds:
+                kwds['states_rpy2'][:] = imu2[0:3]
+            if 'states_ang_vel2' in kwds:
+                kwds['states_ang_vel2'][:] = imu2[6:9]
+
     def cb_close():
         s.cb_recv(True)
 

@@ -119,6 +119,7 @@ def get_args():
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-qru', '--q_reset_update', default=None)
+    parser.add_argument('-uss', '--use_secondary_sensor', action='store_true')
     args, _ = parser.parse_known_args()
     return args
 
@@ -226,6 +227,8 @@ def run(args=None):
     infer_model_path = args['infer_model_path']
     if infer_load_run is not None:
         _default_infer_root = os.environ.get('UNICON_INFER_ROOT')
+        print('infer_load_run', infer_load_run)
+        print('_default_infer_root', _default_infer_root)
         if _default_infer_root is None:
             from unicon.utils import find
             root = find(root='..', wholename=f'*{infer_load_run}')
@@ -235,6 +238,10 @@ def run(args=None):
             root = root[0]
         else:
             root = os.path.join(_default_infer_root, infer_load_run)
+
+        if os.path.isfile(root):
+            root = os.path.dirname(root)
+        
         print('infer root', root)
         model_file_pats = ['policy', 'trace']
         model_file = None
@@ -397,6 +404,9 @@ def run(args=None):
     ctx['input_keys'] = input_keys
     num_inputs = len(input_keys)
     states_new('input', num_inputs)
+
+    print('input_keys', input_keys)
+
     num_commands = args['num_commands']
     if env_num_commands is not None and num_commands <= 0:
         num_commands = env_num_commands - num_commands
@@ -437,6 +447,10 @@ def run(args=None):
     states_pos = states_get('pos')
     states_lin_vel = states_get('lin_vel')
     states_lin_acc = states_get('lin_acc')
+    states_custom_extra_obs = {
+        f'states_{k}': states_get(k) for k in robot_def.get('CUSTOM_EXTRA_OBS', [])
+    }
+
     states_extras = {
         'states_cmd': states_cmd,
         'states_q_temp': states_q_temp,
@@ -447,6 +461,11 @@ def run(args=None):
         'states_lin_acc': states_lin_acc,
         'states_x': states_get('x'),
         'states_xd': states_get('xd'),
+        'states_rpy2': states_get('rpy2'),
+        'states_ang_vel2': states_get('ang_vel2'),
+        'states_quat2': states_get('quat2'),
+        'states_left_target': states_get('left_target'),
+        'states_right_target': states_get('right_target'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
@@ -799,6 +818,7 @@ def run(args=None):
             infer_states.update(states_props_inf)
             infer_states.update(states_infer_extras)
             infer_states.update(states_ctrls_inf)
+            infer_states.update(states_custom_extra_obs)
             cb_infer, reset_fn = autowired(cb_infer_cls, states=infer_states)(
                 policy_fn=policy_fn,
                 policy_reset_fn=policy_reset_fn,
@@ -1119,6 +1139,9 @@ def run(args=None):
         states_pos=states_pos,
         states_input=states_input,
     )
+    for k in states_custom_extra_obs:
+        states_extras_sys[k] = states_custom_extra_obs[k]
+    
     states_sys = {}
     states_sys.update(states_props_sys)
     states_sys.update(states_ctrls_sys)
@@ -1143,8 +1166,16 @@ def run(args=None):
                 asset_options = robot_def.get('ASSET_OPTIONS')
                 if asset_options is not None:
                     system_config.update({'asset_options': asset_options})
+                system_config['use_secondary_imu_link'] = args['use_secondary_sensor']
+                if args['use_secondary_sensor'] and isinstance(robot_def.get('USE_SENSOR'), list):
+                    system_config['imu_name'] = robot_def.get('USE_SENSOR')[0]
+                    system_config['use_imu_link'] = True
+                    system_config['secondary_imu_name'] = robot_def.get('USE_SENSOR')[1]
+                    system_config['use_secondary_imu_link'] = True
             if sims_type == 'sims.systems.mujoco':
                 system_config['xml_path'] = robot_def.get('MJCF')
+                system_config['use_sensor'] = robot_def.get('USE_SENSOR', False)
+                system_config['use_secondary_sensor'] = args['use_secondary_sensor']
             print('system_config', system_config)
         else:
             system_config = load_obj(sims_config)
@@ -1206,6 +1237,7 @@ def run(args=None):
         print('default_root_states', system_config.get('default_root_states'))
         print('default_dof_pos', system_config.get('default_dof_pos'))
         print('torque_limits', system_config.get('torque_limits'))
+
         # system_config.update(sims_override)
         wrapper_config = []
         if args['sims_auto_reset']:

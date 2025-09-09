@@ -16,19 +16,24 @@ def cb_infer_gr1(
     up_axis_idx=2,
     device='cpu',
     dtype=None,
-    use_rpy=None,
+    # use_rpy=None,
+    use_rpy=False,
     flatten_hist=True,
     # flatten_hist=False,
     retained_obs=False,
     observe_gait_commands=None,
     enable_gait_modes=None,
     adaptive_gait_frequency=None,
-    stack_history_obs=None,
-    flatten_obs=False,
+    # stack_history_obs=None,
+    # flatten_obs=False,
     # gait_alt0=False,
+    stack_history_obs=False,
+    flatten_obs=True,
     gait_alt0=True,
     dof_names=None,
     gravity_from_rpy=True,
+    states_rpy2=None,
+    states_ang_vel2=None,
 ):
     from unicon.utils import get_ctx
     robot_def = get_ctx()['robot_def']
@@ -284,6 +289,23 @@ def cb_infer_gr1(
             else:
                 projected_gravity = quat_rotate_inverse_np(states_quat, gravity_vec)
             rot_info = [projected_gravity]
+
+        rot_info2 = None
+        if states_rpy2 is not None:
+            if use_rpy:
+                rot_info2 = [states_rpy2[:2], [0]]
+            else:
+                if gravity_from_rpy:
+                    mat = rpy2mat_np(states_rpy2)
+                    projected_gravity2 = mat.T @ gravity_vec
+                else:
+                    projected_gravity2 = quat_rotate_inverse_np(states_quat, gravity_vec)
+                rot_info2 = [projected_gravity2]
+
+        base_ang_vel2 = None
+        if states_ang_vel2 is not None:
+            base_ang_vel2 = states_ang_vel2
+
         # actions = np.array(last_actions)
         # actions = last_actions.numpy()
         actions = last_actions
@@ -354,7 +376,16 @@ def cb_infer_gr1(
                 obs_list.append(commands[3:num_commands] * cmds_scale[3:num_commands])
             # print('clock_inputs', foot_phases, clock_inputs)
             obs_list.extend(clock_inputs)
+
+        obs_list.append(base_ang_vel2 * scales_ang_vel)
+        obs_list.extend(rot_info2)
+
+
+        print(commands, clock_inputs, observe_frequency, observe_phase, observe_duration)
+        # print(base_ang_vel, rot_info, base_ang_vel2, rot_info2)
+
         obs = np.concatenate(obs_list)
+
         # print('commands', commands)
         # print('gait_indices', gait_indices)
         # for i, x in enumerate(obs_list):
@@ -373,6 +404,10 @@ def cb_infer_gr1(
             # obs = hist
         if num_extra_obs:
             obs = torch.cat([obs, extra_obs], dim=-1)
+
+        # print(obs.shape)
+        # print(extra_obs.shape if num_extra_obs else None)
+
         if flatten_obs:
             obs = obs.flatten()
         # print('obs', obs.shape)
