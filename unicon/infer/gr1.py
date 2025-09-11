@@ -34,6 +34,8 @@ def cb_infer_gr1(
     gravity_from_rpy=True,
     states_rpy2=None,
     states_ang_vel2=None,
+    states_left_target=None,
+    states_right_target=None,
 ):
     from unicon.utils import get_ctx
     robot_def = get_ctx()['robot_def']
@@ -359,7 +361,17 @@ def cb_infer_gr1(
                 # foot_phases = [clock_scale * left_phase, clock_scale * right_phase]
                 # foot_phases = [clock_scale * left_phase + 0.25 * (1-clock_scale), clock_scale * right_phase + 0.25 * (1-clock_scale)]
             else:
-                foot_phases = [gait_indices + phases, gait_indices]
+                gait_idx = 1 - int(-0.05 < states_cmd[0] < 0.05 and -0.05 < states_cmd[1] < 0.05 and -0.1 < states_cmd[2] < 0.1)
+                left_phase, right_phase = [gait_indices + phases, gait_indices]
+                if gait_idx == 0:
+                    mask_l = (left_phase > 0.15 and left_phase < 0.35)
+                    left_phase[mask_l] = 0.25
+                    right_phase[mask_l] = 0.25
+                    mask_r = (right_phase > 0.15 and right_phase < 0.35)
+                    right_phase[mask_r] = 0.25
+                    left_phase[mask_r] = 0.25
+                last_gait = gait_idx
+                foot_phases = [left_phase, right_phase]
             if enable_gait_modes and gait_idx == 0 and gait_alt0:
                 # clock_inputs = [np.sin([x]) for x in [1, 1]]
                 clock_inputs = [[1., 1.]]
@@ -380,9 +392,13 @@ def cb_infer_gr1(
         obs_list.append(base_ang_vel2 * scales_ang_vel)
         obs_list.extend(rot_info2)
 
-
-        print(commands, clock_inputs, observe_frequency, observe_phase, observe_duration)
+        # print(commands, clock_inputs, enable_gait_modes)
         # print(base_ang_vel, rot_info, base_ang_vel2, rot_info2)
+
+        obs_list.append(states_left_target)
+        obs_list.append(states_right_target)
+        print('states_left_target', states_left_target)
+        print('states_right_target', states_right_target)
 
         obs = np.concatenate(obs_list)
 

@@ -1,0 +1,199 @@
+import os
+import argparse
+import time
+
+import numpy as np
+import pyrealsense2 as rs
+import cv2
+from scipy.spatial.transform import Rotation as R
+
+from unicon.states import states_get, states_init
+
+def open_camera(VIDEO_ID, width=1280, height=720, fps=30):
+    pipeline = rs.pipeline()
+    config = rs.config()
+
+    config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+    profile = pipeline.start(config)
+    color_profile = profile.get_stream(rs.stream.color)
+    intrinsics = color_profile.as_video_stream_profile().get_intrinsics()
+
+    camera_matrix = np.array([[intrinsics.fx, 0, intrinsics.ppx],
+                              [0, intrinsics.fy, intrinsics.ppy],
+                              [0, 0, 1]])
+    dist_coeffs = np.array(intrinsics.coeffs)
+
+    return pipeline, camera_matrix, dist_coeffs
+
+def create_detector():
+    # Define the dictionary and parameters for AprilTag detection
+    dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+    detector_params = cv2.aruco.DetectorParameters()
+    detector_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_APRILTAG
+    detector = cv2.aruco.ArucoDetector(dictionary, detector_params)
+    return detector
+
+def draw_pose(frame, corners, rvec, tvec, camera_matrix, dist_coeffs, tag_size, tag_id):
+    # draw corners
+    cv2.polylines(frame, [corners.astype(int)], True, (0, 255, 0), 2)
+    
+    # draw tag axes
+    cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, tag_size/2)
+    
+    # draw tag id
+    center = corners.mean(axis=0).astype(int)
+    cv2.circle(frame, tuple(center), 5, (0, 0, 255), -1)
+    cv2.putText(frame, f"ID:{tag_id}", (center[0], center[1] - 40), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    
+    # draw pos
+    _tvec = tvec[0][0]
+    position_text = f"Pos:({_tvec[0]:.2f},{_tvec[1]:.2f},{_tvec[2]:.2f})m"
+    cv2.putText(frame, position_text, (center[0], center[1] - 20), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    
+    # draw distance
+    distance = np.linalg.norm(tvec)
+    distance_text = f"Dist:{distance:.2f}m"
+    cv2.putText(frame, distance_text, (center[0], center[1] + 20), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    
+    return frame
+
+def calculate_target_from_tag(corners, rvec, tvec, T_cam_in_robot):
+    rot_matrix, _ = cv2.Rodrigues(rvec[0][0])
+
+    T_tag_in_cam = np.eye(4)
+    T_tag_in_cam[0:3, 0:3] = rot_matrix
+    T_tag_in_cam[0:3, 3] = tvec[0][0]
+    T_tag_in_robot = T_cam_in_robot @ T_tag_in_cam
+
+    pos = T_tag_in_robot[0:3, 3]
+    rot = R.from_matrix(T_tag_in_robot[0:3, 0:3])
+    quat = rot.as_quat()
+
+    target = np.concatenate((pos, quat))
+    return target
+
+def calculate_T_cam_in_robot():
+    T_camlink_in_robot = np.array([
+        [ 0.50475008,  0.63909876,  0.58032761,  0.06081622],
+        [ 0.16730993,  0.58707733, -0.79205277, -0.29668969],
+        [-0.84689713,  0.49688327,  0.18939976,  0.35160208],
+        [ 0.        ,  0.        ,  0.        ,  1.        ]
+    ])
+
+    Rx = R.from_euler('x', -90, degrees=True).as_matrix()
+    Ry = R.from_euler('y', 90, degrees=True).as_matrix()
+
+    T_camlink_in_cam = np.eye(4)
+    T_camlink_in_cam[0:3, 0:3] = Ry @ Rx
+    T_cam_in_camlink = np.linalg.inv(T_camlink_in_cam)
+
+    T_cam_in_robot = T_camlink_in_robot @ T_cam_in_camlink
+    return T_cam_in_robot
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-ut', '--unit_test', action='store_true', help='unit_test mode')
+    parser.add_argument('-fc', '--fake_camera', action='store_true', help='use a test image as camera')
+    parser.add_argument('-ltid', '--left_hand_tag_id', type=int, default=1, help='left hand tag id')
+    parser.add_argument('-rtid', '--right_hand_tag_id', type=int, default=2, help='right hand tag id')
+    parser.add_argument('-ts', '--tag_size', type=float, default=0.05, help='tag size in meters')
+    args = parser.parse_args()
+
+    if args.fake_camera:
+        test_image_path = os.path.join(os.getcwd(), 'sensors', 'markers_36h11_table_0.png')
+        test_image = cv2.imread(test_image_path)
+        if test_image is None:
+            print(f"Failed to load test image from {test_image_path}")
+            return
+        
+        # default camera_matrix and dist_coeffs for test image
+        camera_matrix = np.array([[600, 0, test_image.shape[1]/2],
+                                  [0, 600, test_image.shape[0]/2],
+                                  [0, 0, 1]])
+        dist_coeffs = np.zeros(5)
+    else:
+        pipeline, camera_matrix, dist_coeffs = open_camera(0)
+
+    detector = create_detector()
+    T_cam_in_robot = calculate_T_cam_in_robot()
+
+    if not args.unit_test:
+        states_init(use_shm=True, load=True, reuse=True)
+    else:
+        print("Unit test mode: states not initialized")
+
+
+    
+    try:
+        while True:
+            start_time = time.time()
+
+            # acquire frame
+            if args.fake_camera:
+                color_image = test_image.copy()
+            else:
+                frames = pipeline.wait_for_frames()
+                aligned_frames = rs.align(rs.stream.color).process(frames)
+                color_frame = aligned_frames.get_color_frame()
+                if not color_frame:
+                    continue
+            
+                # convert frame to cv2
+                color_image = np.asanyarray(color_frame.get_data())
+                # gray_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+
+            # detect AprilTag
+            corners, ids, rejected = detector.detectMarkers(color_image)
+
+            if ids is not None:
+                # estimate pose
+                corners = np.array(corners)
+                for i in range(len(ids)):
+                    tag_id = ids[i][0]
+                    corners_single_tag = corners[i][0]
+
+                    rvec, tvec, objpoints = cv2.aruco.estimatePoseSingleMarkers(
+                        corners[i], args.tag_size, camera_matrix, dist_coeffs
+                    )
+
+                    color_image = draw_pose(
+                        color_image, corners_single_tag, 
+                        rvec, tvec, 
+                        camera_matrix, dist_coeffs, args.tag_size, tag_id,
+                    )
+
+                    if tag_id == args.left_hand_tag_id:
+                        left_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot)
+                        if args.unit_test:
+                            print(f"Left hand tag detected. ID: {tag_id}, Target: {left_hand_pos}")
+                        else:
+                            states_get('left_target')[:] = left_hand_pos
+                    if tag_id == args.right_hand_tag_id:
+                        right_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot)
+                        if args.unit_test:
+                            print(f"Right hand tag detected. ID: {tag_id}, Target: {right_hand_pos}")
+                        else:
+                            states_get('right_target')[:] = right_hand_pos
+
+            # calculate and display FPS
+            fps = 1.0 / (time.time() - start_time)
+            cv2.putText(color_image, f"FPS: {fps:.1f}", (10, color_image.shape[0] - 20), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            # handle display window
+            cv2.imshow('AprilTag Detection', color_image)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+
+    finally:
+        if not args.fake_camera:
+            pipeline.stop()
+        cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    main()

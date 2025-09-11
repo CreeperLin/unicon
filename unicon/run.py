@@ -1509,7 +1509,7 @@ def run(args=None):
         cmd_kwds = {'type': cmd_kwds} if isinstance(cmd_kwds, str) else cmd_kwds
         cmd_type = cmd_kwds.pop('type')
         print('cmd_type', cmd_type)
-        cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.cmd')
+        cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.command')
         kwds = {}
         ccv = args['cmd_const_v']
         if ccv is not None:

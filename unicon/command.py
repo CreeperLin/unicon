@@ -111,6 +111,7 @@ def cb_cmd_vel(
         lin_vel_x = ranges.get('limit_vel_x', ranges['lin_vel_x'])
         lin_vel_y = ranges.get('limit_vel_y', ranges['lin_vel_y'])
         ang_vel_yaw = ranges.get('limit_vel_yaw', ranges['ang_vel_yaw'])
+        ranges['gait_frequency'] = [env_cfg['commands'].get('gait_frequency', 1.2)] * 2
         cmd_ranges = [ranges[k] if k in ranges else _default_ranges.get(k, _def_range) for k in cmd_keys]
         cmd_min = [r[0] for r in cmd_ranges]
         cmd_max = [r[1] for r in cmd_ranges]
@@ -135,6 +136,7 @@ def cb_cmd_vel(
     print('cmd_keys', list(enumerate(cmd_keys)))
     print('num_cmd', num_cmd)
     print('num_commands', num_commands)
+
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
 
     idx_vx = input_keys.index('ABS_Y')
