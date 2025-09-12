@@ -18,6 +18,7 @@ NX = 3
 NY = 4
 NPAGE = 2
 STARTID = 0
+POSTFIX = 'pdf'
 
 for idx, marker in enumerate(dict_list):
     for page in range(NPAGE):
@@ -35,7 +36,7 @@ for idx, marker in enumerate(dict_list):
             ax.axis("off")
 
         # plt.savefig(f"resources/markers_36h11_{page}.pdf")
-        plt.savefig(f"sensors/markers_36h11_table_{page}.png")
+        plt.savefig(f"sensors/markers_36h11_table_{page}.{POSTFIX}")
         # set size of a4
         # fig.set_size_inches(11.69, 8.27)
         plt.close()

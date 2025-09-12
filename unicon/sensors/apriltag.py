@@ -60,38 +60,55 @@ def draw_pose(frame, corners, rvec, tvec, camera_matrix, dist_coeffs, tag_size, 
     
     return frame
 
-def calculate_target_from_tag(corners, rvec, tvec, T_cam_in_robot):
+def calculate_target_from_tag(corners, rvec, tvec, T_upstream, T_downstream):
     rot_matrix, _ = cv2.Rodrigues(rvec[0][0])
 
     T_tag_in_cam = np.eye(4)
     T_tag_in_cam[0:3, 0:3] = rot_matrix
     T_tag_in_cam[0:3, 3] = tvec[0][0]
-    T_tag_in_robot = T_cam_in_robot @ T_tag_in_cam
 
-    pos = T_tag_in_robot[0:3, 3]
-    rot = R.from_matrix(T_tag_in_robot[0:3, 0:3])
+    T_target_in_robot = T_upstream @ T_tag_in_cam @ T_downstream
+
+    pos = T_target_in_robot[0:3, 3]
+    rot = R.from_matrix(T_target_in_robot[0:3, 0:3])
     quat = rot.as_quat()
 
     target = np.concatenate((pos, quat))
     return target
 
-def calculate_T_cam_in_robot():
+def calculate_T_upstream():
+
     T_camlink_in_robot = np.array([
         [ 0.50475008,  0.63909876,  0.58032761,  0.06081622],
         [ 0.16730993,  0.58707733, -0.79205277, -0.29668969],
         [-0.84689713,  0.49688327,  0.18939976,  0.35160208],
         [ 0.        ,  0.        ,  0.        ,  1.        ]
     ])
+    # T_camlink_in_robot = np.eye(4)
 
-    Rx = R.from_euler('x', -90, degrees=True).as_matrix()
-    Ry = R.from_euler('y', 90, degrees=True).as_matrix()
+    Ry_pos = R.from_euler('y', 90, degrees=True).as_matrix()
+    Rx_neg = R.from_euler('x', -90, degrees=True).as_matrix()
 
-    T_camlink_in_cam = np.eye(4)
-    T_camlink_in_cam[0:3, 0:3] = Ry @ Rx
-    T_cam_in_camlink = np.linalg.inv(T_camlink_in_cam)
+    T_cam_in_camlink = np.eye(4)
+    T_cam_in_camlink[0:3, 0:3] = Rx_neg @ Ry_pos
 
     T_cam_in_robot = T_camlink_in_robot @ T_cam_in_camlink
+
     return T_cam_in_robot
+
+def calculate_T_downstream():
+    
+    Rx_neg = R.from_euler('x', -90, degrees=True).as_matrix()
+    Ry_pos = R.from_euler('y', 90, degrees=True).as_matrix()
+
+    T_target_in_tag_pos = np.eye(4)
+    T_target_in_tag_pos[3, 0:3] = np.array([[0, -0.032, 0]])
+    
+    T_target_in_tag_rot = np.eye(4)
+    T_target_in_tag_rot[0:3, 0:3] = Ry_pos @ Rx_neg
+    T_target_in_tag = T_target_in_tag_rot @ T_target_in_tag_pos
+
+    return T_target_in_tag
 
 def main():
     parser = argparse.ArgumentParser()
@@ -99,7 +116,7 @@ def main():
     parser.add_argument('-fc', '--fake_camera', action='store_true', help='use a test image as camera')
     parser.add_argument('-ltid', '--left_hand_tag_id', type=int, default=1, help='left hand tag id')
     parser.add_argument('-rtid', '--right_hand_tag_id', type=int, default=2, help='right hand tag id')
-    parser.add_argument('-ts', '--tag_size', type=float, default=0.05, help='tag size in meters')
+    parser.add_argument('-ts', '--tag_size', type=float, default=0.0456, help='tag size in meters')
     args = parser.parse_args()
 
     if args.fake_camera:
@@ -116,9 +133,12 @@ def main():
         dist_coeffs = np.zeros(5)
     else:
         pipeline, camera_matrix, dist_coeffs = open_camera(0)
+    print("camera matrix:", camera_matrix)
+    print("dist_coeffs:", dist_coeffs)
 
     detector = create_detector()
-    T_cam_in_robot = calculate_T_cam_in_robot()
+    T_cam_in_robot = calculate_T_upstream()
+    T_target_in_tag = calculate_T_downstream()
 
     if not args.unit_test:
         states_init(use_shm=True, load=True, reuse=True)
@@ -166,13 +186,13 @@ def main():
                     )
 
                     if tag_id == args.left_hand_tag_id:
-                        left_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot)
+                        left_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot, T_target_in_tag)
                         if args.unit_test:
                             print(f"Left hand tag detected. ID: {tag_id}, Target: {left_hand_pos}")
                         else:
                             states_get('left_target')[:] = left_hand_pos
                     if tag_id == args.right_hand_tag_id:
-                        right_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot)
+                        right_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot, T_target_in_tag)
                         if args.unit_test:
                             print(f"Right hand tag detected. ID: {tag_id}, Target: {right_hand_pos}")
                         else:

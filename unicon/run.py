@@ -1138,6 +1138,8 @@ def run(args=None):
         states_lin_acc=states_lin_acc,
         states_pos=states_pos,
         states_input=states_input,
+        states_left_target=states_extras['states_left_target'],
+        states_right_target=states_extras['states_right_target'],
     )
     for k in states_custom_extra_obs:
         states_extras_sys[k] = states_custom_extra_obs[k]

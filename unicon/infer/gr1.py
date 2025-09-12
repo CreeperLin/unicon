@@ -397,8 +397,8 @@ def cb_infer_gr1(
 
         obs_list.append(states_left_target)
         obs_list.append(states_right_target)
-        print('states_left_target', states_left_target)
-        print('states_right_target', states_right_target)
+        # print('states_left_target', states_left_target)
+        # print('states_right_target', states_right_target)
 
         obs = np.concatenate(obs_list)
 
