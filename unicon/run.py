@@ -466,6 +466,8 @@ def run(args=None):
         'states_quat2': states_get('quat2'),
         'states_left_target': states_get('left_target'),
         'states_right_target': states_get('right_target'),
+        'states_left_target_real_time': states_get('left_target_real_time'),
+        'states_right_target_real_time': states_get('right_target_real_time'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
@@ -1140,6 +1142,8 @@ def run(args=None):
         states_input=states_input,
         states_left_target=states_extras['states_left_target'],
         states_right_target=states_extras['states_right_target'],
+        states_left_target_real_time=states_extras['states_left_target_real_time'],
+        states_right_target_real_time=states_extras['states_right_target_real_time'],
     )
     for k in states_custom_extra_obs:
         states_extras_sys[k] = states_custom_extra_obs[k]

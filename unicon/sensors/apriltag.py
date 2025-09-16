@@ -190,13 +190,13 @@ def main():
                         if args.unit_test:
                             print(f"Left hand tag detected. ID: {tag_id}, Target: {left_hand_pos}")
                         else:
-                            states_get('left_target')[:] = left_hand_pos
+                            states_get('left_target_real_time')[:] = left_hand_pos
                     if tag_id == args.right_hand_tag_id:
                         right_hand_pos = calculate_target_from_tag(corners_single_tag, rvec, tvec, T_cam_in_robot, T_target_in_tag)
                         if args.unit_test:
                             print(f"Right hand tag detected. ID: {tag_id}, Target: {right_hand_pos}")
                         else:
-                            states_get('right_target')[:] = right_hand_pos
+                            states_get('right_target_real_time')[:] = right_hand_pos
 
             # calculate and display FPS
             fps = 1.0 / (time.time() - start_time)

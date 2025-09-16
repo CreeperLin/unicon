@@ -139,4 +139,6 @@ USE_SENSOR = ['imu_in_pelvis', 'imu_in_torso']
 CUSTOM_EXTRA_OBS = [
     'rpy2',
     'ang_vel2',
+    'left_target',
+    'right_target',
 ]

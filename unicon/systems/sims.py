@@ -31,7 +31,7 @@ def cb_sims_recv_send_close(
         # 'position': states_q_ctrl[:num_dofs],
         'velocity': np.zeros(num_dofs) if states_qd_ctrl is None else states_qd_ctrl,
         'effort': np.zeros(num_dofs) if states_tau_ctrl is None else states_tau_ctrl,
-        'extra': np.concatenate((kwds['states_left_target'], kwds['states_right_target']),axis=0) if 'states_left_target' in kwds and 'states_right_target' in kwds else np.array([]),
+        'real_time_target': np.concatenate((kwds['states_left_target'], kwds['states_right_target']),axis=0) if 'states_left_target' in kwds and 'states_right_target' in kwds else np.array([]),
     }
     s.cb_recv(send_msg)
     recv_msg = s.cb_send()
@@ -48,18 +48,18 @@ def cb_sims_recv_send_close(
     def cb_send():
         if copy:
             send_msg['position'] = states_q_ctrl.copy()
-        if 'states_left_target' in kwds and 'states_right_target' in kwds:
+        if 'states_left_target_real_time' in kwds and 'states_right_target_real_time' in kwds:
             
-            if np.sum(np.abs(kwds['states_left_target'])) < 1e-6:
+            if np.sum(np.abs(kwds['states_left_target_real_time'])) < 1e-6:
                 left_pose = np.array([0.2443, 0.1517, -0.0455, 0, 0, 0, 1])
             else:
-                left_pose = kwds['states_left_target']
-            if np.sum(np.abs(kwds['states_right_target'])) < 1e-6:
+                left_pose = kwds['states_left_target_real_time']
+            if np.sum(np.abs(kwds['states_right_target_real_time'])) < 1e-6:
                 right_pose = np.array([0.2443, -0.1517, -0.0455, 0, 0, 0, 1])
             else:
-                right_pose = kwds['states_right_target']
+                right_pose = kwds['states_right_target_real_time']
 
-            send_msg['extra'] = np.concatenate((left_pose, right_pose),axis=0)
+            send_msg['real_time_target'] = np.concatenate((left_pose, right_pose),axis=0)
         s.cb_recv(send_msg)
 
     def cb_recv():
@@ -90,6 +90,12 @@ def cb_sims_recv_send_close(
                 kwds['states_rpy2'][:] = imu2[0:3]
             if 'states_ang_vel2' in kwds:
                 kwds['states_ang_vel2'][:] = imu2[6:9]
+
+        if 'states_left_target' in kwds and 'states_right_target' in kwds:
+            obs_target = recv_msg['obs_target']
+            if len(obs_target) >= 14:
+                kwds['states_left_target'][:] = obs_target[0:7]
+                kwds['states_right_target'][:] = obs_target[7:14]
 
     def cb_close():
         s.cb_recv(True)
