@@ -49,7 +49,7 @@ def cb_cmd_vel(
         'frequency': [1.2, 1.2],
         'phase': [0.5, 0.5],
         'duration': [0.5, 0.5],
-        'foot_trajectory': [0.18, 0.18],
+        'foot_trajectory': [0.12, 0.12],
     }
     _default_cmd_keys = [
         'lin_vel_x',

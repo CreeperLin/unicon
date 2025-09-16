@@ -361,15 +361,20 @@ def cb_infer_gr1(
                 # foot_phases = [clock_scale * left_phase, clock_scale * right_phase]
                 # foot_phases = [clock_scale * left_phase + 0.25 * (1-clock_scale), clock_scale * right_phase + 0.25 * (1-clock_scale)]
             else:
-                gait_idx = 1 - int(-0.05 < states_cmd[0] < 0.05 and -0.05 < states_cmd[1] < 0.05 and -0.1 < states_cmd[2] < 0.1)
+                gait_idx = 1 - int(-0.05 < states_cmd[0] < 0.05 and -0.05 < states_cmd[1] < 0.05 and -0.1 < states_cmd[2] < 0.1) # 0 for standing and 1 for walking
+
                 left_phase, right_phase = [gait_indices + phases, gait_indices]
-                if gait_idx == 0:
+                if gait_idx == 1:
                     mask_l = (left_phase > 0.15 and left_phase < 0.35)
                     left_phase[mask_l] = 0.25
                     right_phase[mask_l] = 0.25
                     mask_r = (right_phase > 0.15 and right_phase < 0.35)
                     right_phase[mask_r] = 0.25
                     left_phase[mask_r] = 0.25
+                if (gait_idx == 1) and (last_gait == 0): # standing2walking
+                    left_phase[:] = 0.0
+                    right_phase[:] = 0.0
+                
                 last_gait = gait_idx
                 foot_phases = [left_phase, right_phase]
             if enable_gait_modes and gait_idx == 0 and gait_alt0:
@@ -401,6 +406,10 @@ def cb_infer_gr1(
         # print('states_right_target', states_right_target)
 
         obs = np.concatenate(obs_list)
+        # print("One step observation", obs.shape)
+        # for i in range(0, len(obs), 10):
+        #     line = ','.join(f'{x:.4f}' for x in obs[i:i+10])
+        #     print(line)
 
         # print('commands', commands)
         # print('gait_indices', gait_indices)
