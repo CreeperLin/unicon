@@ -57,10 +57,12 @@ def cb_infer_h0(
     no_leg_def_pos = env_cfg.get('no_leg_def_pos', False)
     no_leg_def_pos = no_leg_def_pos and all(x not in NAME for x in ['a1', 'go2'])
     use_base_states = env_cfg.get('use_base_states', False)
+    mask_obs_action = env_cfg.get('mask_obs_action', False)
 
     print('apply_dof_dir', apply_dof_dir)
     print('no_leg_def_pos', no_leg_def_pos)
     print('use_base_states', use_base_states)
+    print('mask_obs_action', mask_obs_action)
 
     robot_params = env_cfg.get('robot_params', {}).get(NAME, None)
 
@@ -69,6 +71,13 @@ def cb_infer_h0(
         dof_dir_asset = {} if dof_dir_asset is None else robot_params
         dof_dir_asset = [dof_dir_asset.get(k, 1) for k in dof_names]
         dof_dir = np.array(dof_dir_asset, dtype=np_dtype)
+
+    if mask_obs_action:
+        dof_names_glb = dof_names
+        dof_names_std = DOF_NAMES_STD
+        dof_mask_asset = [n not in dof_names_std for n in dof_names_glb]
+        dof_mask_asset = np.array(dof_mask_asset, dtype=np_dtype)
+        dof_mask_inv = 1 - dof_mask_asset
 
     default_joint_angles = env_cfg['init_state']['default_joint_angles']
     print('default_joint_angles', default_joint_angles)
@@ -323,6 +332,8 @@ def cb_infer_h0(
         # actions = np.array(last_actions)
         # actions = last_actions.numpy()
         actions = last_actions
+        if mask_obs_action:
+            actions = actions * dof_mask_inv
         obs_list = [
             base_ang_vel * scales_ang_vel,
             # projected_gravity,

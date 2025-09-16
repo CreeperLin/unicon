@@ -31,7 +31,7 @@ _ip2name_act = {
     '10.10.10.36': 'wristRoll_Right',
     '10.10.10.37': 'gripper_Right',
 }
-_ip2name_abs = {f'{k[:8]}.{int(k[-2:])+10}': 'ABS_'+v for k, v in _ip2name_act.items()}
+_ip2name_abs = {f'{k[:8]}.{int(k[-2:])+10}': 'ABS_' + v for k, v in _ip2name_act.items()}
 
 
 def cb_pnd_recv_send_close(
@@ -76,7 +76,6 @@ def cb_pnd_recv_send_close(
     joint_abs_config = '/root/.adam/joint_abs_config.json'
     with open(joint_abs_config, 'r') as f:
         joint_abs_config = json.load(f)
-    print('joint_abs_config', {k: v['absolute_pos_zero'] for k, v in joint_abs_config.items()})
 
     import pnd_py
 
@@ -113,7 +112,7 @@ def cb_pnd_recv_send_close(
         cmd('rm -rf source', [abs_json_path])
         assert not os.path.exists(abs_json_path)
         os.mkdir('source')
-        cmd('python3', [f'{script_path}/read_abs.py'], capture_output=False)
+        cmd('python3', [f'{script_path}/read_abs.py'], capture_output=None)
         time.sleep(1)
         cmd('python3', [f'{script_path}/read_abs.py'])
         res = cmd('python3', [f'{script_path}/check_abs.py'], capture_output=True)
@@ -129,7 +128,7 @@ def cb_pnd_recv_send_close(
     assert os.path.exists(abs_json_path)
     with open(abs_json_path, 'r') as f:
         abs_json = json.load(f)
-    print('abs_json', {_ip2name_abs[k]: v['radian'] for k, v in abs_json.items()})
+    print('abs_json', {_ip2name_abs[k]: v.get('radian') for k, v in abs_json.items()})
 
     # return
 
@@ -198,13 +197,51 @@ def cb_pnd_recv_send_close(
     import json
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(0.5)
-    port = 2334
+    motor_port = 2334
+    enc_port = 2334
+    enc_port_new = 2561
 
     def motors_get(msg, ips):
         msg = json.dumps(msg).encode()
         reps = []
         for ip in ips:
-            s.sendto(msg, (ip, port))
+            s.sendto(msg, (ip, motor_port))
+            try:
+                for i in range(10):
+                    data, addr = s.recvfrom(1024)
+                    if addr[0] == ip:
+                        break
+                rep = json.loads(data.decode())
+            except socket.timeout:
+                rep = None
+            print(f"ip: {ip} rep: {rep}")
+            reps.append(rep)
+        return reps
+
+    def encs_get(msg, ips):
+        msg = json.dumps(msg).encode()
+        reps = []
+        for ip in ips:
+            try:
+                sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sk.settimeout(0.03)
+                sk.connect((ip, enc_port))
+                sk.send(msg)
+                data = sk.recvfrom(1024)[0]
+                rep = json.loads(data.decode())
+                sk.close()
+            except Exception as e:
+                print(e)
+                rep = None
+            print(f"ip: {ip} rep: {rep}")
+            reps.append(rep)
+        return reps
+
+    def encs_get_new(msg, ips):
+        msg = json.dumps(msg).encode()
+        reps = []
+        for ip in ips:
+            s.sendto(msg, (ip, enc_port_new))
             try:
                 for i in range(10):
                     data, addr = s.recvfrom(1024)
@@ -218,19 +255,34 @@ def cb_pnd_recv_send_close(
         return reps
 
     MOTOR_IPS = robot_def.get('MOTOR_IPS', [])
-    ips = MOTOR_IPS
+    motor_ips = MOTOR_IPS
     msg = {
         "method": "GET",
         "reqTarget": "/",
     }
-    reps = motors_get(msg, ips)
+    reps = motors_get(msg, motor_ips)
     assert (all([r is not None and r['status'] == 'OK' and r['motor_drive_ready'] for r in reps]))
     msg = {
         "method": "GET",
         "reqTarget": "/m1/encoder/is_ready",
     }
-    reps = motors_get(msg, ips)
+    reps = motors_get(msg, motor_ips)
     assert (all([r is not None and r['status'] == 'OK' and r['property'] for r in reps]))
+
+    msg = {
+        "id": 1,
+        "method": "Encoder.Angle",
+        "params": "",
+    }
+    enc_ips = [f'{k[:8]}.{int(k[-2:])+10}' for k in MOTOR_IPS]
+    # enc_ips = motor_ips
+    reps = encs_get(msg, enc_ips)
+
+    if not any(reps):
+        msg_new = {"id": 0, "method": "encoder.angle"}
+        reps = encs_get_new(msg_new, enc_ips)
+
+    print('joint_abs_config', {k: v['absolute_pos_zero'] for k, v in joint_abs_config.items()})
 
     r.init()
 

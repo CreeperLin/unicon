@@ -17,7 +17,7 @@ def cb_cmd_vel(
     init_range_pt=0,
     num_ranges=4,
     max_scale=1.2,
-    min_vel=0.15,
+    min_vel=0.1,
     lin_vel_x=None,
     lin_vel_y=None,
     ang_vel_yaw=None,
@@ -514,7 +514,7 @@ def cb_cmd_replay(
     states_cmd,
     input_keys=None,
     frames=None,
-    cycle=False,
+    loop=False,
     exit_on_end=True,
     verbose=True,
     init_pt=0,
@@ -528,7 +528,7 @@ def cb_cmd_replay(
         if pt == len(frames):
             if verbose:
                 print('cb_cmd_replay end', pt)
-            if cycle:
+            if loop:
                 pt = 0
             elif exit_on_end:
                 return True
@@ -536,5 +536,79 @@ def cb_cmd_replay(
                 states_cmd[:] = 0
         cmd = frames[pt]
         states_cmd[:len(cmd)] = cmd
+
+    return cb
+
+
+def cb_cmd_rec(
+    states_input,
+    states_cmd,
+    input_keys=None,
+    rec_mean=True,
+    loop=True,
+    verbose=True,
+    # rec_inds=None,
+    rec_inds=[0, 1, 2],
+):
+    from unicon.utils import list2slice, is_rising_edge
+    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    is_rec = False
+    is_play = False
+    rec_inds = list2slice(rec_inds)
+    max_frames = 2**16
+    frames = np.zeros((max_frames, len(states_cmd[rec_inds])), dtype=states_cmd.dtype)
+    rec_pt = -1
+    play_pt = -1
+    key_rec = 'BTN_TR'
+    idx_rec = input_keys.index(key_rec)
+    # key_play = 'BTN_TR'
+    key_play = 'BTN_SELECT'
+    idx_play = input_keys.index(key_play)
+
+    def cb():
+        nonlocal play_pt, rec_pt, is_rec, is_play
+        rec_p = is_rising_edge(states_input, idx_rec)
+        if rec_p:
+            is_play = False
+            is_rec = not is_rec
+            if rec_pt > -1:
+                if is_rec:
+                    rec_pt = -1
+                elif rec_mean:
+                    mean = np.mean(frames[:rec_pt + 1], axis=0)
+                    frames[0] = mean
+                    print('rec_mean', rec_pt, mean)
+                    rec_pt = 0
+            print('rec_p', is_rec, rec_pt)
+        if is_rec:
+            rec_pt += 1
+            rec_pt = min(max_frames - 1, rec_pt)
+            if rec_pt % 100 == 0:
+                print('rec_pt', rec_pt)
+            frames[rec_pt] = states_cmd[rec_inds]
+            return
+        play_p = is_rising_edge(states_input, idx_play)
+        if play_p:
+            is_rec = False
+            is_play = not is_play
+            if is_play and play_pt > -1:
+                play_pt = -1
+            print('play_p', is_play, play_pt, rec_pt)
+        if is_play and rec_pt > -1:
+            play_pt += 1
+            if rec_mean:
+                cmd = frames[0]
+            elif play_pt > rec_pt:
+                if verbose:
+                    print('cb_cmd_rec play end', play_pt)
+                if loop:
+                    play_pt = 0
+                else:
+                    is_play = False
+                    return
+                cmd = frames[play_pt]
+            if (play_pt + 1) % 100 == 0:
+                print('play_pt', play_pt, cmd)
+            states_cmd[rec_inds] += cmd
 
     return cb

@@ -16,6 +16,42 @@ def cb_ctrl_q_mask(
     return cb
 
 
+def cb_ctrl_q_clip(
+    states_q_ctrl,
+    states_q=None,
+    states_qd=None,
+    clip_q_limit=True,
+    clip_tau_limit=False,
+    q_ctrl_min=None,
+    q_ctrl_max=None,
+    tau_limit=None,
+    qd_limit=None,
+    kp=None,
+    kd=None,
+):
+    if clip_tau_limit:
+        q_ctrl_delta_min = (tau_limit - kd * qd_limit * 0.5) / kp
+        print('q_ctrl_delta_min', q_ctrl_delta_min)
+        q_ctrl_delta_min[q_ctrl_delta_min < 0] = np.min(q_ctrl_delta_min)
+
+    def cb():
+        q_ctrl = states_q_ctrl
+        if clip_q_limit:
+            q_ctrl = np.clip(q_ctrl, q_ctrl_min, q_ctrl_max)
+        if clip_tau_limit:
+            q_ctrl_delta_neg = q_ctrl_delta_min
+            q_ctrl_delta_pos = q_ctrl_delta_min
+            q_ctrl_delta_neg = (tau_limit - kd * states_qd) / kp
+            q_ctrl_delta_pos = (tau_limit + kd * states_qd) / kp
+            q_ctrl_t_min = states_q - q_ctrl_delta_neg
+            q_ctrl_t_max = states_q + q_ctrl_delta_pos
+            q_ctrl = np.clip(q_ctrl, q_ctrl_t_min, q_ctrl_t_max)
+
+        states_q_ctrl[:] = q_ctrl
+
+    return cb
+
+
 def cb_ctrl_q_from_target_lerp(
     states_q_ctrl,
     states_q,

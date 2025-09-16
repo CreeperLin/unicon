@@ -79,11 +79,7 @@ def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
             'stdout': subprocess.PIPE,
             'stderr': subprocess.STDOUT,
         }
-    res = subprocess.run(run_args,
-                         shell=False,
-                         encoding=encoding,
-                         **stdargs,
-                         **kwds)
+    res = subprocess.run(run_args, shell=False, encoding=encoding, **stdargs, **kwds)
     return res if capture_output else res.returncode
 
 
@@ -321,7 +317,7 @@ def load_obj(obj):
     import yaml
     yaml.add_multi_constructor('tag:', lambda *_: None, Loader=yaml.SafeLoader)
     if isinstance(obj, str):
-        if os.path.exists(obj):
+        if os.path.exists(obj) and os.path.isfile(obj):
             with open(obj, 'r') as f:
                 obj = f.read()
     return yaml.safe_load(obj)
@@ -643,6 +639,8 @@ def dict2mod(dct, name=None):
 
 
 def list2slice(lst):
+    if lst is None:
+        return slice(lst)
     if len(lst) < 2:
         return lst
     st, ed = lst[0], lst[-1]

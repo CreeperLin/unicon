@@ -17,7 +17,7 @@ def get_args():
     parser.add_argument('-di', '--input_dev_type', default='js')
     parser.add_argument('-pt', '--policy_type', default='none')
     parser.add_argument('-mt', '--model_type', default=None)
-    parser.add_argument('-cmd', '--cmd', default='none')
+    parser.add_argument('-cmd', '--cmd', action='append')
     parser.add_argument('-ccv', '--cmd_const_v', default=None)
     parser.add_argument('-iks', '--input_keys', default=None)
     parser.add_argument('-d', '--dry', action='store_true')
@@ -28,6 +28,7 @@ def get_args():
     parser.add_argument('-kd', '--kd', default=None)
     parser.add_argument('-kpr', '--kp_ratio', type=float, default=1.0)
     parser.add_argument('-kdr', '--kd_ratio', type=float, default=1.0)
+    parser.add_argument('-tlr', '--tau_limit_ratio', type=float, default=1.0)
     parser.add_argument('-spt', '--sampler_type', type=str, default='uniform')
     parser.add_argument('-spkwds', '--sampler_kwds', type=str, default=None)
     parser.add_argument('-spr', '--sample_r', type=str, default=None)
@@ -66,6 +67,7 @@ def get_args():
     parser.add_argument('-ssuk', '--sims_use_kpd', action='store_true')
     parser.add_argument('-skwds', '--system_kwargs', default=None)
     parser.add_argument('-cqc', '--clip_q_ctrl', action='store_true')
+    parser.add_argument('-cqct', '--clip_q_ctrl_tau', action='store_true')
     parser.add_argument('-sfts', '--safety_states', action='store_true')
     parser.add_argument('-sftc', '--safety_ctrl', action='store_true')
     parser.add_argument('-dofs', '--dofs', default=None)
@@ -560,6 +562,8 @@ def run(args=None):
         states_q_inf = np.zeros(NUM_DOFS + 1, dtype=dtype)
         states_qd_inf = np.zeros(NUM_DOFS + 1, dtype=dtype)
 
+        states_q_ctrl_inf[:NUM_DOFS] = q_reset
+
         def cb_pad_in():
             states_q_inf[:NUM_DOFS] = states_q
             states_qd_inf[:NUM_DOFS] = states_qd
@@ -872,7 +876,8 @@ def run(args=None):
 
     if dof_states_padded:
         seq.insert(0, cb_pad_in)
-        seq.insert(-1, cb_pad_out)
+        # seq.insert(-1, cb_pad_out)
+        seq.append(cb_pad_out)
 
     q_ctrl_default_mask = args['q_ctrl_default_mask']
     q_ctrl_mask = args['q_ctrl_mask']
@@ -907,11 +912,14 @@ def run(args=None):
     if Q_CTRL_MIN is not None:
         q_ctrl_min = Q_CTRL_MIN * (1 - safety_q_margin) + Q_CTRL_MAX * safety_q_margin
         q_ctrl_max = Q_CTRL_MAX * (1 - safety_q_margin) + Q_CTRL_MIN * safety_q_margin
+    ctx['q_ctrl_min'] = q_ctrl_min
+    ctx['q_ctrl_max'] = q_ctrl_max
     clip_q_ctrl = args['clip_q_ctrl'] or env_clip_q_ctrl
     print('clip_q_ctrl', clip_q_ctrl)
     print('safety_q_margin', safety_q_margin)
     print('q_ctrl_min', q_ctrl_min)
     print('q_ctrl_max', q_ctrl_max)
+    clip_q_ctrl_tau = args['clip_q_ctrl_tau']
 
     rec_output = args['rec_output']
     rec_post_send = args['rec_post_send']
@@ -1030,10 +1038,12 @@ def run(args=None):
 
     kp_r = args['kp_ratio']
     kd_r = args['kd_ratio']
+    tau_limit_r = args['tau_limit_ratio']
     print('kp_r', kp_r)
     print('kd_r', kd_r)
     kp = KP.copy()
     kd = KD.copy()
+    tau_limit = TAU_LIMIT.copy()
     use_sim_pd = args['use_sim_pd']
     if env_cfg is not None and use_sim_pd:
         nxs = []
@@ -1049,9 +1059,13 @@ def run(args=None):
         print('sim_torque_limits', sim_torque_limits)
         kp = [([v for k, v in sim_kps.items() if k in n] or [kp[i]])[0] for i, n in enumerate(DOF_NAMES)]
         kd = [([v for k, v in sim_kds.items() if k in n] or [kd[i]])[0] for i, n in enumerate(DOF_NAMES)]
+        tau_limit = [
+            ([v for k, v in sim_torque_limits.items() if k in n] or [tau_limit[i]])[0] for i, n in enumerate(DOF_NAMES)
+        ]
         assert len(kp) == len(kd) == NUM_DOFS
         kp = np.array(kp, dtype=np.float64)
         kd = np.array(kd, dtype=np.float64)
+        tau_limit = np.array(tau_limit, dtype=np.float64)
     args_kp = args['kp']
     args_kd = args['kd']
     for x, ax in [[kp, args_kp], [kd, args_kd]]:
@@ -1068,8 +1082,10 @@ def run(args=None):
         kd = kd if isinstance(kd, np.ndarray) else np.array(kd, dtype=np.float64)
         kp[:] *= kp_r
         kd[:] *= kd_r
+        tau_limit[:] *= tau_limit_r
     print('kp', kp if kp is None else pp_arr(kp))
     print('kd', kd if kd is None else pp_arr(kd))
+    print('tau_limit', tau_limit if tau_limit is None else pp_arr(tau_limit))
     ctx['kp'] = kp
     ctx['kd'] = kd
 
@@ -1217,12 +1233,11 @@ def run(args=None):
         print('sim_torque_limits', sim_torque_limits)
         sims_use_kpkd = ('Kp' not in system_config) or args['sims_use_kpd']
         if sims_use_kpkd:
-            tau_limits = TAU_LIMIT.copy()
             # system_config['Kp'] = kp
             # system_config['Kd'] = kd
             system_config['Kp'] = {k: v for k, v in zip(sim_dof_names, kp)}
             system_config['Kd'] = {k: v for k, v in zip(sim_dof_names, kd)}
-            system_config['torque_limits'] = {k: v for k, v in zip(sim_dof_names, tau_limits)}
+            system_config['torque_limits'] = {k: v for k, v in zip(sim_dof_names, tau_limit)}
         system_config['dt'] = dt
         sims_override = args['sims_override']
         sims_override = load_obj(sims_override or '') or {}
@@ -1441,12 +1456,22 @@ def run(args=None):
         cb_qtf_send()
         seq.append(cb_qtf_send)
 
-    if clip_q_ctrl:
+    if clip_q_ctrl or clip_q_ctrl_tau:
+        from unicon.ctrl import cb_ctrl_q_clip
+        # def cb_ctrl_q_clip():
+        #     states_q_ctrl[:] = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max)
+        cb = autowired(cb_ctrl_q_clip)(
+            q_ctrl_min=Q_CTRL_MIN,
+            q_ctrl_max=Q_CTRL_MAX,
+            qd_limit=QD_LIMIT,
+            tau_limit=tau_limit,
+            kp=kp,
+            kd=kd,
+            clip_q_limit=clip_q_ctrl,
+            clip_tau_limit=clip_q_ctrl_tau,
+        )
 
-        def cb_ctrl_q_clip():
-            states_q_ctrl[:] = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max)
-
-        seq.append(cb_ctrl_q_clip)
+        seq.append(cb)
 
     clear_input = True
     if clear_input:
@@ -1495,8 +1520,10 @@ def run(args=None):
     cmd_states = dict(
         # states_cmd=np.zeros_like(states_cmd),
     )
-    cmd = args['cmd']
-    if cmd and cmd != 'none':
+    cmds = args['cmd']
+    for cmd in cmds:
+        if cmd == 'none':
+            continue
         cmd_kwds = load_obj(cmd)
         cmd_kwds = {'type': cmd_kwds} if isinstance(cmd_kwds, str) else cmd_kwds
         cmd_type = cmd_kwds.pop('type')
@@ -1535,7 +1562,8 @@ def run(args=None):
     print('seq before io', seq)
     inputs = args['inputs']
     outputs = args['outputs']
-    def_insert_pos = -1
+    n_cmd_cbs = len(cmds)
+    def_insert_pos = -n_cmd_cbs if n_cmd_cbs else None
     for output_kwds in outputs:
         output_kwds = load_obj(output_kwds)
         output_kwds = {'type': output_kwds} if isinstance(output_kwds, str) else output_kwds
@@ -1588,7 +1616,7 @@ def run(args=None):
             check_tau=2,
             check_tau_power=True,
             qd_limit=QD_LIMIT,
-            tau_limit=TAU_LIMIT,
+            tau_limit=tau_limit,
             Kp=kp,
             Kd=kd,
             power_limit=1200,
