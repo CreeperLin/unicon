@@ -83,12 +83,12 @@ def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
     return res if capture_output else res.returncode
 
 
-def is_rising_edge(x, idx=None, key=None):
+def is_rising_edge(x, idx=None, key=None, th=0):
     if idx is not None:
         x = float(x[idx])
     key = idx if key is None else key
     last_x = _edge_memo.get(key, 0)
-    r = last_x == 0 and x > 0
+    r = last_x <= th and x > th
     # print(_edge_memo, idx, key, r, last_x, x)
     _edge_memo[key] = x
     return r
@@ -498,15 +498,29 @@ def parse_robot_def(robot_def):
     print('robot_def', robot_def.keys())
     num_dofs = robot_def['NUM_DOFS']
     dof_names = robot_def['DOF_NAMES']
-    dof_attr_keys = ['QD_LIMIT', 'TAU_LIMIT', 'KP', 'KD', 'Q_CTRL_MIN', 'Q_CTRL_MAX', 'Q_RESET', 'Q_BOOT']
-    for k in dof_attr_keys:
+    dof_attrs = [
+        'QD_LIMIT',
+        'TAU_LIMIT',
+        'KP',
+        'KD',
+        'Q_CTRL_MIN',
+        'Q_CTRL_MAX',
+        'Q_RESET',
+        'Q_BOOT',
+        'DOF_DIR_STD',
+    ]
+    dof_def_vals = {
+        'DOF_DIR_STD': 1.,
+    }
+    for k in dof_attrs:
+        def_v = dof_def_vals.get(k, 0.)
         v = robot_def.get(k)
         if v is None:
             continue
         if isinstance(v, (float, int)):
             v = [v] * num_dofs
         if isinstance(v, dict):
-            v = [v.get(n, ([vv for kk, vv in v.items() if kk in n] or [v.get('*', 0.)])[0]) for n in dof_names]
+            v = [v.get(n, ([vv for kk, vv in v.items() if kk in n] or [v.get('*', def_v)])[0]) for n in dof_names]
         robot_def[k] = v
 
     def is_num_list(x):

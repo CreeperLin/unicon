@@ -75,6 +75,12 @@ def cb_unitree1_recv_send_close(
         'BTN_Y': 'Y',
         'BTN_TL': 'L1',
         'BTN_TR': 'R1',
+        'ABS_HAT0Y-': 'up',
+        'ABS_HAT0X+': 'right',
+        'ABS_HAT0Y+': 'down',
+        'ABS_HAT0X-': 'left',
+        'ABS_BRAKE': 'L2',
+        'ABS_GAS': 'R2',
     }
     mapped_keys = [key_mapping.get(k) for k in input_keys]
     # print(input_keys, mapped_keys)

@@ -11,7 +11,7 @@ def get_args():
     parser.add_argument('-m', '--mode', action='append')
     parser.add_argument('-dt', '--dt', type=float, default=None)
     parser.add_argument('-n', '--num_steps', type=int, default=0)
-    parser.add_argument('-s', '--system', default='fake')
+    parser.add_argument('-s', '--system', default='none')
     parser.add_argument('-ro', '--rec_output', default=None)
     parser.add_argument('-it', '--infer_type', default='h0')
     parser.add_argument('-di', '--input_dev_type', default='js')
@@ -183,8 +183,8 @@ def run(args=None):
         robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
         robot_def = parse_robot_def(robot_def)
     NAME = robot_def.get('NAME')
-    KP = robot_def.get('KP', [])
-    KD = robot_def.get('KD', [])
+    KP = robot_def.get('KP', None)
+    KD = robot_def.get('KD', None)
     Q_CTRL_MIN = robot_def.get('Q_CTRL_MIN', None)
     Q_CTRL_MAX = robot_def.get('Q_CTRL_MAX', None)
     DOF_NAMES = robot_def.get('DOF_NAMES', [])
@@ -553,6 +553,7 @@ def run(args=None):
 
     q_boot = q_reset if Q_BOOT is None else Q_BOOT
 
+    ctx['q_reset'] = q_reset
     print('q_reset', q_reset.tolist())
     print('q_boot', q_boot.tolist())
 
@@ -1041,9 +1042,9 @@ def run(args=None):
     tau_limit_r = args['tau_limit_ratio']
     print('kp_r', kp_r)
     print('kd_r', kd_r)
-    kp = KP.copy()
-    kd = KD.copy()
-    tau_limit = TAU_LIMIT.copy()
+    kp = KP if KP is None else KP.copy()
+    kd = KD if KD is None else KD.copy()
+    tau_limit = TAU_LIMIT if TAU_LIMIT is None else TAU_LIMIT.copy()
     use_sim_pd = args['use_sim_pd']
     if env_cfg is not None and use_sim_pd:
         nxs = []
@@ -1077,9 +1078,10 @@ def run(args=None):
                 x[inds] = v
         elif isinstance(ax, list):
             x[:] = ax
-    if kp is not None:
+    if kp is not None and len(kp):
         kp = kp if isinstance(kp, np.ndarray) else np.array(kp, dtype=np.float64)
         kd = kd if isinstance(kd, np.ndarray) else np.array(kd, dtype=np.float64)
+        tau_limit = tau_limit if isinstance(tau_limit, np.ndarray) else np.array(tau_limit, dtype=np.float64)
         kp[:] *= kp_r
         kd[:] *= kd_r
         tau_limit[:] *= tau_limit_r
@@ -1521,6 +1523,7 @@ def run(args=None):
         # states_cmd=np.zeros_like(states_cmd),
     )
     cmds = args['cmd']
+    cmds = [] if cmds is None else cmds
     for cmd in cmds:
         if cmd == 'none':
             continue

@@ -85,6 +85,8 @@ def cb_unitree_recv_send_close(
         'ABS_HAT0X+': 'right',
         'ABS_HAT0Y+': 'down',
         'ABS_HAT0X-': 'left',
+        'ABS_BRAKE': 'L2',
+        'ABS_GAS': 'R2',
     }
     mapped_keys = [key_mapping.get(k) for k in input_keys]
     mapped = [k is not None for k in mapped_keys]

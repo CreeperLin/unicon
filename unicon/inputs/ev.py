@@ -8,7 +8,8 @@ def cb_input_ev(
     remap_pedals=True,
     abs_type=0,
     dev_path='/dev/input',
-    z2r=True,
+    z2r=False,
+    z2t=True,
     use_nesw=True,
 ):
     from unicon.utils import cmd
@@ -49,6 +50,9 @@ def cb_input_ev(
     if z2r:
         ecodes_abs[evdev.ecodes.ABS_Z] = ['ABS_Z', 'ABS_RX']
         ecodes_abs[evdev.ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_RY']
+    elif z2t:
+        ecodes_abs[evdev.ecodes.ABS_Z] = ['ABS_Z', 'ABS_BRAKE']
+        ecodes_abs[evdev.ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_GAS']
 
     code_maps = {
         evdev.ecodes.EV_KEY: ecodes_kb,
@@ -130,6 +134,7 @@ def cb_input_ev(
                         v = 0 if v is None else v / 32767.0
                     else:
                         v = 0 if v is None else v / 255
+                    v = v * 2 - 1
                 elif k.startswith('ABS_HAT'):
                     v = 0 if v is None else v
                 elif k.startswith('ABS'):

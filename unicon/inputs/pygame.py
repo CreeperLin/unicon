@@ -3,6 +3,8 @@ axis_mapping_dinput = {
     'ABS_Y': 1,
     'ABS_RX': 3,
     'ABS_RY': 4,
+    'ABS_BRAKE': 2,
+    'ABS_GAS': 5,
 }
 btn_mapping_dinput = {
     'BTN_A': 0,
@@ -23,6 +25,8 @@ axis_mapping_xbox = {
     'ABS_Y': 1,
     'ABS_RX': 2,
     'ABS_RY': 3,
+    'ABS_BRAKE': 4,
+    'ABS_GAS': 5,
 }
 btn_mapping_xbox = {
     'BTN_A': 0,
@@ -43,8 +47,33 @@ axis_mapping_ps4 = {
     'ABS_Y': 1,
     'ABS_RX': 2,
     'ABS_RY': 3,
+    'ABS_BRAKE': 4,
+    'ABS_GAS': 5,
 }
 btn_mapping_ps4 = {
+    'BTN_A': 0,
+    'BTN_B': 1,
+    'BTN_X': 2,
+    'BTN_Y': 3,
+    'BTN_TL': 9,
+    'BTN_TR': 10,
+    'BTN_SELECT': 4,
+    'BTN_START': 6,
+    'ABS_HAT0Y-': 11,
+    'ABS_HAT0Y+': 12,
+    'ABS_HAT0X-': 13,
+    'ABS_HAT0X+': 14,
+}
+
+axis_mapping_ps5 = {
+    'ABS_X': 0,
+    'ABS_Y': 1,
+    'ABS_RX': 2,
+    'ABS_RY': 3,
+    'ABS_BRAKE': 4,
+    'ABS_GAS': 5,
+}
+btn_mapping_ps5 = {
     'BTN_A': 0,
     'BTN_B': 1,
     'BTN_X': 2,
@@ -64,6 +93,8 @@ axis_mapping_switchpro = {
     'ABS_Y': 1,
     'ABS_RX': 2,
     'ABS_RY': 3,
+    'ABS_BRAKE': 4,
+    'ABS_GAS': 5,
 }
 btn_mapping_switchpro = {
     'BTN_A': 0,
@@ -131,6 +162,8 @@ def cb_input_pygame(
         if js_type is None:
             if 'PS4' in name:
                 js_type = 'ps4'
+            elif 'DualSense' in name:
+                js_type = 'ps5'
             elif 'Xbox' in name:
                 js_type = 'xbox'
             elif 'Switch Pro' in name:
@@ -178,14 +211,21 @@ def cb_input_pygame(
         axes = [js.get_axis(i) for i in range(num_axes)]
         btns = [js.get_button(i) for i in range(num_buttons)]
         hats = [js.get_hat(i) for i in range(num_hats)]
-        # print(axes, btns, hats)
+        if verbose:
+            print(axes, btns, hats)
         for k, v in axis_mapping.items():
+            if v >= len(axes):
+                continue
             states[k] = axes[v]
         for k, v in btn_mapping.items():
+            if v >= len(btns):
+                continue
             states[k] = btns[v]
         for k, v in hat_mapping.items():
             v = [v, 1, 1] if isinstance(v, int) else v
             idx, xd, yd = v
+            if idx >= len(hats):
+                continue
             hat = hats[idx]
             states[k + 'X'] = hat[0] * xd
             states[k + 'Y'] = hat[1] * yd

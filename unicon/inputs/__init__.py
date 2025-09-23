@@ -6,6 +6,8 @@ _default_input_keys = [
     'ABS_RY',
     'ABS_HAT0X',
     'ABS_HAT0Y',
+    'ABS_BRAKE',
+    'ABS_GAS',
     'BTN_A',
     'BTN_B',
     'BTN_X',
@@ -29,6 +31,10 @@ _key_descs = {
     'ABS_HAT0X+': 'Dpad right',
     'ABS_HAT0Y-': 'Dpad up',
     'ABS_HAT0Y+': 'Dpad down',
+    'ABS_BRAKE+': 'left trigger pushed',
+    'ABS_GAS+': 'right trigger pushed',
+    'ABS_BRAKE-': 'left trigger rest',
+    'ABS_GAS-': 'right trigger rest',
     'BTN_A': 'button south',
     'BTN_B': 'button east',
     'BTN_X': 'button west',
@@ -40,14 +46,14 @@ _key_descs = {
 }
 
 
-def test_cb_input(cb_input_cls, input_keys=None):
+def test_cb_input(cb_input_cls, cb=None, states_input=None, input_keys=None):
     import numpy as np
     import time
     dt = 0.02
     th = 0.1
     input_keys = _default_input_keys if input_keys is None else input_keys
-    states_input = np.zeros(len(input_keys))
-    cb = cb_input_cls(states_input)
+    states_input = np.zeros(len(input_keys)) if states_input is None else states_input
+    cb = cb_input_cls(states_input) if cb is None else cb
     assert cb is not None
     num_steps = int(3 // dt)
 

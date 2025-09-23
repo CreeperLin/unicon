@@ -8,7 +8,9 @@ def cb_input_js(
     min_num_buttons=2,
     blocking=False,
     dev_path='/dev/input',
+    mode=None,
     z2r=True,
+    z2t=False,
 ):
     from unicon.utils import cmd
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
@@ -141,11 +143,21 @@ def cb_input_js(
             308: ['BTN_WEST', 'BTN_Y'],
             309: 'BTN_Z'
         }
+    if mode is not None:
+        mode = int(mode)
+        z2r = (mode) & 1 > 0
+        z2t = (mode >> 1) & 1 > 0
     if z2r:
         axis_names.update({
             2: 'ABS_RX',
             5: 'ABS_RY',
         })
+    elif z2t:
+        axis_names.update({
+            2: 'ABS_BRAKE',
+            5: 'ABS_GAS',
+        })
+    print('cb_input_js', 'z2t', z2t, 'z2r', z2r)
 
     states = {}
     axis_map = []
@@ -262,6 +274,12 @@ def cb_input_js(
 
     return cb
 
+
+from functools import partial
+
+cb_input_js0 = partial(cb_input_js, mode=0)
+cb_input_js1 = partial(cb_input_js, mode=1)
+cb_input_js2 = partial(cb_input_js, mode=2)
 
 if __name__ == '__main__':
     from unicon.inputs import test_cb_input

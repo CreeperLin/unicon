@@ -205,12 +205,15 @@ def cb_infer_h0(
     retained_action_inds = env_cfg.get('retained_action_inds', env_cfg['env'].get('retained_actions_indxs'))
     dof_map_obs = dof_map
     retained_actions = env_cfg['env'].get('retained_actions', True)
+    retained_actions_only = env_cfg['env'].get('retained_actions_only', False)
     retained_obs = env_cfg.get('retained_obs', retained_obs)
     retained_action_inds = retained_action_inds if retained_actions else None
     print('retained_actions', retained_actions)
+    print('retained_actions_only', retained_actions_only)
     print('retained_obs', retained_obs)
     masked_action_inds = None
     if retained_action_inds is not None:
+        dof_mask_inv = dof_mask_inv[retained_action_inds]
         _dof_map = list(range(dof_map.start, dof_map.stop)) if isinstance(dof_map, slice) else dof_map
         print('retained_action_inds', len(retained_action_inds), retained_action_inds)
         # default_dof_pos_tensor = default_dof_pos_tensor[dof_map_action_dest]

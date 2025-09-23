@@ -207,6 +207,11 @@ t1 = {
         'Right_Shoulder_Pitch': 'right_shoulder_pitch',
         'Right_Shoulder_Roll': 'right_shoulder_roll',
     },
+    'DOF_DIR_STD': {
+        'Waist': -1,
+        'Right_Elbow_Yaw': -1,
+        'Left_Elbow_Pitch': -1,
+    },
     'KP': [
         20, 20,
         20, 20, 20, 20,
