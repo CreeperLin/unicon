@@ -1,3 +1,121 @@
+def parse_env_cfg_h0(env_cfg):
+    from unicon.utils import get_ctx
+    ctx = get_ctx()
+    robot_def = ctx['robot_def']
+    NAME = robot_def.get('NAME')
+    DOF_NAMES = robot_def.get('DOF_NAMES')
+    env_cfg_env = env_cfg['env']
+    num_acts = env_cfg_env['num_actions']
+    num_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_observations'))
+    env_dof_names = env_cfg.get('dof_names')
+    print('env dof_names', env_dof_names)
+    if env_dof_names is not None:
+        dof_names = env_dof_names
+    default_joint_angles = env_cfg['init_state']['default_joint_angles']
+    env_kps = env_cfg['control']['stiffness']
+    env_kds = env_cfg['control']['damping']
+    env_torque_limits = env_cfg['control'].get('torque_limits', None)
+    dof_names_std = None
+    if 'robot_params' in env_cfg:
+        params = env_cfg['robot_params'].get(NAME, None)
+        if params is not None:
+            default_joint_angles = params.get('default_joint_angles', None)
+            print('robot_params', NAME, default_joint_angles)
+            env_kps = params.get('stiffness', None)
+            env_kds = params.get('damping', None)
+            env_torque_limits = params.get('torque_limits', None)
+            dof_names_std = params.get('dof_names_std', None)
+        elif all(n in default_joint_angles for n in DOF_NAMES):
+            print('warning using env_cfg values for robot_params')
+        else:
+            print('no robot_params', NAME)
+            default_joint_angles = None
+            env_kps = {}
+            env_kds = {}
+            env_torque_limits = None
+    ctrl_dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
+    env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
+    print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
+    print('env_cfg_args', env_cfg_args)
+    env_cfg_commands = env_cfg['commands']
+    env_num_commands = env_cfg_commands['num_commands']
+    env_cfg_env = env_cfg['env']
+    observe_clock_only = env_cfg.get('observe_clock_only', False)
+    observe_gait_commands = env_cfg_env.get('observe_gait_commands', True) and (not observe_clock_only)
+    observe_frequency = env_cfg_env.get('observe_frequency', observe_gait_commands)
+    observe_phase = env_cfg_env.get('observe_phase', observe_gait_commands)
+    observe_duration = env_cfg_env.get('observe_duration', observe_gait_commands)
+    observe_foot_height = env_cfg_env.get('observe_foot_height', observe_gait_commands)
+    observe_body_height = env_cfg_env.get('observe_body_height',)
+    observe_body_roll = env_cfg_env.get('observe_body_roll',)
+    observe_body_pitch = env_cfg_env.get('observe_body_pitch',)
+    observe_body_yaw = env_cfg_env.get('observe_body_yaw',)
+    env_command_keys = [
+        'lin_vel_x',
+        'lin_vel_y',
+        'ang_vel_yaw',
+        ('gait_frequency' if observe_frequency else None),
+        ('phase' if observe_phase else None),
+        ('duration' if observe_duration else None),
+        ('foot_swing_height' if observe_foot_height else None),
+        ('body_height' if observe_body_height else None),
+        ('body_roll' if observe_body_roll else None),
+        ('body_pitch' if observe_body_pitch else None),
+        ('body_yaw' if observe_body_yaw else None),
+    ]
+    cmd_range_keys = {
+        'lin_vel_x': 'limit_vel_x',
+        'lin_vel_y': 'limit_vel_y',
+        'ang_vel_yaw': 'limit_vel_yaw',
+    }
+    env_command_keys = [x for x in env_command_keys if x is not None]
+    print('env_num_commands', env_num_commands)
+    print('env_command_keys', env_command_keys)
+    assert len(env_command_keys) == env_num_commands
+    ranges = env_cfg_commands['ranges']
+    print('env_cfg ranges', ranges)
+    def_ranges = {
+        'gait_frequency': [env_cfg_commands.get('gait_frequency')] * 2,
+        'foot_swing_height': [env_cfg_commands.get('foot_swing_height')] * 2,
+        'phase': [0.5] * 2,
+        'duration': [env_cfg_commands.get('duty_cycle')] * 2,
+    }
+    env_range_keys = [cmd_range_keys.get(k, k) for k in env_command_keys]
+    env_command_ranges = [
+        ranges.get(k, ranges.get(kk, def_ranges.get(k))) for k, kk in zip(env_range_keys, env_command_keys)
+    ]
+    print('env_command_ranges', env_command_ranges)
+    cmd_def_zero_keys = [
+        'lin_vel_x',
+        'lin_vel_y',
+        'ang_vel_yaw',
+        'body_height',
+        'body_roll',
+        'body_pitch',
+        'body_yaw',
+    ]
+    env_command_def_vals = {k: 0 for k in cmd_def_zero_keys}
+    print('env_command_def_vals', env_command_def_vals)
+    ret = {
+        'env_command_keys': env_command_keys,
+        'env_command_ranges': env_command_ranges,
+        'env_command_def_vals': env_command_def_vals,
+        'env_kps': env_kps,
+        'env_kds': env_kds,
+        'env_torque_limits': env_torque_limits,
+        'ctrl_dt': ctrl_dt,
+        'num_obs': num_obs,
+        'num_acts': num_acts,
+        'dof_names': dof_names,
+        'env_cfg_args': env_cfg_args,
+        'dof_names_std': dof_names_std,
+        'default_joint_angles': default_joint_angles,
+    }
+    if robot_def.get('DOF_NAMES_STD') is None:
+        ret['dof_names_std'] = dof_names_std
+    return ret
+
+
 def cb_infer_h0(
     states_rpy,
     states_ang_vel,
@@ -34,10 +152,11 @@ def cb_infer_h0(
     from unicon.utils import get_ctx
     from unicon.utils import get_print_fn, expect
     print = get_print_fn()
-    robot_def = get_ctx()['robot_def']
+    ctx = get_ctx()
+    robot_def = ctx['robot_def']
     NAME = robot_def['NAME']
     DOF_NAMES = robot_def['DOF_NAMES']
-    DOF_NAMES_STD = robot_def['DOF_NAMES_STD']
+    dof_names_std = ctx.get('dof_names_std', robot_def['DOF_NAMES_STD'])
     import torch
     import numpy as np
     from unicon.utils.torch import to_tensor
@@ -74,7 +193,6 @@ def cb_infer_h0(
 
     if mask_obs_action:
         dof_names_glb = dof_names
-        dof_names_std = DOF_NAMES_STD
         dof_mask_asset = [n not in dof_names_std for n in dof_names_glb]
         dof_mask_asset = np.array(dof_mask_asset, dtype=np_dtype)
         dof_mask_inv = 1 - dof_mask_asset
@@ -97,7 +215,7 @@ def cb_infer_h0(
     if isinstance(init_joint_angles, dict):
         if no_leg_def_pos:
             for k in init_joint_angles.keys():
-                std_name = DOF_NAMES_STD[k]
+                std_name = dof_names_std[k]
                 if no_leg_def_pos and any(x in std_name for x in ['hip', 'knee', 'ankle']):
                     init_joint_angles[k] = 0.
         default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
@@ -199,9 +317,9 @@ def cb_infer_h0(
     print('cmds_scale', cmds_scale)
     gravity_vec = np.array(get_axis_params(-1., up_axis_idx), dtype=np_dtype)
     print('gravity_vec', gravity_vec)
-    default_dof_pos_np = np.array(default_dof_pos, dtype=np_dtype)
+    default_dof_pos_act = np.array(default_dof_pos, dtype=np_dtype)
     default_dof_pos = np.array(default_dof_pos, dtype=np_dtype)
-    default_dof_pos_tensor = to_tensor(default_dof_pos)
+    # default_dof_pos_tensor = to_tensor(default_dof_pos)
     retained_action_inds = env_cfg.get('retained_action_inds', env_cfg['env'].get('retained_actions_indxs'))
     dof_map_obs = dof_map
     retained_actions = env_cfg['env'].get('retained_actions', True)
@@ -219,8 +337,8 @@ def cb_infer_h0(
         # default_dof_pos_tensor = default_dof_pos_tensor[dof_map_action_dest]
         if len(retained_action_inds) == num_actions:
             dof_map_action_dest = [_dof_map[i] for i in retained_action_inds]
-            default_dof_pos_tensor = default_dof_pos_tensor[retained_action_inds]
-            default_dof_pos_np = default_dof_pos[retained_action_inds]
+            # default_dof_pos_tensor = default_dof_pos_tensor[retained_action_inds]
+            default_dof_pos_act = default_dof_pos[retained_action_inds]
             # dof_map_action_src = list(range(num_actions))
         else:
             masked_action_inds = [i for i in range(num_actions) if i not in retained_action_inds]
@@ -235,6 +353,7 @@ def cb_infer_h0(
             default_dof_pos = default_dof_pos[retained_action_inds]
     dof_map_action_dest = list2slice(dof_map_action_dest)
     dof_map_obs = list2slice(dof_map_obs)
+    default_dof_pos_act_tensor = to_tensor(default_dof_pos_act, device=device)
     print('masked_action_inds', masked_action_inds)
     print('dof_map_obs', dof_map_obs)
     print('dof_map_action_dest', dof_map_action_dest)
@@ -244,15 +363,16 @@ def cb_infer_h0(
     print('default_dof_pos', np.round(default_dof_pos.astype(np.float64), decimals=3).tolist())
     # last_actions = torch.zeros(num_actions, dtype=dtype, device=device)
     last_actions = np.zeros(num_actions, dtype=np_dtype)
-    hist = None
+    last_actions_tensor = torch.zeros(num_actions, device=device)
+    hist_buf = None
+    env_cfg_env = env_cfg['env']
+    num_partial_obs = env_cfg_env.get('num_partial_obs', env_cfg_env.get('num_partial_observations'))
     if stack_history_obs:
         num_partial_obs_full = False
-        env = env_cfg['env']
-        num_partial_obs = env.get('num_partial_obs', env.get('num_partial_observations'))
         num_partial_obs = int(num_partial_obs // include_history_steps) if num_partial_obs_full else num_partial_obs
         print('include_history_steps', include_history_steps)
         print('num_partial_obs', num_partial_obs)
-        hist = torch.zeros(1, include_history_steps, num_partial_obs, device=device)
+        hist_buf = torch.zeros(1, include_history_steps, num_partial_obs, device=device)
 
     # dt = 0.02
     dt = env_cfg['sim']['dt'] * env_cfg['control']['decimation']
@@ -315,6 +435,63 @@ def cb_infer_h0(
     # gait_ind_init = 0.5
     gait_ind_init = 0.
 
+    num_obs = ctx.get('num_obs')
+    num_dofs = len(ctx.get('dof_names'))
+    # obs_pt = 3 + (export_size if exp_front else 0)
+    # last_acts_pt = obs_pt + num_obs_prop - 3 - num_actions
+    last_acts_pt = 6 + num_dofs * 2
+    obs_buf = torch.zeros(num_obs, dtype=dtype, device=device)
+
+    def torch_step(obs):
+
+        obs[:, last_acts_pt:last_acts_pt + num_actions] = last_actions_tensor
+        # obs_buf[obs_pt:last_acts_pt] = obs
+        # hist = obs
+        # hist_buf[1:] = hist_buf[:-1].clone()
+        # hist_buf[0] = hist
+        # obs_buf[hist_pt:hist_pt + hist_export_size] = hist_buf.flatten()
+
+        if stack_history_obs:
+            # print(obs.shape, hist.shape)
+            hist_buf[:, :-1, :] = hist_buf[:, 1:, :].clone()
+            hist_buf[:, -1, :] = obs
+            obs = hist_buf.view(1, -1) if flatten_hist else hist_buf
+            # obs = hist
+        if num_extra_obs:
+            obs = torch.cat([obs, extra_obs], dim=-1)
+        if flatten_obs:
+            obs = obs.flatten()
+        # print('obs', obs.shape)
+        actions = policy_fn(obs)
+        acts = torch.clamp(actions, -clip_actions, clip_actions).view(1, -1)[0]
+        # last_actions[:] = acts
+        last_acts = acts
+        if mask_obs_action:
+            last_acts = acts * dof_mask_inv
+        # obs_buf[last_acts_pt:last_acts_pt + num_actions] = last_actions
+        last_actions_tensor[:] = last_acts
+        # acts = acts * action_scale + default_dof_pos_tensor
+        if masked_action_inds is not None:
+            acts[masked_action_inds] = 0.
+        acts = acts * action_scale + default_dof_pos_act_tensor
+
+        # actions = policy_fn(obs_buf.view(1, -1))
+        # actions = actions.flatten()
+        # actions = self.policy(obs_buf)
+        # t_tot += time.perf_counter() - t0
+        # n_s += 1
+        # print('acts', t_tot / n_s)
+        # print('actions', actions.cpu().tolist())
+        # t0 = time.perf_counter()
+        # acts = torch.clip(actions, -clip_actions, clip_actions)
+        # last_actions[:] = acts
+        # obs_buf[:, last_acts_pt:last_acts_pt+num_actions] = acts
+        # obs_buf[last_acts_pt:last_acts_pt + num_actions] = acts
+        # acts = acts * action_scale + default_dof_pos_tensor
+        # acts = acts[dof_map_tensor]
+        # return acts, actions
+        return acts
+
     def step_fn():
         # t0 = time.time()
         # quat = np.roll(states_quat, -1)
@@ -370,7 +547,7 @@ def cb_infer_h0(
                 left_phase, right_phase = [gait_indices + phases, gait_indices + 0]
                 if gait_idx != 3 and gait_idx != 4:
                     jump_switching = 0
-                if gait_idx == 3:  # Jumping, Left in the air
+                elif gait_idx == 3:  # Jumping, Left in the air
                     if last_gait == 4:
                         jump_switching = 1
                     jump_switching = max(0, jump_switching - 0.1)
@@ -417,9 +594,9 @@ def cb_infer_h0(
         # print('obs', time.time() - t0)
         if stack_history_obs:
             # print(obs.shape, hist.shape)
-            hist[:, :-1, :] = hist[:, 1:, :].clone()
-            hist[:, -1, :] = obs
-            obs = hist.view(1, -1) if flatten_hist else hist
+            hist_buf[:, :-1, :] = hist_buf[:, 1:, :].clone()
+            hist_buf[:, -1, :] = obs
+            obs = hist_buf.view(1, -1) if flatten_hist else hist_buf
             # obs = hist
         if num_extra_obs:
             obs = torch.cat([obs, extra_obs], dim=-1)
@@ -435,7 +612,7 @@ def cb_infer_h0(
         # acts = acts * action_scale + default_dof_pos_tensor
         if masked_action_inds is not None:
             acts_np[masked_action_inds] = 0.
-        acts = acts_np * action_scale + default_dof_pos_np
+        acts = acts_np * action_scale + default_dof_pos_act
         # extras = (obs, actions)
         # acts = acts.cpu().numpy()
         # states_q_ctrl[dof_map_action_dest] = acts[dof_map_action_src]
@@ -445,7 +622,7 @@ def cb_infer_h0(
     def reset_fn():
         nonlocal clock_scale, last_gait, jump_switching
         if stack_history_obs:
-            hist[:] = 0.
+            hist_buf[:] = 0.
         last_actions[:] = 0.
         gait_indices[:] = 0.
         if enable_gait_modes:

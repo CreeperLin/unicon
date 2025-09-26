@@ -17,16 +17,14 @@ def cb_unitree_recv_send_close(
     states_rpy2=None,
     kp=None,
     kd=None,
-    q_ctrl_min=None,
-    q_ctrl_max=None,
-    clip_q_ctrl=True,
     input_keys=None,
-    network_interface='eth0',
+    iface='eth0',
     lowcmd_topic='rt/lowcmd',
     lowstate_topic='rt/lowstate',
     msg_type='hg',
     mode_machine=None,
     mode_pr=0,
+    sim=False,
     **states,
 ):
     import time
@@ -66,34 +64,23 @@ def cb_unitree_recv_send_close(
         low_state_cls = LowStateHG
         low_cmd_def_cls = unitree_hg_msg_dds__LowCmd_
 
-    import struct
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
-    key_mapping = {
-        'ABS_X': 'lx',
-        'ABS_Y': 'ly',
-        'ABS_RX': 'rx',
-        'ABS_RY': 'ry',
-        'BTN_A': 'A',
-        'BTN_B': 'B',
-        'BTN_X': 'X',
-        'BTN_Y': 'Y',
-        'BTN_TL': 'L1',
-        'BTN_TR': 'R1',
-        'BTN_SELECT': 'SELECT',
-        'BTN_START': 'START',
-        'ABS_HAT0Y-': 'up',
-        'ABS_HAT0X+': 'right',
-        'ABS_HAT0Y+': 'down',
-        'ABS_HAT0X-': 'left',
-        'ABS_BRAKE': 'L2',
-        'ABS_GAS': 'R2',
-    }
+    from unicon.utils.unitree import get_key_mapping, unpack_wireless_remote
+    key_mapping = get_key_mapping()
     mapped_keys = [key_mapping.get(k) for k in input_keys]
     mapped = [k is not None for k in mapped_keys]
     mapped_keys = [k for k in mapped_keys if k is not None]
     print('input_keys', input_keys, mapped_keys)
 
-    ChannelFactoryInitialize(networkInterface=network_interface,)
+    domain_id = 0
+    if sim:
+        iface = 'lo'
+        domain_id = 1
+
+    ChannelFactoryInitialize(
+        domain_id,
+        networkInterface=iface,
+    )
     pub = ChannelPublisher(lowcmd_topic, low_cmd_cls)
     pub.Init()
     sub = ChannelSubscriber(lowstate_topic, low_state_cls)
@@ -135,24 +122,6 @@ def cb_unitree_recv_send_close(
             c.kp = 0
             c.kd = 0
             c.tau = 0
-    state_rem_keys = [
-        'R1',
-        'L1',
-        'START',
-        'SELECT',
-        'R2',
-        'L2',
-        'F1',
-        'F2',
-        'A',
-        'B',
-        'X',
-        'Y',
-        'up',
-        'right',
-        'down',
-        'left',
-    ]
 
     print('disabling motion')
     from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
@@ -199,22 +168,19 @@ def cb_unitree_recv_send_close(
         cmd.mode_machine = mode_machine
         print('mode_machine', mode_machine)
 
+    motor_cmd = cmd.motor_cmd
+    for i, mi in enumerate(motor_inds):
+        c = motor_cmd[mi]
+        c.kp = kp[i]
+        c.kd = kd[i]
+        c.qd = 0
+        c.tau = 0
+
+    motor_cmd_ctrl = [motor_cmd[mi] for mi in motor_inds]
+
     def input_fn():
-        rem = bytearray(state.wireless_remote)
-        unpacked_data = struct.unpack('<2B H 5f 16B', rem)
-        # print('unpacked_data', unpacked_data)
-
-        lx = unpacked_data[3]
-        ly = unpacked_data[7]
-        rx = unpacked_data[4]
-        ry = unpacked_data[5]
-
-        value = unpacked_data[2]
-        states = dict(lx=lx, rx=rx, ry=-ry, ly=-ly)
-        for i, k in enumerate(state_rem_keys):
-            states[k] = (value & (1 << i)) >> i
-        # print('states', states)
-        vals = list(map(states.get, mapped_keys))
+        inputs = unpack_wireless_remote(state.wireless_remote)
+        vals = list(map(inputs.get, mapped_keys))
         states_input[mapped] = vals
         for i, k in enumerate(input_keys):
             if k.startswith('ABS_HAT'):
@@ -228,13 +194,12 @@ def cb_unitree_recv_send_close(
         if state is None:
             return True
         motor_state = state.motor_state
-        for i, mi in enumerate(motor_inds):
-            s = motor_state[mi]
+        motor_states_ctrl = [motor_state[mi] for mi in motor_inds]
+        for i, s in enumerate(motor_states_ctrl):
             states_q[i] = s.q
             states_qd[i] = s.dq
         if states_q_tau is not None:
-            for i, mi in enumerate(motor_inds):
-                s = motor_state[mi]
+            for i, s in enumerate(motor_states_ctrl):
                 states_q_tau[i] = s.tau_est
 
         quat = state.imu_state.quaternion
@@ -247,15 +212,15 @@ def cb_unitree_recv_send_close(
 
     def cb_send():
         # udp.InitCmdData(cmd)
-        q_ctrl_clip = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max) if clip_q_ctrl else states_q_ctrl
-        motor_cmd = cmd.motor_cmd
-        for i, mi in enumerate(motor_inds):
-            c = motor_cmd[mi]
-            c.kp = kp[i]
-            c.kd = kd[i]
-            c.q = q_ctrl_clip[i]
-            c.qd = 0
-            c.tau = 0
+        q_ctrl = states_q_ctrl
+        # motor_cmd = cmd.motor_cmd
+        for i, c in enumerate(motor_cmd_ctrl):
+            # c = motor_cmd[mi]
+            # c.kp = kp[i]
+            # c.kd = kd[i]
+            c.q = q_ctrl[i]
+            # c.qd = 0
+            # c.tau = 0
         cmd.crc = crc.Crc(cmd)
         # print(cmd)
         pub.Write(cmd)

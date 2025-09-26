@@ -24,9 +24,12 @@ def cb_fake_recv_send_close(
     dt=None,
     **kwds,
 ):
-    from unicon.utils import get_ctx
-    robot_def = get_ctx()['robot_def']
-    dt = get_ctx()['dt'] if dt is None else dt
+    from unicon.utils import get_ctx, coalesce
+    ctx = get_ctx()
+    robot_def = ctx['robot_def']
+    q_ctrl_min = coalesce(ctx.get('q_ctrl_min'), -3.)
+    q_ctrl_max = coalesce(ctx.get('q_ctrl_max'), 3.)
+    dt = ctx['dt'] if dt is None else dt
     qd_limit = robot_def.get('QD_LIMIT', qd_limit)
     import time
     from unicon.utils import rpy2quat_np

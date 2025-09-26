@@ -18,17 +18,17 @@ def cb_cmd_vel(
     num_ranges=4,
     max_scale=1.2,
     min_vel=0.1,
-    lin_vel_x=None,
-    lin_vel_y=None,
-    ang_vel_yaw=None,
     # num_gait_modes=5,
     num_gait_modes=2,
     init_gait_mode=0,
     # init_gait_mode=1,
-    env_cfg=None,
-    enable_gait_modes=None,
-    cmd_ranges=None,
+    # env_cfg=None,
+    cmd_def_vals=None,
     cmd_keys=None,
+    cmd_ranges=None,
+    enable_gait_modes=None,
+    # cmd_ranges=None,
+    # cmd_keys=None,
     cmd_orig_values=None,
     enable_extra_commands=None,
     extra_cmd_w_coef=0.8,
@@ -45,12 +45,6 @@ def cb_cmd_vel(
     inp_max = 1.
     import numpy as np
     import time
-    _default_ranges = {
-        'frequency': [1.2, 1.2],
-        'phase': [0.5, 0.5],
-        'duration': [0.5, 0.5],
-        'foot_trajectory': [0.18, 0.18],
-    }
     _default_cmd_keys = [
         'lin_vel_x',
         'lin_vel_y',
@@ -75,63 +69,30 @@ def cb_cmd_vel(
         'frequency': 1.2,
         'gait_frequency': 1.2,
     }
-    _def_range = [-0.42, 0.42]
     cmd_keys = _default_cmd_keys if cmd_keys is None else cmd_keys
-    cmd_orig_values = _default_cmd_orig_values if cmd_orig_values is None else cmd_orig_values
+    cmd_def_vals = _default_cmd_orig_values if cmd_def_vals is None else cmd_def_vals
     num_cmd = len(states_cmd)
-    num_commands = num_cmd
-    if env_cfg is not None:
-        env_cfg_env = env_cfg['env']
-        observe_gait_commands = env_cfg['env'].get('observe_gait_commands', True)
-        observe_frequency = env_cfg_env.get('observe_frequency', observe_gait_commands)
-        observe_phase = env_cfg_env.get('observe_phase', observe_gait_commands)
-        observe_duration = env_cfg_env.get('observe_duration', observe_gait_commands)
-        observe_foot_height = env_cfg_env.get('observe_foot_height', True)
-        observe_body_height = env_cfg_env.get('observe_body_height',)
-        observe_body_roll = env_cfg_env.get('observe_body_roll',)
-        observe_body_pitch = env_cfg_env.get('observe_body_pitch',)
-        observe_body_yaw = env_cfg_env.get('observe_body_yaw',)
-        observe_waist_roll = env_cfg_env.get('observe_waist_roll',)
-        if not observe_body_height:
-            cmd_keys.pop(cmd_keys.index('body_height'))
-        if not observe_body_pitch:
-            cmd_keys.pop(cmd_keys.index('body_pitch'))
-        if not observe_body_roll:
-            cmd_keys.pop(cmd_keys.index('body_roll'))
-        if not observe_body_yaw:
-            cmd_keys.pop(cmd_keys.index('body_yaw'))
-        if not observe_phase:
-            cmd_keys.pop(cmd_keys.index('phase'))
-        if not observe_duration:
-            cmd_keys.pop(cmd_keys.index('duration'))
-        if not observe_foot_height:
-            cmd_keys.pop(cmd_keys.index('foot_trajectory'))
-        ranges = env_cfg['commands']['ranges']
-        print('env_cfg cmd ranges', ranges)
-        lin_vel_x = ranges.get('limit_vel_x', ranges['lin_vel_x'])
-        lin_vel_y = ranges.get('limit_vel_y', ranges['lin_vel_y'])
-        ang_vel_yaw = ranges.get('limit_vel_yaw', ranges['ang_vel_yaw'])
-        cmd_ranges = [ranges[k] if k in ranges else _default_ranges.get(k, _def_range) for k in cmd_keys]
-        cmd_min = [r[0] for r in cmd_ranges]
-        cmd_max = [r[1] for r in cmd_ranges]
-        cmd_min = np.array(cmd_min)
-        cmd_max = np.array(cmd_max)
-        cmd_span = cmd_max - cmd_min
-        num_commands = env_cfg['commands'].get('num_commands', num_cmd)
-        inp_span = inp_max - inp_min
-        w_cmd = cmd_span / inp_span
-        b_cmd = (cmd_min * inp_span - inp_min * cmd_span) / inp_span
-        orig_ids = [cmd_keys.index(k) for k in cmd_orig_values if k in cmd_keys]
-        orig_vals = [v for k, v in cmd_orig_values.items() if k in cmd_keys]
-        print('orig_ids', orig_ids, orig_vals)
-        b_cmd[orig_ids] = orig_vals
-        w_cmd[orig_ids] *= 2
-        w_cmd = w_cmd[:num_commands]
-        b_cmd = b_cmd[:num_commands]
-        print('cmd_min', cmd_min.tolist())
-        print('cmd_max', cmd_max.tolist())
-        print('w_cmd', w_cmd.tolist())
-        print('b_cmd', b_cmd.tolist())
+    num_commands = len(cmd_keys)
+    cmd_ranges = [[-1, 1] for _ in range(num_commands)] if cmd_ranges is None else cmd_ranges
+    cmd_min = [r[0] for r in cmd_ranges]
+    cmd_max = [r[1] for r in cmd_ranges]
+    cmd_min = np.array(cmd_min)
+    cmd_max = np.array(cmd_max)
+    cmd_span = cmd_max - cmd_min
+    inp_span = inp_max - inp_min
+    w_cmd = cmd_span / inp_span
+    b_cmd = (cmd_min * inp_span - inp_min * cmd_span) / inp_span
+    orig_ids = [cmd_keys.index(k) for k in cmd_def_vals if k in cmd_keys]
+    orig_vals = [v for k, v in cmd_def_vals.items() if k in cmd_keys]
+    print('orig_ids', orig_ids, orig_vals)
+    b_cmd[orig_ids] = orig_vals
+    w_cmd[orig_ids] *= 2
+    w_cmd = w_cmd[:num_commands]
+    b_cmd = b_cmd[:num_commands]
+    print('cmd_min', cmd_min.tolist())
+    print('cmd_max', cmd_max.tolist())
+    print('w_cmd', w_cmd.tolist())
+    print('b_cmd', b_cmd.tolist())
     print('cmd_keys', list(enumerate(cmd_keys)))
     print('num_cmd', num_cmd)
     print('num_commands', num_commands)
@@ -147,9 +108,12 @@ def cb_cmd_vel(
     idx_btn_y = input_keys.index('BTN_Y')
 
     if range_lin_vel_x is None:
+        rng_lin_vel_x = cmd_ranges[cmd_keys.index('lin_vel_x')]
+        rng_lin_vel_y = cmd_ranges[cmd_keys.index('lin_vel_y')]
+        rng_ang_vel_yaw = cmd_ranges[cmd_keys.index('ang_vel_yaw')]
         scales = [max_scale * (i + 1) / num_ranges for i in range(num_ranges)]
         # scales = [(i+2)/(num_ranges+1) for i in range(num_ranges)]
-        vel_ranges = lin_vel_x, lin_vel_y, ang_vel_yaw
+        vel_ranges = rng_lin_vel_x, rng_lin_vel_y, rng_ang_vel_yaw
         rngs = []
         for rng in vel_ranges:
             rng = [-1, 1] if rng is None else rng
@@ -394,20 +358,11 @@ def cb_cmd_wb(
     cmd_min = cmd_ranges[:, 0]
     cmd_max = cmd_ranges[:, 1]
     cmd_span = cmd_max - cmd_min
-    if cmd_def_vals is None:
-        cmd_def_vals = cmd_min + cmd_span * 0.5
-    cmd_b[:len(cmd_def_vals)] = cmd_def_vals
-    cmd_def_zero_keys = [
-        'lin_vel_x',
-        'lin_vel_y',
-        'ang_vel_yaw',
-        'body_height',
-        'body_roll',
-        'body_pitch',
-        'body_yaw',
-    ]
-    cmd_def_zero_inds = [cmd_keys.index(n) for n in cmd_def_zero_keys if n in cmd_keys]
-    cmd_b[cmd_def_zero_inds] = 0.
+    cmd_b[:] = cmd_min + cmd_span * 0.5
+    if cmd_def_vals is not None:
+        cmd_def_zero_inds = [cmd_keys.index(n) for n in cmd_def_vals if n in cmd_keys]
+        cmd_b[cmd_def_zero_inds] = list(cmd_def_vals.values())
+        # cmd_w[cmd_def_zero_inds] *= 2
     input_states = np.zeros_like(states_input)
     last_input = np.zeros_like(states_input)
     hat_inds = [input_keys.index(n) for n in input_keys if 'HAT' in n]

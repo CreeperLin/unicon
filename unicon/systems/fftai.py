@@ -7,7 +7,6 @@ _default_mms = 3000
 
 
 def cb_fftai_recv_send_close(
-    # states_prop,
     states_rpy,
     states_ang_vel,
     states_quat,
@@ -22,36 +21,25 @@ def cb_fftai_recv_send_close(
     kp=None,
     kd=None,
     # radian
-    q_ctrl_min=None,
-    q_ctrl_max=None,
-    q_ctrl_init=True,
-    clip_q_ctrl=True,
     dtype=np.float64,
-    verbose=False,
     dof_map=None,
     lazy_send=False,
-    # lazy_send=True,
     unique_send=False,
-    # lazy_recv=False,
     lazy_recv=True,
-    # check_recv=False,
     check_recv=True,
     rcs_config=None,
-    sensor_offset='/home/gr1/sensor_offset.json',
+    sensor_offset='sensor_offset.json',
     update_offset=False,
     set_control_params=False,
     motor_max_current=16,
     motor_max_acceleration=60000,
     motor_max_speed=3000,
     enable_motors=True,
-    # enable_motors=False,
     enable_imu=True,
-    # enable_imu=False,
     enable_bias=True,
     strict=False,
     imu_device='/dev/ttyUSB0',
     wait=1,
-    # default_pd=False,
     default_pd=True,
     zero_pd=False,
     fsa_time_out=0.01,
@@ -380,9 +368,6 @@ def cb_fftai_recv_send_close(
 
     proc = None
 
-    q_ctrl_min = np.array(q_ctrl_min, dtype=dtype)
-    q_ctrl_max = np.array(q_ctrl_max, dtype=dtype)
-
     if set_control_params:
         import yaml
         if isinstance(motor_max_current, str):
@@ -521,11 +506,11 @@ def cb_fftai_recv_send_close(
 
     def cb_send():
         nonlocal _last_q_ctrl
-        q_ctrl_clip = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max) if clip_q_ctrl else states_q_ctrl
-        q_ctrl_send = q_ctrl_clip * q2a_scale + q2a_bias
+        q_ctrl = states_q_ctrl
+        q_ctrl_send = q_ctrl * q2a_scale + q2a_bias
         # print('q_ctrl_send', q_ctrl_send.tolist())
         if unique_send and _last_q_ctrl is not None:
-            qcd = np.abs(q_ctrl_clip - _last_q_ctrl) > 1e-3
+            qcd = np.abs(q_ctrl - _last_q_ctrl) > 1e-3
             _send_inds = np.where(qcd)[0]
         else:
             _send_inds = send_inds
@@ -537,9 +522,9 @@ def cb_fftai_recv_send_close(
         if not unique_send:
             return
         if _last_q_ctrl is None:
-            _last_q_ctrl = q_ctrl_clip.copy()
+            _last_q_ctrl = q_ctrl.copy()
         else:
-            _last_q_ctrl[:] = q_ctrl_clip
+            _last_q_ctrl[:] = q_ctrl
 
     def cb_close():
         if enable_motors:

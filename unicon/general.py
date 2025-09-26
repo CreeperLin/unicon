@@ -335,7 +335,9 @@ def cb_timer_wait(
                 _lats = lats[pt - intv:pt]
                 print('cb_timer_wait lat min/max/std/mean', pt, timeouts, np.min(_lats), np.max(_lats), np.std(_lats),
                       np.mean(_lats))
-        if wait == 0:
+        if pt >= len(lats):
+            pt = 0
+        if wait <= 0:
             return
         if lat > wait:
             if verbose:

@@ -29,6 +29,25 @@ def cb_ctrl_q_clip(
     kp=None,
     kd=None,
 ):
+    from unicon.utils import get_ctx, coalesce_get, coalesce
+    ctx = get_ctx()
+    robot_def = ctx['robot_def']
+
+    attrs = [
+        'Q_CTRL_MIN',
+        'Q_CTRL_MAX',
+        'TAU_LIMIT',
+        'QD_LIMIT',
+        'KP',
+        'KD',
+    ]
+    vals = q_ctrl_min, q_ctrl_max, tau_limit, qd_limit, kp, kd
+    vals = [coalesce(v, coalesce_get(ctx, robot_def, k)) for k, v in zip(attrs, vals)]
+    q_ctrl_min, q_ctrl_max, tau_limit, qd_limit, kp, kd = vals
+
+    clip_q_limit = clip_q_limit and (q_ctrl_min is not None)
+    clip_tau_limit = clip_tau_limit and coalesce(tau_limit, qd_limit, kp, kd) is not None
+
     if clip_tau_limit:
         q_ctrl_delta_min = (tau_limit - kd * qd_limit * 0.5) / kp
         print('q_ctrl_delta_min', q_ctrl_delta_min)
@@ -112,8 +131,8 @@ def cb_ctrl_tau_gen(
     states_qd,
     states_qd_ctrl=None,
     states_qdd_ctrl=None,
-    Kp=None,
-    Kd=None,
+    kp=None,
+    kd=None,
     tau_limit=None,
     # gear=1.0,
     gain_q=None,
@@ -124,9 +143,9 @@ def cb_ctrl_tau_gen(
     bias_qdd=None,
 ):
     tau_limit = np.array(tau_limit, dtype=np.float32) if tau_limit is not None else None
-    gain_q = Kp if Kp is not None else gain_q
-    bias_q = -Kp if Kp is not None else bias_q
-    bias_qd = -Kd if Kd is not None else bias_qd
+    gain_q = kp if kp is not None else gain_q
+    bias_q = -kp if kp is not None else bias_q
+    bias_qd = -kd if kd is not None else bias_qd
 
     def cb():
         tau = states_q_ctrl * gain_q
@@ -151,14 +170,14 @@ def cb_ctrl_tau_q_ctrl_pd(
     states_q_ctrl,
     states_q,
     states_qd,
-    Kp,
-    Kd,
+    kp,
+    kd,
     tau_limit=None,
 ):
     tau_limit = np.array(tau_limit, dtype=np.float32) if tau_limit is not None else None
 
     def cb():
-        tau = Kp * (states_q_ctrl - states_q) + Kd * (-states_qd)
+        tau = kp * (states_q_ctrl - states_q) + kd * (-states_qd)
         if tau_limit is not None:
             tau = np.clip(tau, tau_limit[0], tau_limit[1])
         states_tau_ctrl[:] = tau

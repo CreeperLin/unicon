@@ -126,9 +126,6 @@ def cb_n1_recv_send_close(
     kp=None,
     kd=None,
     # radian
-    q_ctrl_min=None,
-    q_ctrl_max=None,
-    clip_q_ctrl=True,
     dtype=np.float64,
     enable_motors=True,
     servo_on_all=False,
@@ -340,8 +337,8 @@ def cb_n1_recv_send_close(
 
     def cb_send_sync():
         # t0 = time.time()
-        q_ctrl_clip = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max) if clip_q_ctrl else states_q_ctrl
-        params['position'] = (q_ctrl_clip * rad2deg).tolist()
+        q_ctrl = states_q_ctrl
+        params['position'] = (q_ctrl * rad2deg).tolist()
         consys.robot_control_loop_set_control(params)
         # print('send', time.time() - t0)
 

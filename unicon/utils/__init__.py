@@ -15,6 +15,20 @@ _registry = {}
 ori_print = print
 
 
+def coalesce(*args):
+    for a in args:
+        if a is not None:
+            return a
+
+
+def coalesce_get(*args):
+    key = args[-1]
+    for a in args:
+        v = a.get(key)
+        if v is not None:
+            return v
+
+
 def println(*args, _name=None, _mod=True, _filename=False, _lineno=True, **kwds):
     if _mod or _filename or _lineno:
         frame = inspect.currentframe().f_back
@@ -84,13 +98,13 @@ def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
 
 
 def is_rising_edge(x, idx=None, key=None, th=0):
-    if idx is not None:
-        x = float(x[idx])
-    key = idx if key is None else key
-    last_x = _edge_memo.get(key, 0)
-    r = last_x <= th and x > th
+    v = float(x[idx]) if idx is not None else x
+    if key is None:
+        key = (id(x), idx) if idx is not None else id(x)
+    last_v = _edge_memo.get(key, 0)
+    r = last_v <= th and v > th
     # print(_edge_memo, idx, key, r, last_x, x)
-    _edge_memo[key] = x
+    _edge_memo[key] = v
     return r
 
 
@@ -259,7 +273,7 @@ def dump_policy_cfg(env=None, env_cfg=None, path=None, ppo_runner=None, train_cf
     os.makedirs(path, exist_ok=True)
     # os.system('git diff > {}'.format(os.path.join(path, 'diff.patch')))
     if env is not None:
-        env_cfg.dof_names = env.dof_names
+        env_cfg.dof_names = getattr(env, 'dof_names', None)
     if infer_type is not None:
         env_cfg.infer_type = infer_type
     if env_cfg is not None:
@@ -462,7 +476,7 @@ def parse_robot_def(robot_def):
     asset_dir = os.environ.get('UNICON_ASSET_DIR')
     if asset_dir is None:
         res = find('..', path='*resources/robots')
-        asset_dir = res[0]
+        asset_dir = res[0] if len(res) else './'
     print('asset_dir', asset_dir)
     asset_paths = urdf_path, mjcf_path
     urdf_path, mjcf_path = [(x if x is None or x.startswith('/') else os.path.join(asset_dir, x)) for x in asset_paths]

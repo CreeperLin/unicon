@@ -5,7 +5,7 @@ def cb_input_ev(
     device=None,
     input_keys=None,
     blocking=False,
-    remap_pedals=True,
+    remap_trigger=True,
     abs_type=0,
     dev_path='/dev/input',
     z2r=False,
@@ -127,15 +127,7 @@ def cb_input_ev(
             # print('input_states', input_states)
             for i, k in enumerate(input_keys):
                 v = input_states.get(k)
-                if remap_pedals and k in ['ABS_GAS', 'ABS_BRAKE']:
-                    if v is not None and v > 256:
-                        abs_type = 1
-                    if abs_type == 1:
-                        v = 0 if v is None else v / 32767.0
-                    else:
-                        v = 0 if v is None else v / 255
-                    v = v * 2 - 1
-                elif k.startswith('ABS_HAT'):
+                if k.startswith('ABS_HAT'):
                     v = 0 if v is None else v
                 elif k.startswith('ABS'):
                     if v is not None and v > 256:
@@ -147,6 +139,8 @@ def cb_input_ev(
                 else:
                     v = 0 if v is None else v
                 v = min(v, 1, max(v, -1))
+                if remap_trigger and k in ['ABS_BRAKE', 'ABS_GAS']:
+                    v = (v + 1) * 0.5
                 states[k] = v
         if verbose:
             print('states_input', states_input.tolist())

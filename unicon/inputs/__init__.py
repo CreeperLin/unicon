@@ -33,8 +33,8 @@ _key_descs = {
     'ABS_HAT0Y+': 'Dpad down',
     'ABS_BRAKE+': 'left trigger pushed',
     'ABS_GAS+': 'right trigger pushed',
-    'ABS_BRAKE-': 'left trigger rest',
-    'ABS_GAS-': 'right trigger rest',
+    'ABS_BRAKE.': 'left trigger rest',
+    'ABS_GAS.': 'right trigger rest',
     'BTN_A': 'button south',
     'BTN_B': 'button east',
     'BTN_X': 'button west',
@@ -83,11 +83,15 @@ def test_cb_input(cb_input_cls, cb=None, states_input=None, input_keys=None):
     if np.any(np.abs(states_input) > 0.1):
         print('zero test failed', np.round(states_input, 2).tolist())
 
+    d2k = ['-', '.', '+']
     for i, key in enumerate(input_keys):
         if 'ABS' not in key:
             continue
-        for d in [-1, +1]:
-            desc = _key_descs.get(f"{key}{'-' if d < 0 else '+'}", key)
+        for d in [-1, 0, +1]:
+            k = d2k[int(d + 1)]
+            desc = _key_descs.get(f"{key}{k}", None)
+            if desc is None:
+                continue
             print(f'push key {key} with dir {d} ({desc})')
             wait_for_input(i, d)
 

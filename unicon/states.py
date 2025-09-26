@@ -54,8 +54,7 @@ def states_news(specs):
 
 
 def states_create(size, use_shm=False, max_size=0, reuse=False, clear=False, name=_states_name):
-    num_floats = size
-    num_bytes = num_floats * 4
+    num_bytes = size
 
     if not reuse and use_shm:
         states_destroy(force=True)

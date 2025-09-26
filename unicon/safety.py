@@ -22,8 +22,8 @@ def cb_safety_ctrl(
     power_max_breaks=2**2,
     power_halt=1500,
     power_window=2**3,
-    Kp=None,
-    Kd=None,
+    kp=None,
+    kd=None,
     dq_coef=None,
 ):
     from unicon.utils import pp_arr
@@ -36,7 +36,7 @@ def cb_safety_ctrl(
     qd = states_qd
     if check_dq and dq_coef is None:
         m = 1.0
-        dq_coef = np.sqrt(Kp / m)
+        dq_coef = np.sqrt(kp / m)
         print('dq_coef', dq_coef)
 
     def cb():
@@ -60,8 +60,8 @@ def cb_safety_ctrl(
                 print('dq', pp_arr(dq))
                 safe = 0 if int(check_dq) == 1 else safe
         if check_tau or check_tau_power:
-            tau = Kp * (cmd_q - q) + Kd * (-qd)
-            # print('Kp', pp_arr(Kp))
+            tau = kp * (cmd_q - q) + kd * (-qd)
+            # print('kp', pp_arr(kp))
             # print('tau', pp_arr(tau))
             # print('cmd_q', pp_arr(cmd_q))
             # print('q', pp_arr(q))

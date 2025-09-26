@@ -18,9 +18,6 @@ def cb_unitree1_recv_send_close(
     highlevel=False,
     kp=None,
     kd=None,
-    q_ctrl_min=None,
-    q_ctrl_max=None,
-    clip_q_ctrl=True,
     input_keys=None,
     send_init_cmd=True,
     dry_run=False,
@@ -30,7 +27,6 @@ def cb_unitree1_recv_send_close(
     position_limit=True,
     position_protect=False,
     sdk_path=None,
-    # sdk_name='robot_interface',
     sdk_name='unitree_legged_sdk',
     **kwds,
 ):
@@ -60,28 +56,11 @@ def cb_unitree1_recv_send_close(
     legged_type = getattr(sdk.LeggedType, legged_type)
 
     num_dofs = len(states_q)
-    import struct
     if input_keys is None:
         from unicon.inputs import _default_input_keys
         input_keys = _default_input_keys
-    key_mapping = {
-        'ABS_X': 'lx',
-        'ABS_Y': 'ly',
-        'ABS_RX': 'rx',
-        'ABS_RY': 'ry',
-        'BTN_A': 'A',
-        'BTN_B': 'B',
-        'BTN_X': 'X',
-        'BTN_Y': 'Y',
-        'BTN_TL': 'L1',
-        'BTN_TR': 'R1',
-        'ABS_HAT0Y-': 'up',
-        'ABS_HAT0X+': 'right',
-        'ABS_HAT0Y+': 'down',
-        'ABS_HAT0X-': 'left',
-        'ABS_BRAKE': 'L2',
-        'ABS_GAS': 'R2',
-    }
+    from unicon.utils.unitree import get_key_mapping, unpack_wireless_remote
+    key_mapping = get_key_mapping()
     mapped_keys = [key_mapping.get(k) for k in input_keys]
     # print(input_keys, mapped_keys)
     mapped = [k is not None for k in mapped_keys]
@@ -121,31 +100,15 @@ def cb_unitree1_recv_send_close(
         udp.SetSend(cmd)
         udp.Send()
 
+    motorCmd = cmd.motorCmd[:num_dofs]
+    motorCmd['q'].fill(0)
+    motorCmd['dq'].fill(0)
+    motorCmd['tau'].fill(0)
+    motorCmd['Kp'][:] = kp
+    motorCmd['Kd'][:] = kd
+
     def input_fn():
-        rem = bytearray(state.wirelessRemote)
-        # print('rem', list(rem))
-        bumper = rem[2]
-        btns = rem[3]
-        R1, L1, START, SELECT, R2, L2 = [(bumper >> i) & 0x1 for i in range(6)]
-        A, B, X, Y = [(btns >> i) & 0x1 for i in range(4)]
-        lx, rx, ry, _, ly = struct.unpack('fffff', rem[4:24])
-        # print(lx, rx, ry, ly)
-        inputs = dict(
-            lx=lx,
-            rx=rx,
-            ry=-ry,
-            ly=-ly,
-            A=A,
-            B=B,
-            X=X,
-            Y=Y,
-            R1=R1,
-            L1=L1,
-            START=START,
-            SELECT=SELECT,
-            R2=R2,
-            L2=L2,
-        )
+        inputs = unpack_wireless_remote(state.wirelessRemote)
         vals = list(map(inputs.get, mapped_keys))
         states_input[mapped] = vals
 
@@ -166,13 +129,13 @@ def cb_unitree1_recv_send_close(
         states_ang_vel[:] = state.imu.gyroscope
 
     def cb_send():
-        udp.InitCmdData(cmd)
-        q_ctrl_clip = np.clip(states_q_ctrl, q_ctrl_min, q_ctrl_max) if clip_q_ctrl else states_q_ctrl
+        # udp.InitCmdData(cmd)
+        q_ctrl = states_q_ctrl
         motorCmd = cmd.motorCmd[:num_dofs]
-        motorCmd['dq'].fill(0)
-        motorCmd['q'][:] = q_ctrl_clip
-        motorCmd['Kp'][:] = kp
-        motorCmd['Kd'][:] = kd
+        # motorCmd['dq'].fill(0)
+        motorCmd['q'][:] = q_ctrl
+        # motorCmd['Kp'][:] = kp
+        # motorCmd['Kd'][:] = kd
         if safety:
             if power_limit:
                 safety.PowerProtect(cmd, state, power_limit)

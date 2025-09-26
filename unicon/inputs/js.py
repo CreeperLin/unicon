@@ -11,6 +11,9 @@ def cb_input_js(
     mode=None,
     z2r=True,
     z2t=False,
+    remap_trigger=True,
+    wait_no_dev=False,
+    try_chmod=True,
 ):
     from unicon.utils import cmd
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
@@ -166,16 +169,16 @@ def cb_input_js(
     if not os.path.exists(dev_path):
         print(f'{dev_path} not exist')
         return None
-    devices = list(filter(lambda x: 'js' in x, map(lambda x: os.path.join(dev_path, x),
-                                                   os.listdir(dev_path)))) if device is None else [device]
-    jsdev = None
-    for device in devices:
-        # Open the joystick device.
-        if not os.path.exists(device):
-            continue
-        print('Opening %s...' % device)
-        cmd('sudo chmod 666', [device])
-        jsdev = open(device, 'rb')
+
+    def init_js(path):
+        if cmd('test -r', [path]):
+            if try_chmod:
+                cmd('sudo chmod 666', [path])
+            else:
+                print(f'no read permission on {path}')
+                return None
+        print('Opening %s...' % path)
+        jsdev = open(path, 'rb')
         # Get the device name.
         buf = array.array('B', [0] * 64)
         ioctl(jsdev, 0x80006a13 + (0x10000 * len(buf)), buf)  # JSIOCGNAME(len)
@@ -206,14 +209,30 @@ def cb_input_js(
                 states[n] = 0
         print('%d axes found: %s' % (num_axes, ', '.join(axis_map)))
         print('%d buttons found: %s' % (num_buttons, ', '.join(map(str, button_map))))
-        if num_axes >= min_num_axes and num_buttons >= min_num_buttons:
-            break
+        if num_axes < min_num_axes or num_buttons < min_num_buttons:
+            print('below minimum', num_axes, min_num_axes, num_buttons, min_num_buttons)
+            return None
+        if not blocking:
+            os.set_blocking(jsdev.fileno(), False)
+        return jsdev
+
+    def try_jsdevs():
+        if device is None:
+            paths = list(filter(lambda x: 'js' in x, map(lambda x: os.path.join(dev_path, x), os.listdir(dev_path))))
+        else:
+            paths = [device]
+        for path in paths:
+            if not os.path.exists(path):
+                continue
+            jsdev = init_js(path)
+            if jsdev is not None:
+                return jsdev
+
+    jsdev = try_jsdevs()
     if jsdev is None:
         print('no js device')
-        return None
-
-    if not blocking:
-        os.set_blocking(jsdev.fileno(), False)
+        if not wait_no_dev:
+            return None
 
     n_fails = 0
     retry_intv = 100
@@ -227,17 +246,18 @@ def cb_input_js(
             if retry_pt:
                 retry_pt -= 1
                 return
+            e2 = None
             try:
-                jsdev = open(device, 'rb')
-                if not blocking:
-                    os.set_blocking(jsdev.fileno(), False)
-                print('jsdev reconnected', n_fails, device)
+                jsdev = try_jsdevs()
             except Exception as e2:
-                n_fails += 1
-                print('jsdev reopen error', n_fails, device, e2)
                 jsdev = None
+            if jsdev is None:
+                print('jsdev reopen error', n_fails, e2)
+                n_fails += 1
                 retry_pt = retry_intv
                 return
+            else:
+                print('jsdev reconnected', n_fails)
         while True:
             try:
                 evbuf = jsdev.read(8)
@@ -264,6 +284,8 @@ def cb_input_js(
             elif typ & 0x02:
                 axis = axis_map[number]
                 fvalue = value / 32767.0
+                if remap_trigger and axis in ['ABS_BRAKE', 'ABS_GAS']:
+                    fvalue = (fvalue + 1) * 0.5
                 states[axis] = fvalue
                 if verbose:
                     print(time, 'axis', number, axis, value, fvalue)

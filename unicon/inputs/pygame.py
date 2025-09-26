@@ -118,6 +118,7 @@ def cb_input_pygame(
     verbose=False,
     input_keys=None,
     joystick_type=None,
+    remap_trigger=True,
 ):
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     import pygame
@@ -229,6 +230,11 @@ def cb_input_pygame(
             hat = hats[idx]
             states[k + 'X'] = hat[0] * xd
             states[k + 'Y'] = hat[1] * yd
+        if remap_trigger:
+            for k in ['ABS_BRAKE', 'ABS_GAS']:
+                if k not in states:
+                    continue
+                states[k] = (states[k] + 1) * 0.5
         if verbose:
             print('states_input', states_input.tolist())
 
