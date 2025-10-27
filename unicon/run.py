@@ -120,6 +120,7 @@ def get_args():
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-qru', '--q_reset_update', default=None)
     parser.add_argument('-uss', '--use_secondary_sensor', action='store_true')
+    parser.add_argument('-imp2', '--infer_model_path2', default=None)
     args, _ = parser.parse_known_args()
     return args
 
@@ -139,6 +140,7 @@ def run(args=None):
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
         import_obj, parse_robot_def, load_obj, match_keys, obj_update, get_ctx
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
+    from unicon.sensors.planners import planner_3dim
 
     if args['sudo']:
         os.system('sudo -v')
@@ -468,6 +470,7 @@ def run(args=None):
         'states_right_target': states_get('right_target'),
         'states_left_target_real_time': states_get('left_target_real_time'),
         'states_right_target_real_time': states_get('right_target_real_time'),
+        'states_reach_mask': states_get('reach_mask'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
@@ -814,8 +817,27 @@ def run(args=None):
                 elif policy_type == 'mem':
                     policy_reset_fn = model.reset_memory
                     policy_fn = model
+                elif policy_type == 'double':
+                    if args['infer_model_path2'] is None:
+                        raise ValueError('infer_model_path2 is required for double policy')
+                    infer_model_path2 = args['infer_model_path2']
+                    model2 = load_model(infer_model_path2, model_type=model_type, device=infer_device)
+
+                    def _policy_fn(obs, choice):
+                        ret = model(obs)
+                        ret2 = model2(obs)
+                        if choice == 0:
+                            return ret
+                        else:
+                            return ret2
+                    
+                    policy_fn = _policy_fn
 
             infer_kwds = load_obj(args['infer_kwargs'] or '') or {}
+            if policy_type == 'double':
+                infer_kwds['double_policy'] = (args['infer_model_path2'] is not None)
+            # if robot_type == 'g1reach':
+            #     infer_kwds['planner_type'] = '3dim'
             infer_states = {}
             infer_states.update(states_props_inf)
             infer_states.update(states_infer_extras)
@@ -1467,7 +1489,8 @@ def run(args=None):
 
         def cb_input_clear():
             states_input[:] = 0.
-            states_cmd[:] = 0.
+            if cmd_type != 'plan':
+                states_cmd[:] = 0.
 
         seq.extend([
             cb_input_clear,
@@ -1531,6 +1554,11 @@ def run(args=None):
         if cmd_type == 'replay':
             rec_cmd = loaded_rec.get('states_cmd')
             kwds['frames'] = rec_cmd
+        if cmd_type == 'plan':
+            # kwds['states_left_target'] = states_extras['states_left_target']
+            # kwds['states_right_target'] = states_extras['states_right_target']
+            # kwds['states_reach_mask'] = states_extras['states_reach_mask']
+            kwds['planner_fn'] = planner_3dim
         kwds.update(cmd_kwds)
         if cb_cmd_cls is not None:
             cb_cmd = autowired(cb_cmd_cls, states=cmd_states)(input_keys=input_keys, **kwds)

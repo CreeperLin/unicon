@@ -78,12 +78,17 @@ def calculate_target_from_tag(corners, rvec, tvec, T_upstream, T_downstream):
 
 def calculate_T_upstream():
 
-    T_camlink_in_robot = np.array([
-        [ 0.50475008,  0.63909876,  0.58032761,  0.06081622],
-        [ 0.16730993,  0.58707733, -0.79205277, -0.29668969],
-        [-0.84689713,  0.49688327,  0.18939976,  0.35160208],
-        [ 0.        ,  0.        ,  0.        ,  1.        ]
-    ])
+    # T_camlink_in_robot = np.array([
+    #     [ 0.50475008,  0.63909876,  0.58032761,  0.06081622],
+    #     [ 0.16730993,  0.58707733, -0.79205277, -0.29668969],
+    #     [-0.84689713,  0.49688327,  0.18939976,  0.35160208],
+    #     [ 0.        ,  0.        ,  0.        ,  1.        ]
+    # ])
+
+    T_camlink_in_robot = np.array([[0.674302, 0.000000, 0.738455, 0.097214,],
+    [-0.000000, 1.000000, -0.000000, 0.019770,],
+    [-0.738455, -0.000000, 0.674302, 0.281950,],
+    [0.000000, 0.000000, 0.000000, 1.000000,]])
     # T_camlink_in_robot = np.eye(4)
 
     Ry_pos = R.from_euler('y', 90, degrees=True).as_matrix()
@@ -100,12 +105,18 @@ def calculate_T_downstream():
     
     Rx_neg = R.from_euler('x', -90, degrees=True).as_matrix()
     Ry_pos = R.from_euler('y', 90, degrees=True).as_matrix()
+    Rx_pos = R.from_euler('x', 90, degrees=True).as_matrix()
+    Ry_neg = R.from_euler('y', -90, degrees=True).as_matrix()
+    Rz_pos = R.from_euler('z', 90, degrees=True).as_matrix()
 
     T_target_in_tag_pos = np.eye(4)
-    T_target_in_tag_pos[3, 0:3] = np.array([[0, -0.032, 0]])
+    # T_target_in_tag_pos[3, 0:3] = np.array([[0, -0.032, 0]])
+    T_target_in_tag_pos[3, 0:3] = np.array([[0, -0.0, 0]])
     
     T_target_in_tag_rot = np.eye(4)
-    T_target_in_tag_rot[0:3, 0:3] = Ry_pos @ Rx_neg
+    # T_target_in_tag_rot[0:3, 0:3] = Ry_neg @ Rx_pos
+    # T_target_in_tag_rot[0:3, 0:3] = Rx_neg @ Ry_pos
+    T_target_in_tag_rot[0:3, 0:3] = Rz_pos
     T_target_in_tag = T_target_in_tag_rot @ T_target_in_tag_pos
 
     return T_target_in_tag

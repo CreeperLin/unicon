@@ -36,13 +36,18 @@ def cb_infer_gr1(
     states_ang_vel2=None,
     states_left_target=None,
     states_right_target=None,
+    states_reach_mask=None,
+    double_policy=False,
+    # planner_type='',
 ):
-    from unicon.utils import get_ctx
+    from unicon.utils import get_ctx, import_obj
     robot_def = get_ctx()['robot_def']
     import torch
     import numpy as np
     from unicon.utils.torch import to_tensor
     from unicon.utils import get_axis_params, quat_rotate_inverse_np, rpy2mat_np, list2slice
+    # from unicon.sensors.planners import planner_3dim
+
     dtype = torch.float if dtype is None else dtype
     np_dtype = np.float32
     use_rpy = env_cfg.get('use_rpy', True) if use_rpy is None else use_rpy
@@ -273,6 +278,7 @@ def cb_infer_gr1(
     s2w_step = 0.05
     # gait_ind_init = 0.5
     gait_ind_init = 0.
+    last_gait = 0
 
     def step_fn():
         # t0 = time.time()
@@ -308,6 +314,20 @@ def cb_infer_gr1(
         if states_ang_vel2 is not None:
             base_ang_vel2 = states_ang_vel2
 
+        # if len(planner_type) > 0:
+        #     # planner_fn = import_obj(f"planner_{planner_type}", default_name_prefix='planner', default_mod_prefix='unicon.sensors.planners')
+        #     planner_fn = planner_3dim
+        #     planner_info = planner_fn(
+        #         states_left_target, 
+        #         states_right_target,
+        #         states_cmd[:3],
+        #         states_reach_mask
+        #     )
+
+        #     states_cmd[:3] = planner_info['commands']
+        #     states_cmd[3:num_commands] = [1.2, 0.5, 0.5, 0, 0, 0]
+        #     states_reach_mask[:] = planner_info['reach_mask']
+
         # actions = np.array(last_actions)
         # actions = last_actions.numpy()
         actions = last_actions
@@ -325,7 +345,8 @@ def cb_infer_gr1(
             frequencies = cmd_frequency
             phases = cmd_phase
             # durations = commands[:, 5]
-            gait_indices[:] = np.modf(gait_indices + dt * frequencies)[0]
+            # gait_indices[:] = np.modf(gait_indices + dt * frequencies)[0]
+            gait_indices[:] = (gait_indices + dt * frequencies) % 1.0
             # print(gait_indices)
             if enable_gait_modes:
                 gait_idx = states_cmd[-1]
@@ -362,15 +383,18 @@ def cb_infer_gr1(
                 # foot_phases = [clock_scale * left_phase + 0.25 * (1-clock_scale), clock_scale * right_phase + 0.25 * (1-clock_scale)]
             else:
                 gait_idx = 1 - int(-0.05 < states_cmd[0] < 0.05 and -0.05 < states_cmd[1] < 0.05 and -0.1 < states_cmd[2] < 0.1) # 0 for standing and 1 for walking
+                print("GAIT idx", gait_idx, states_cmd[:3], gait_indices)
 
-                left_phase, right_phase = [gait_indices + phases, gait_indices]
-                if gait_idx == 1:
-                    mask_l = (left_phase > 0.15 and left_phase < 0.35)
-                    left_phase[mask_l] = 0.25
-                    right_phase[mask_l] = 0.25
-                    mask_r = (right_phase > 0.15 and right_phase < 0.35)
-                    right_phase[mask_r] = 0.25
-                    left_phase[mask_r] = 0.25
+                # left_phase, right_phase = [gait_indices + phases, gait_indices]
+                left_phase = gait_indices + phases
+                right_phase = gait_indices + 0.
+                # if gait_idx == 1:
+                #     mask_l = (left_phase > 0.15 and left_phase < 0.35)
+                #     left_phase[mask_l] = 0.25
+                #     right_phase[mask_l] = 0.25
+                #     mask_r = (right_phase > 0.15 and right_phase < 0.35)
+                #     right_phase[mask_r] = 0.25
+                #     left_phase[mask_r] = 0.25
                 if (gait_idx == 1) and (last_gait == 0): # standing2walking
                     left_phase[:] = 0.0
                     right_phase[:] = 0.0
@@ -405,6 +429,8 @@ def cb_infer_gr1(
         # print('states_left_target', states_left_target)
         # print('states_right_target', states_right_target)
 
+        obs_list.append(states_reach_mask)
+
         obs = np.concatenate(obs_list)
         # print("One step observation", obs.shape)
         # for i in range(0, len(obs), 10):
@@ -436,7 +462,13 @@ def cb_infer_gr1(
         if flatten_obs:
             obs = obs.flatten()
         # print('obs', obs.shape)
-        actions = policy_fn(obs)
+        if double_policy:
+            choice = 1 if np.linalg.norm(states_cmd[:2]) < 0.01 and np.abs(states_cmd[2]) < 0.02 else 0
+            print("Choice", choice, states_cmd[:])
+            print("Commands", obs[6+29*3:17+29*3])
+            actions = policy_fn(obs, choice)
+        else:
+            actions = policy_fn(obs)
         acts = torch.clamp(actions, -clip_actions, clip_actions).view(1, -1)[0]
         acts_np = acts.cpu().numpy()
         if states_infer_acts is not None:

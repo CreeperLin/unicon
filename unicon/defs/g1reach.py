@@ -141,4 +141,5 @@ CUSTOM_EXTRA_OBS = [
     'ang_vel2',
     'left_target',
     'right_target',
+    'reach_stage',
 ]

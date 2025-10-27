@@ -23,6 +23,7 @@ def cb_unitree_recv_send_close(
     network_interface='eth0',
     lowcmd_topic='rt/lowcmd',
     lowstate_topic='rt/lowstate',
+    secondary_imu_topic='rt/secondary_imu',
     msg_type='hg',
     mode_machine=None,
     mode_pr=0,
@@ -60,10 +61,12 @@ def cb_unitree_recv_send_close(
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_ as LowCmdHG
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_ as LowStateHG
+        from unitree_sdk2py.idl.unitree_hg.msg.dds_ import IMUState_ as IMUState
         from unitree_sdk2py.utils.crc import CRC
         low_cmd_cls = LowCmdHG
         low_state_cls = LowStateHG
         low_cmd_def_cls = unitree_hg_msg_dds__LowCmd_
+        secondary_imu_cls = IMUState
 
     import struct
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
@@ -95,6 +98,9 @@ def cb_unitree_recv_send_close(
     pub.Init()
     sub = ChannelSubscriber(lowstate_topic, low_state_cls)
     sub.Init(None, 10)
+    if msg_type == 'hg' and secondary_imu_topic:
+        sub2 = ChannelSubscriber(secondary_imu_topic, secondary_imu_cls)
+        sub2.Init(None, 10)
     cmd = low_cmd_def_cls()
     state = None
     crc = CRC()
@@ -206,6 +212,16 @@ def cb_unitree_recv_send_close(
         time.sleep(1)
     else:
         raise RuntimeError('sub read timeout')
+    
+    for i in range(10):
+        print('waiting for sub2', i)
+        secondary_imu_state = sub2.Read()
+        print(secondary_imu_state.tick)
+        if secondary_imu_state.tick > 0:
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError('sub2 read timeout')
 
     if msg_type == 'hg' and mode_machine is None:
         mode_machine = state.mode_machine
@@ -238,7 +254,8 @@ def cb_unitree_recv_send_close(
     def cb_recv():
         nonlocal state
         state = sub.Read()
-        if state is None:
+        secondary_imu_state = sub2.Read()
+        if state is None or secondary_imu_state is None:
             return True
         motor_state = state.motor_state
         for i, mi in enumerate(motor_inds):
@@ -255,6 +272,9 @@ def cb_unitree_recv_send_close(
         states_quat[:3] = quat[1:]
         states_rpy[:] = state.imu_state.rpy
         states_ang_vel[:] = state.imu_state.gyroscope
+
+        states['states_rpy2'][:] = secondary_imu_state.rpy
+        states['states_ang_vel2'][:] = secondary_imu_state.gyroscope
         # if states_input is not None:
         # input_fn()
 

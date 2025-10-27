@@ -539,3 +539,65 @@ def cb_cmd_replay(
         states_cmd[:len(cmd)] = cmd
 
     return cb
+
+def cb_cmd_plan(
+    states_input,
+    states_cmd,
+    states_left_target,
+    states_right_target,
+    states_reach_mask,
+    planner_fn,
+    input_keys=None,
+    cmd_list=None,
+    cmd_steps=150,
+    cycle=True,
+    verbose=True,
+):
+    def cb():
+        planner_info = planner_fn(
+            states_left_target,
+            states_right_target,
+            states_cmd[:3],
+            states_reach_mask
+        )
+        states_cmd[:3] = planner_info['commands']
+        states_cmd[3:] = [1.2, 0.5, 0.5, 0, 0, 0]
+        states_reach_mask[:] = planner_info['reach_mask']
+    
+    return cb
+
+# def cb_cmd_planner():
+#     # 支持 autowired(states=...) 自动注入
+#     def _cb_cmd_planner(
+#         states_left_target=None,
+#         states_right_target=None,
+#         states_cmd=None,
+#         states_reach_mask=None,
+#         planner_fn=None,
+#         input_keys=None,
+#         **states
+#     ):
+#         # 兼容 autowired(states=...) 传参
+#         if states_left_target is None and 'states_left_target' in states:
+#             states_left_target = states['states_left_target']
+#         if states_right_target is None and 'states_right_target' in states:
+#             states_right_target = states['states_right_target']
+#         if states_cmd is None and 'states_cmd' in states:
+#             states_cmd = states['states_cmd']
+#         if states_reach_mask is None and 'states_reach_mask' in states:
+#             states_reach_mask = states['states_reach_mask']
+#         if planner_fn is None:
+#             from unicon.sensors.planners import planner_3dim
+#             planner_fn = planner_3dim
+
+#         def cb():
+#             planner_info = planner_fn(
+#                 states_left_target,
+#                 states_right_target,
+#                 states_cmd[:3],
+#                 states_reach_mask
+#             )
+#             states_cmd[:3] = planner_info['commands']
+#             states_reach_mask[:] = planner_info['reach_mask']
+#         return cb
+#     return _cb_cmd_planner

@@ -66,7 +66,7 @@ def get_camera_transform_in_simulation(gym, sim, env, robot_handle, camera_link_
 # 在模拟循环中使用
 def simulate():
 
-    ROOT_FRAME = 'pelvis'
+    ROOT_FRAME = 'imu_in_torso'
     TARGET_FRAME = 'd435_link'
     URDF_PATH = ''
 
@@ -105,7 +105,8 @@ def simulate():
         )
         
         # 使用变换矩阵进行后续处理...
-        print("当前相机变换矩阵:\n", T_cam_to_robot)
+        matrix_str = np.array2string(T_cam_to_robot, formatter={'float_kind':lambda x: "%.6f," % x})
+        print("当前相机变换矩阵:\n", matrix_str)
         
         # 渲染等操作...
 

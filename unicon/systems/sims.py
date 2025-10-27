@@ -50,15 +50,16 @@ def cb_sims_recv_send_close(
             send_msg['position'] = states_q_ctrl.copy()
         if 'states_left_target_real_time' in kwds and 'states_right_target_real_time' in kwds:
             
-            if np.sum(np.abs(kwds['states_left_target_real_time'])) < 1e-6:
-                left_pose = np.array([0.2443, 0.1517, -0.0455, 0, 0, 0, 1])
-            else:
-                left_pose = kwds['states_left_target_real_time']
-            if np.sum(np.abs(kwds['states_right_target_real_time'])) < 1e-6:
-                right_pose = np.array([0.2443, -0.1517, -0.0455, 0, 0, 0, 1])
-            else:
-                right_pose = kwds['states_right_target_real_time']
-
+            # if np.sum(np.abs(kwds['states_left_target_real_time'])) < 1e-6:
+            #     left_pose = np.array([0.2443, 0.1517, -0.0455, 0, 0, 0, 1])
+            # else:
+            #     left_pose = kwds['states_left_target_real_time']
+            # if np.sum(np.abs(kwds['states_right_target_real_time'])) < 1e-6:
+            #     right_pose = np.array([0.2443, -0.1517, -0.0455, 0, 0, 0, 1])
+            # else:
+            #     right_pose = kwds['states_right_target_real_time']
+            left_pose = kwds['states_left_target_real_time']
+            right_pose = kwds['states_right_target_real_time']
             send_msg['real_time_target'] = np.concatenate((left_pose, right_pose),axis=0)
         s.cb_recv(send_msg)
 
