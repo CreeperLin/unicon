@@ -67,6 +67,7 @@ def get_args():
     parser.add_argument('-skwds', '--system_kwargs', default=None)
     parser.add_argument('-cqc', '--clip_q_ctrl', action='store_true')
     parser.add_argument('-cqct', '--clip_q_ctrl_tau', action='store_true')
+    parser.add_argument('-cqcd', '--clip_q_ctrl_qd', action='store_true')
     parser.add_argument('-sfts', '--safety_states', action='store_true')
     parser.add_argument('-sftc', '--safety_ctrl', action='store_true')
     parser.add_argument('-dofs', '--dofs', default=None)
@@ -120,6 +121,7 @@ def get_args():
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-qru', '--q_reset_update', default=None)
+    parser.add_argument('-ht', '--hand_type', default='none')
     args, _ = parser.parse_known_args()
     return args
 
@@ -199,6 +201,13 @@ def run(args=None):
         Q_BOOT = None
 
     q_reset = np.zeros(NUM_DOFS) if Q_RESET is None else Q_RESET
+
+    hand_type = args['hand_type']
+    if hand_type != 'none':
+        hand_def = import_obj(hand_type, default_mod_prefix='unicon.defs', prefer_mod=True)
+        hand_def = parse_robot_def(hand_def)
+        robot_def.update({f'HAND_{k}': v for k, v in hand_def.items()})
+    HAND_NUM_DOFS = robot_def.get('HAND_NUM_DOFS', 0)
 
     dt = args['dt']
     ctrl_dt = args['ctrl_dt']
@@ -319,6 +328,11 @@ def run(args=None):
             ('q_ctrl', NUM_DOFS),
             ('q_target', NUM_DOFS),
         ])
+    if HAND_NUM_DOFS:
+        specs.extend([
+            ('hand_q', HAND_NUM_DOFS),
+            ('hand_q_ctrl', HAND_NUM_DOFS),
+        ])
     if tau_ctrl:
         specs.append(('tau_ctrl', NUM_DOFS))
     q_extras = args['states_q_extras']
@@ -436,6 +450,8 @@ def run(args=None):
         dof_names = [remap.get(n, n) for n in dof_names]
 
     if args['dof_names_std']:
+        DOF_NAMES_std = [dof_names_std[n] for n in DOF_NAMES]
+        print('DOF_NAMES_std', DOF_NAMES_std)
         dof_names_std_rev = {v: k for k, v in dof_names_std.items()}
         dof_names = [dof_names_std_rev.get(n, n) for n in dof_names]
 
@@ -668,7 +684,7 @@ def run(args=None):
             if loaded_rec is not None:
                 replay_frame_key = args['replay_frame_key']
                 rec_frames = loaded_rec.get(replay_frame_key)
-                rec_dof_names = loaded_rec.get('dof_names', dof_names)
+                rec_dof_names = loaded_rec.get('DOF_NAMES', DOF_NAMES)
                 print('rec_dof_names', rec_dof_names)
                 rec_dof_names = [dof_names_map.get(k, k) for k in rec_dof_names]
                 rep_dof_map = [DOF_NAMES.index(n) for n in rec_dof_names if n in DOF_NAMES]
@@ -726,7 +742,7 @@ def run(args=None):
             infer_device = args['infer_device']
             if infer_model_path is not None:
                 print('infer_model_path', infer_model_path)
-                from unicon.utils import load_model
+                from unicon.models import load_model
                 model_type = args['model_type']
                 model = load_model(infer_model_path, model_type=model_type, device=infer_device)
                 policy_type = args['policy_type']
@@ -844,6 +860,7 @@ def run(args=None):
     print('q_ctrl_min', q_ctrl_min)
     print('q_ctrl_max', q_ctrl_max)
     clip_q_ctrl_tau = args['clip_q_ctrl_tau']
+    clip_q_ctrl_qd = args['clip_q_ctrl_qd']
 
     rec_output = args['rec_output']
     rec_post_send = args['rec_post_send']
@@ -1073,9 +1090,12 @@ def run(args=None):
     system_type = args['system']
     system_type = {k[0]: k for k in systems.keys()}.get(system_type, system_type)
     print('system', system_type)
-    systems[system_type] = True
 
-    sys_kwds = load_obj(args['system_kwargs'] or '') or {}
+    sys_kwds = {
+        'kp': kp,
+        'kd': kd,
+    }
+    sys_kwds.update(load_obj(args['system_kwargs'] or '') or {})
 
     states_extras_sys = dict(
         states_q_tau=states_q_tau,
@@ -1091,9 +1111,7 @@ def run(args=None):
     states_sys.update(states_ctrls_sys)
     states_sys.update(states_extras_sys)
     cb_recv, cb_send, cb_close = None, None, None
-    if systems['none']:
-        pass
-    elif systems['sims']:
+    if system_type == 'sims':
         sims_config = args['sims_config']
         if sims_config is None:
             sims_type = args['sims_type']
@@ -1190,27 +1208,21 @@ def run(args=None):
             system_config=system_config,
             wrapper_config=wrapper_config,
         )
-        from unicon.systems.sims import cb_sims_recv_send_close
-        cb_recv, cb_send, cb_close = cb_sims_recv_send_close(
-            **states_sys,
-            dof_names=sim_dof_names,
-            sims_kwds=sims_kwds,
-            **sys_kwds,
-        )
+        sys_kwds['sims_kwds'] = sims_kwds
+        sys_kwds['dof_names'] = sim_dof_names
+        sys_kwds.pop('kp', None)
+        sys_kwds.pop('kd', None)
+    if system_type == 'none':
+        pass
     else:
-        system_type = args['system']
         print('importing system', system_type)
         sys_cls = import_obj(f'{system_type}:cb_{system_type}_recv_send_close', default_mod_prefix='unicon.systems')
-        cb_recv, cb_send, cb_close = autowired(sys_cls, states=states_sys)(
-            kp=kp,
-            kd=kd,
-            **sys_kwds,
-        )
-    cb_close_list.append(cb_close)
+        cb_recv, cb_send, cb_close = autowired(sys_cls, states=states_sys)(**sys_kwds,)
+        cb_close_list.append(cb_close)
 
-    dry_run = args['dry']
-    if dry_run:
-        cb_send = cb_noop()
+        dry_run = args['dry']
+        if dry_run:
+            cb_send = cb_noop()
 
     def close_fn():
         print('closing')
@@ -1382,18 +1394,28 @@ def run(args=None):
         cb_qtf_send()
         seq.append(cb_qtf_send)
 
-    if clip_q_ctrl or clip_q_ctrl_tau:
+    if clip_q_ctrl or clip_q_ctrl_tau or clip_q_ctrl_qd:
         from unicon.ctrl import cb_ctrl_q_clip
-        cb = autowired(cb_ctrl_q_clip)()
+        cb = autowired(cb_ctrl_q_clip)(
+            clip_q_limit=clip_q_ctrl,
+            clip_qd_limit=clip_q_ctrl_qd,
+            clip_tau_limit=clip_q_ctrl_tau,
+        )
 
         seq.append(cb)
 
     clear_input = True
-    if clear_input:
+    if clear_input and states_input is not None:
 
-        def cb_input_clear():
-            states_input[:] = 0.
-            states_cmd[:] = 0.
+        if states_cmd is None:
+
+            def cb_input_clear():
+                states_input[:] = 0.
+        else:
+
+            def cb_input_clear():
+                states_input[:] = 0.
+                states_cmd[:] = 0.
 
         seq.extend([
             cb_input_clear,
@@ -1551,6 +1573,10 @@ def run(args=None):
 
     if args['close']:
         return close_fn
+
+    states_quat = states_get('quat')
+    if states_quat is not None:
+        states_quat[:] = [0, 0, 0, 1.]
 
     loop_kwds = {}
     loop_sleep_block = args['loop_sleep_block']

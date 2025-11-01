@@ -108,10 +108,10 @@ def parse_env_cfg_h0(env_cfg):
         'num_acts': num_acts,
         'dof_names': dof_names,
         'env_cfg_args': env_cfg_args,
-        'dof_names_std': dof_names_std,
+        # 'dof_names_std': dof_names_std,
         'default_joint_angles': default_joint_angles,
     }
-    if robot_def.get('DOF_NAMES_STD') is None:
+    if dof_names_std is not None:
         ret['dof_names_std'] = dof_names_std
     return ret
 

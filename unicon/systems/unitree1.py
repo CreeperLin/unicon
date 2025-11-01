@@ -28,7 +28,6 @@ def cb_unitree1_recv_send_close(
     position_protect=False,
     sdk_path=None,
     sdk_name='unitree_legged_sdk',
-    **kwds,
 ):
     import sys
     import os
@@ -37,10 +36,10 @@ def cb_unitree1_recv_send_close(
         sdk = __import__(sdk_name)
     except ImportError:
         import sysconfig
-        EXT_SUFFIX = sysconfig.get_config_var('EXT_SUFFIX')
-        so_name = sdk_name + EXT_SUFFIX
-        print('finding sdk_path', so_name)
         if sdk_path is None:
+            EXT_SUFFIX = sysconfig.get_config_var('EXT_SUFFIX')
+            so_name = sdk_name + EXT_SUFFIX
+            print('finding sdk_path', so_name)
             sdk_path = os.path.dirname(find('~', name=so_name)[0])
         print('sdk_path', sdk_path)
         sys.path.append(sdk_path)
@@ -111,6 +110,11 @@ def cb_unitree1_recv_send_close(
         inputs = unpack_wireless_remote(state.wirelessRemote)
         vals = list(map(inputs.get, mapped_keys))
         states_input[mapped] = vals
+        for i, k in enumerate(input_keys):
+            if k.startswith('ABS_HAT'):
+                neg = inputs.get(key_mapping[k + '-'], 0)
+                pos = inputs.get(key_mapping[k + '+'], 0)
+                states_input[i] = -neg + pos
 
     def cb_recv():
         udp.Recv()

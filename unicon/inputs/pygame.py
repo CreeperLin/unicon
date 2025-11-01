@@ -88,6 +88,28 @@ btn_mapping_ps5 = {
     'ABS_HAT0X+': 14,
 }
 
+axis_mapping_ps5_alt = {
+    'ABS_X': 0,
+    'ABS_Y': 1,
+    'ABS_RX': 2,
+    'ABS_BRAKE': 3,
+    'ABS_GAS': 4,
+    'ABS_RY': 5,
+}
+btn_mapping_ps5_alt = {
+    'BTN_X': 0,
+    'BTN_A': 1,
+    'BTN_B': 2,
+    'BTN_Y': 3,
+    'BTN_TL': 4,
+    'BTN_TR': 5,
+    'BTN_SELECT': 8,
+    'BTN_START': 9,
+}
+hat_mapping_ps5_alt = {
+    'ABS_HAT0': (0, 1, -1),
+}
+
 axis_mapping_switchpro = {
     'ABS_X': 0,
     'ABS_Y': 1,
@@ -119,14 +141,14 @@ def cb_input_pygame(
     input_keys=None,
     joystick_type=None,
     remap_trigger=True,
+    alt=False,
 ):
+    from unicon.utils import printv
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     import pygame
     pygame.init()
     pygame.joystick.init()
     assert pygame.joystick.get_init()
-    count = pygame.joystick.get_count()
-    assert count > 0, 'no pygame joystick found'
 
     js = None
     num_buttons = None
@@ -143,7 +165,10 @@ def cb_input_pygame(
         nonlocal axis_mapping, btn_mapping, hat_mapping
         js = pygame.joystick.Joystick(dev_idx)
         js.init()
-        assert js.get_init()
+        if not js.get_init():
+            js.quit()
+            js = None
+            return 1
         num_buttons = js.get_numbuttons()
         num_axes = js.get_numaxes()
         num_hats = js.get_numhats()
@@ -171,7 +196,9 @@ def cb_input_pygame(
                 js_type = 'switchpro'
             elif 'Wireless' in name:
                 js_type = 'dinput'
-        assert js_type is not None
+        if js_type is None:
+            return 1
+        js_type = f'{js_type}_alt' if alt else js_type
         print('joystick_type', js_type)
         axis_mapping = globals().get(f'axis_mapping_{js_type}', {})
         btn_mapping = globals().get(f'btn_mapping_{js_type}', {})
@@ -191,6 +218,8 @@ def cb_input_pygame(
         try:
             evs = list(pygame.event.get())
         except SystemError:
+            if js is not None:
+                js.quit()
             js = None
             evs = []
         for event in evs:
@@ -198,16 +227,21 @@ def cb_input_pygame(
                 return True
             if event.type == pygame.JOYDEVICEADDED:
                 if js is None and event.device_index == device_index:
-                    init_js(device_index)
-                print(f"Joystick {js.get_instance_id()} connencted {js}")
+                    if init_js(device_index):
+                        print(f"Joystick init failed")
+                print(f"Joystick {event.device_index} connencted {js}")
 
             if event.type == pygame.JOYDEVICEREMOVED:
                 if event.instance_id == instance_id:
+                    if js is not None:
+                        js.quit()
                     js = None
                     states_input[:] = 0.
                 print(f"Joystick {event.instance_id} disconnected {js}")
 
         if js is None:
+            if pygame.joystick.get_count() == 0:
+                printv('pygame no joystick')
             return
         axes = [js.get_axis(i) for i in range(num_axes)]
         btns = [js.get_button(i) for i in range(num_buttons)]
@@ -238,8 +272,15 @@ def cb_input_pygame(
         if verbose:
             print('states_input', states_input.tolist())
 
+    def cb_close():
+        pygame.joystick.quit()
+
     return cb
 
+
+from functools import partial
+
+cb_input_alt = partial(cb_input_pygame, alt=True)
 
 if __name__ == '__main__':
     from unicon.inputs import test_cb_input

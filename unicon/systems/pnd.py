@@ -52,13 +52,15 @@ def cb_pnd_recv_send_close(
     zero_roll_kp=True,
     reboot=True,
     abort_timeout=0.1,
+    sdk_path=None,
+    sdk_name='pnd_py',
 ):
     import os
     import time
     import numpy as np
     import requests
     import json
-    from unicon.utils import cmd
+    from unicon.utils import cmd, find
 
     print('_ip2name_act', _ip2name_act)
     print('_ip2name_abs', _ip2name_abs)
@@ -73,7 +75,22 @@ def cb_pnd_recv_send_close(
     with open(joint_abs_config, 'r') as f:
         joint_abs_config = json.load(f)
 
-    import pnd_py
+    try:
+        sdk = __import__(sdk_name)
+    except ImportError:
+        sdk = None
+
+    if sdk is None:
+        import sys
+        import sysconfig
+        if sdk_path is None:
+            EXT_SUFFIX = sysconfig.get_config_var('EXT_SUFFIX')
+            so_name = sdk_name + EXT_SUFFIX
+            print('finding sdk_path', so_name)
+            sdk_path = os.path.dirname(find('~', name=so_name)[0])
+        print('sdk_path', sdk_path)
+        sys.path.append(sdk_path)
+        sdk = __import__(sdk_name)
 
     power_info = requests.get('http://localhost:8086/table_refresh', timeout=5).json()
     print('power_info', power_info)
@@ -98,7 +115,7 @@ def cb_pnd_recv_send_close(
     robot_def = get_ctx()['robot_def']
 
     abs_json_path = 'abs.json'
-    lib_path = pnd_py.__file__
+    lib_path = sdk.__file__
     build_dir = os.path.dirname(lib_path)
     proj_dir = os.path.dirname(build_dir)
     script_path = os.path.join(proj_dir, 'python_scripts')
@@ -134,21 +151,21 @@ def cb_pnd_recv_send_close(
         so_path_orig = os.path.join(proj_dir, _so_path)
         cmd('ln -s', [so_path_orig, so_path])
 
-    pnd_py.global_init()
-    pcfg = pnd_py.PConfig.getInst()
+    sdk.global_init()
+    pcfg = sdk.PConfig.getInst()
     joint_names = pcfg.jointNames()
     print('joint_names', len(joint_names), joint_names)
     num_joints = len(joint_names)
     num_dofs = len(states_q)
     assert num_dofs == num_joints, f'{num_dofs}, {num_joints}'
 
-    d = pnd_py.RobotData()
-    print('kRobotDof', pnd_py.kRobotDof)
-    print('kRobotDataSize', pnd_py.kRobotDataSize)
-    sz = pnd_py.kRobotDataSize
-    ofs = sz - pnd_py.kRobotDof
+    d = sdk.RobotData()
+    print('kRobotDof', sdk.kRobotDof)
+    print('kRobotDataSize', sdk.kRobotDataSize)
+    sz = sdk.kRobotDataSize
+    ofs = sz - sdk.kRobotDof
     data_inds = slice(ofs, ofs + num_dofs)
-    assert num_dofs == pnd_py.kRobotDof
+    assert num_dofs == sdk.kRobotDof
     zeros_sz = np.zeros(sz)
     d.q_d_ = zeros_sz
     d.q_dot_d_ = zeros_sz
@@ -157,9 +174,9 @@ def cb_pnd_recv_send_close(
     d.pos_mode_ = True
     d.error_state_ = False
 
-    r = pnd_py.RealRobot()
+    r = sdk.RealRobot()
 
-    pnd_py.PndStateEstimateInit()
+    sdk.PndStateEstimateInit()
     cmd('rm -f', [so_path])
 
     _kp = None

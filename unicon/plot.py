@@ -11,7 +11,7 @@ def get_plot_args(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('-rp', '--rec_paths', action='append')
     parser.add_argument('-rtp', '--rec_types', action='append')
-    parser.add_argument('-d', '--dofs', default='range(12)')
+    parser.add_argument('-d', '--dofs', default=None)
     parser.add_argument('-s', '--subdir', action='store_true')
     parser.add_argument('-n', '--num_steps', type=int, default=None)
     parser.add_argument('-st', '--start', type=int, default=200)
@@ -205,7 +205,7 @@ def plot(args=None):
         cond = diff > eps
         dofs = np.where(cond)[0].tolist()
         print('auto dofs', len(dofs), dofs)
-    dofs = __import__('ast').literal_eval(dofs) if isinstance(dofs, str) else dofs
+    dofs = __import__('yaml').safe_load(dofs) if isinstance(dofs, str) else dofs
     dofs = list(range(num_dofs)) if dofs is None else dofs
     dofs = list(dofs) if isinstance(dofs, range) else dofs
     dofs = list(range(num_dofs))[dofs] if isinstance(dofs, slice) else dofs

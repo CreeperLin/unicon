@@ -21,6 +21,7 @@ def cb_ctrl_q_clip(
     states_q=None,
     states_qd=None,
     clip_q_limit=True,
+    clip_qd_limit=False,
     clip_tau_limit=False,
     q_ctrl_min=None,
     q_ctrl_max=None,
@@ -28,6 +29,7 @@ def cb_ctrl_q_clip(
     qd_limit=None,
     kp=None,
     kd=None,
+    qd_limit_coef=2.5,
 ):
     from unicon.utils import get_ctx, coalesce_get, coalesce
     ctx = get_ctx()
@@ -47,16 +49,30 @@ def cb_ctrl_q_clip(
 
     clip_q_limit = clip_q_limit and (q_ctrl_min is not None)
     clip_tau_limit = clip_tau_limit and coalesce(tau_limit, qd_limit, kp, kd) is not None
+    clip_qd_limit = clip_qd_limit and coalesce(qd_limit, kp, kd) is not None
+
+    dt = ctx['dt']
+
+    print('cb_ctrl_q_clip', clip_q_limit, clip_tau_limit, clip_qd_limit)
 
     if clip_tau_limit:
         q_ctrl_delta_min = (tau_limit - kd * qd_limit * 0.5) / kp
         print('q_ctrl_delta_min', q_ctrl_delta_min)
         q_ctrl_delta_min[q_ctrl_delta_min < 0] = np.min(q_ctrl_delta_min)
 
+    if clip_qd_limit:
+        q_delta_max = qd_limit / (kp * dt) * qd_limit_coef
+
+    # kd_over_kp = kd / kp
+
     def cb():
         q_ctrl = states_q_ctrl
         if clip_q_limit:
             q_ctrl = np.clip(q_ctrl, q_ctrl_min, q_ctrl_max)
+        if clip_qd_limit:
+            q_ctrl_d_min = states_q - q_delta_max
+            q_ctrl_d_max = states_q + q_delta_max
+            q_ctrl = np.clip(q_ctrl, q_ctrl_d_min, q_ctrl_d_max)
         if clip_tau_limit:
             q_ctrl_delta_neg = q_ctrl_delta_min
             q_ctrl_delta_pos = q_ctrl_delta_min

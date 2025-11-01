@@ -11,8 +11,68 @@ import functools
 _default_time_fn = time.perf_counter
 _ctx = {}
 _edge_memo = {}
+_print_memo = {}
 _registry = {}
 ori_print = print
+
+
+def source(script_path, env_keys=None):
+    if os.path.exists(script_path):
+        raise RuntimeError('script not found')
+    res = cmd('bash -c', [f'source {script_path} && env'], capture_output=True).stdout
+    env = [x.split('=') for x in res.split('\n') if len(x)]
+    if not len(env):
+        return
+    env = {k: v for k, v in env}
+    if env_keys is not None:
+        env = [env[k] for k in env_keys]
+    os.environ.update(env)
+
+
+def ssh(host, command, password=None, port=None, user=None):
+    import pty
+
+    def read(fd):
+        output = b''
+        while True:
+            try:
+                chunk = os.read(fd, 1024)
+                output += chunk
+                if b'password:' in chunk.lower():
+                    if password is None:
+                        print('ssh password required')
+                        return None
+                    os.write(fd, (password + '\n').encode())
+                elif b'Permission denied' in chunk:
+                    print('ssh auth failed')
+                    return None
+                elif chunk == b'':
+                    break
+            except OSError:
+                break
+        return output
+
+    pid, fd = pty.fork()
+    host = f'{user}@{host}' if user is not None else host
+    args = ['ssh', host]
+    if port is not None:
+        args.extend(['-p', port])
+    args.append(command)
+    if pid == 0:
+        os.execvp('ssh', args)
+    else:
+        output = read(fd)
+        os.close(fd)
+        return output.decode(errors='ignore')
+
+
+def printv(fmt, *args, intv=2, key=None, **kwds):
+    key = fmt if key is None else key
+    t1 = time.monotonic()
+    t0 = _print_memo.get(key, 0)
+    if t1 - t0 > intv:
+        print(fmt.format(*args, **kwds))
+        _print_memo[key] = t1
 
 
 def coalesce(*args):
@@ -68,7 +128,7 @@ def get_print_fn(use_logger=False, use_println=True, name=None, **kwds):
 
 def expect(cond, exc=None):
     if not cond:
-        raise (RuntimeError(exc) if (exc is None or isinstance(exc, str)) else exc)
+        raise (exc if isinstance(exc, Exception) else RuntimeError(exc))
 
 
 def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
@@ -181,62 +241,6 @@ def find(root='.', name=None, path=None, follow_links=True, quit=True):
         return None
     out = list(map(str.strip, out.split('\n')))[:-1]
     return out
-
-
-def load_model_torch(model_path, device=None):
-    from unicon.utils.torch import torch_load_jit, torch_no_grad, torch_no_profiling
-    torch_no_grad()
-    torch_no_profiling()
-    model = torch_load_jit(model_path, device=device)
-    return model
-
-
-def load_model_onnx2pytorch(model_path, device=None):
-    import onnx
-    from onnx2pytorch import ConvertModel
-    onnx_model = onnx.load(model_path)
-    model = ConvertModel(onnx_model)
-    print(model)
-    from unicon.utils.torch import torch_no_grad, torch_no_profiling
-    torch_no_grad()
-    torch_no_profiling()
-    return model
-
-
-def load_model_ort(model_path, device=None):
-    import onnxruntime as ort
-    options = ort.SessionOptions()
-    # options.enable_profiling = True
-    ort_sess = ort.InferenceSession(model_path, sess_options=options)
-    input0 = ort_sess.get_inputs()[0]
-    print('input0', input0.name, input0.type, input0.shape)
-    in_k = input0.name
-    output0 = ort_sess.get_outputs()[0]
-    print('output0', output0.name, output0.type, output0.shape)
-    output_names = [output0.name]
-
-    def model(obs):
-        # print(obs.shape, type(obs))
-        obs = obs.numpy()
-        outputs = ort_sess.run(output_names=output_names, input_feed={in_k: obs})
-        result = outputs[0]
-        return result
-
-    return model
-
-
-_model_type_ext = {
-    '.pt': 'torch',
-    '.onnx': 'ort',
-    # '.onnx': 'onnx2pytorch',
-}
-
-
-def load_model(model_path, model_type=None, **kwds):
-    name, ext = os.path.splitext(model_path)
-    if model_type is None:
-        model_type = _model_type_ext[ext]
-    return globals().get(f'load_model_{model_type}')(model_path, **kwds)
 
 
 def obj2dict(obj, memo=None):
@@ -392,8 +396,6 @@ def get_min_z(topo, base_link_name):
 
 def parse_urdf(
     urdf_path,
-    default_kp=43.2,
-    default_kd=4.2,
     default_q_min=-np.pi,
     default_q_max=np.pi,
     default_tau_limit=1000.,
@@ -429,38 +431,56 @@ def parse_urdf(
     damping = [(0 if (d is None or d.damping is None) else float(d.damping)) for d in joint_dynamics]
     friction = [(0 if (d is None or d.friction is None) else float(d.friction)) for d in joint_dynamics]
     armature = [(0 if (d is None or d.armature is None) else float(d.armature)) for d in joint_dynamics]
+    kps = None
+    kds = None
+    compute_pd = False
+    if compute_pd:
+        kps = []
+        kds = []
+        omega_n = 2 * np.pi * 10
+        zeta = 2.0
+        for joint in joints:
+            child_link = urdf.link_map[joint.child]
+            # print(joint.name, child_link.name)
+            kp = 0
+            kd = 0
+            if child_link.inertial:
+                inertia = child_link.inertial.inertia
+                mass = child_link.inertial.mass
+                Ij = np.trace(inertia)
+                kp = Ij * omega_n**2
+                kd = 2 * Ij * zeta * omega_n
+                # print('inertia', Ij)
+                # print('mass', mass)
+                # print(inertia)
+                # print(kp, kd)
+            kps.append(kp)
+            kds.append(kd)
     num_dofs = len(dof_names)
     print('dof_names', num_dofs, dof_names)
     print('link_names', len(link_names), link_names)
-    print('q_min', np.round(np.array(q_min), 2).tolist())
-    print('q_max', np.round(np.array(q_max), 2).tolist())
-    print('tau_limit', np.round(np.array(tau_limit), 2).tolist())
-    print('qd_limit', np.round(np.array(qd_limit), 2).tolist())
-    print('damping', np.round(np.array(damping), 2).tolist())
-    print('friction', np.round(np.array(friction), 2).tolist())
-    print('armature', np.round(np.array(armature), 2).tolist())
-    q_min = {k: v for k, v in zip(dof_names, q_min)}
-    q_max = {k: v for k, v in zip(dof_names, q_max)}
-    tau_limit = {k: v for k, v in zip(dof_names, tau_limit)}
-    qd_limit = {k: v for k, v in zip(dof_names, qd_limit)}
-    damping = {k: v for k, v in zip(dof_names, damping)}
-    friction = {k: v for k, v in zip(dof_names, friction)}
-    armature = {k: v for k, v in zip(dof_names, armature)}
-    kps = {'*': default_kp}
-    kds = {'*': default_kd}
+    locs = {}
+    for k in ['q_min', 'q_max', 'tau_limit', 'qd_limit', 'damping', 'friction', 'armature', 'kps', 'kds']:
+        val = locals().get(k)
+        if val is None:
+            locs[k] = {}
+            continue
+        print(k, np.round(np.array(val), 2).tolist())
+        val = {k: v for k, v in zip(dof_names, val)}
+        locs[k] = val
     robot_def = {
         'NUM_DOFS': num_dofs,
         'DOF_NAMES': dof_names,
         'LINK_NAMES': link_names,
-        'Q_CTRL_MIN': q_min,
-        'Q_CTRL_MAX': q_max,
-        'TAU_LIMIT': tau_limit,
-        'QD_LIMIT': qd_limit,
-        'KP': kps,
-        'KD': kds,
-        'Q_DAMPING': damping,
-        'Q_FRICTION': friction,
-        'Q_ARMATURE': armature,
+        'Q_CTRL_MIN': locs['q_min'],
+        'Q_CTRL_MAX': locs['q_max'],
+        'TAU_LIMIT': locs['tau_limit'],
+        'QD_LIMIT': locs['qd_limit'],
+        'KP': locs['kps'],
+        'KD': locs['kds'],
+        'Q_DAMPING': locs['damping'],
+        'Q_FRICTION': locs['friction'],
+        'Q_ARMATURE': locs['armature'],
         'INIT_Z': -min_z * (1.2),
         '_URDF': urdf,
     }
@@ -476,7 +496,7 @@ def parse_robot_def(robot_def):
     asset_dir = os.environ.get('UNICON_ASSET_DIR')
     if asset_dir is None:
         res = find('..', path='*resources/robots')
-        asset_dir = res[0] if len(res) else './'
+        asset_dir = res[0] if res is not None else './'
     print('asset_dir', asset_dir)
     asset_paths = urdf_path, mjcf_path
     urdf_path, mjcf_path = [(x if x is None or x.startswith('/') else os.path.join(asset_dir, x)) for x in asset_paths]

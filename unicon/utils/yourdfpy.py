@@ -231,6 +231,17 @@ class URDF:
         **kwds,
     ):
         self.robot = robot
+        self.material_map = {}
+        for m in self.robot.materials:
+            self.material_map[m.name] = m
+
+        self.joint_map = {}
+        for j in self.robot.joints:
+            self.joint_map[j.name] = j
+
+        self.link_map = {}
+        for l in self.robot.links:
+            self.link_map[l.name] = l
 
     @property
     def joint_names(self):

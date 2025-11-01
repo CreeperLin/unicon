@@ -14,6 +14,7 @@ def cb_input_ev(
 ):
     from unicon.utils import cmd
     import os
+    import fcntl
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
 
     input_states = {}
@@ -23,10 +24,26 @@ def cb_input_ev(
         print(f'{dev_path} not exist')
         return None
     if device is None:
-        dev_root = os.path.join(dev_path, 'by-path')
-        devices = sorted(filter(lambda x: 'event' in x and 'joystick' in x, os.listdir(dev_root)))
+        devices = []
+        for dev in os.listdir(dev_path):
+            if dev.startswith('event'):
+                path = os.path.join(dev_path, dev)
+                try:
+                    with open(path, 'rb') as f:
+                        # EVIOCGNAME ioctl to get device name
+                        buf = bytearray(256)
+                        fcntl.ioctl(f, 0x82004506, buf)  # EVIOCGNAME(len)
+                        name = buf.split(b'\0', 1)[0].decode()
+                        devices.append((path, name))
+                except Exception as e:
+                    print(path, e)
+        print('devices', devices)
+        anti_pats = ['touchpad', 'sensor']
+        devices = list(filter(lambda x: all(p not in x[1].lower() for p in anti_pats), devices))
+        pats = ['joystick', 'controller', 'wireless']
+        devices = list(filter(lambda x: any(p in x[1].lower() for p in pats), devices))
         if len(devices):
-            device = os.path.join(dev_root, devices[0])
+            device = devices[0][0]
     if device is None:
         dev_root = dev_path
         devs = filter(lambda x: 'event' in x, os.listdir(dev_root))
@@ -139,7 +156,7 @@ def cb_input_ev(
                 else:
                     v = 0 if v is None else v
                 v = min(v, 1, max(v, -1))
-                if remap_trigger and k in ['ABS_BRAKE', 'ABS_GAS']:
+                if remap_trigger and k in ['ABS_BRAKE', 'ABS_GAS'] and k in input_states:
                     v = (v + 1) * 0.5
                 states[k] = v
         if verbose:

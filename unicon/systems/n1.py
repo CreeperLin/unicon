@@ -252,16 +252,12 @@ def cb_n1_recv_send_close(
         kd = r.joint_velocity_control_kp
     elif control_mode == 6:
         assert kp is not None
-    q_ctrl_min = deg2rad * r.joint_min_position if q_ctrl_min is None else q_ctrl_min
-    q_ctrl_max = deg2rad * r.joint_max_position if q_ctrl_max is None else q_ctrl_max
     kps = ([kp] * num_dofs) if isinstance(kp, float) else kp
     kds = ([kd] * num_dofs) if isinstance(kd, float) else kd
     modes = ([control_mode] * num_dofs) if isinstance(control_mode, int) else control_mode
     modes = np.array(modes, dtype=np.int32)
     kps = np.array(kps, dtype=dtype)
     kds = np.array(kds, dtype=dtype)
-    q_ctrl_min = np.array(q_ctrl_min, dtype=dtype)
-    q_ctrl_max = np.array(q_ctrl_max, dtype=dtype)
     params = {
         'control_mode': modes.tolist(),
     }

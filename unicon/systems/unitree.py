@@ -25,7 +25,6 @@ def cb_unitree_recv_send_close(
     mode_machine=None,
     mode_pr=0,
     sim=False,
-    **states,
 ):
     import time
     from unicon.utils import get_ctx
@@ -184,8 +183,8 @@ def cb_unitree_recv_send_close(
         states_input[mapped] = vals
         for i, k in enumerate(input_keys):
             if k.startswith('ABS_HAT'):
-                neg = states.get(key_mapping[k + '-'], 0)
-                pos = states.get(key_mapping[k + '+'], 0)
+                neg = inputs.get(key_mapping[k + '-'], 0)
+                pos = inputs.get(key_mapping[k + '+'], 0)
                 states_input[i] = -neg + pos
 
     def cb_recv():

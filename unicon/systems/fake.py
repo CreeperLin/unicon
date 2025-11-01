@@ -22,7 +22,6 @@ def cb_fake_recv_send_close(
     qd_limit=10.0,
     q_ctrl_mix=0.6,
     dt=None,
-    **kwds,
 ):
     from unicon.utils import get_ctx, coalesce
     ctx = get_ctx()
