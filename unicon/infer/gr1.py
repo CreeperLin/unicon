@@ -418,18 +418,19 @@ def cb_infer_gr1(
             # print('clock_inputs', foot_phases, clock_inputs)
             obs_list.extend(clock_inputs)
 
-        obs_list.append(base_ang_vel2 * scales_ang_vel)
-        obs_list.extend(rot_info2)
+        if base_ang_vel2 is not None:
+            obs_list.append(base_ang_vel2 * scales_ang_vel)
+            obs_list.extend(rot_info2)
 
         # print(commands, clock_inputs, enable_gait_modes)
         # print(base_ang_vel, rot_info, base_ang_vel2, rot_info2)
 
-        obs_list.append(states_left_target)
-        obs_list.append(states_right_target)
-        # print('states_left_target', states_left_target)
-        # print('states_right_target', states_right_target)
-
-        obs_list.append(states_reach_mask)
+        if states_left_target is not None:
+            obs_list.append(states_left_target)
+            obs_list.append(states_right_target)
+            # print('states_left_target', states_left_target)
+            # print('states_right_target', states_right_target)
+            obs_list.append(states_reach_mask)
 
         obs = np.concatenate(obs_list)
         # print("One step observation", obs.shape)

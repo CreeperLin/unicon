@@ -206,7 +206,7 @@ def cb_unitree_recv_send_close(
     for i in range(10):
         print('waiting for sub', i)
         state = sub.Read()
-        print(state.tick)
+        print(f"reading {lowstate_topic}.tick", state.tick)
         if state.tick > 0:
             break
         time.sleep(1)
@@ -216,8 +216,8 @@ def cb_unitree_recv_send_close(
     for i in range(10):
         print('waiting for sub2', i)
         secondary_imu_state = sub2.Read()
-        print(secondary_imu_state.tick)
-        if secondary_imu_state.tick > 0:
+        print(f"reading {secondary_imu_topic}.temperature", secondary_imu_state.temperature)
+        if secondary_imu_state.temperature > 0:
             break
         time.sleep(1)
     else:
@@ -227,6 +227,14 @@ def cb_unitree_recv_send_close(
         mode_machine = state.mode_machine
         cmd.mode_machine = mode_machine
         print('mode_machine', mode_machine)
+
+    # update_target_flag = True
+    obs_target = np.concatenate([
+        [0.2443, 0.1517, -0.0455, 0, 0, 0, 1],
+        [0.2443, -0.1517, -0.0455, 0, 0, 0, 1]
+    ],axis=0)
+    # real_time_target = np.zeros_like(obs_target)
+    # real_time_target[:] = obs_target[:]
 
     def input_fn():
         rem = bytearray(state.wireless_remote)
@@ -252,7 +260,7 @@ def cb_unitree_recv_send_close(
                 states_input[i] = -neg + pos
 
     def cb_recv():
-        nonlocal state
+        nonlocal state, obs_target
         state = sub.Read()
         secondary_imu_state = sub2.Read()
         if state is None or secondary_imu_state is None:
@@ -277,6 +285,11 @@ def cb_unitree_recv_send_close(
         states['states_ang_vel2'][:] = secondary_imu_state.gyroscope
         # if states_input is not None:
         # input_fn()
+
+        if 'states_left_target' in states and np.sum(np.abs(states['states_left_target'][0:6])) < 1e-6:
+            states['states_left_target'][:] = obs_target[0:7]
+        if 'states_right_target' in states and np.sum(np.abs(states['states_right_target'][0:6])) < 1e-6:
+            states['states_right_target'][:] = obs_target[7:14]
 
     def cb_send():
         # udp.InitCmdData(cmd)
