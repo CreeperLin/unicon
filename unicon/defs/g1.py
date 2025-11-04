@@ -132,5 +132,6 @@ DOF_MAPS = {
     'legs': range(0, 12),
 }
 
-URDF = 'g1_description/g1_29dof_rev_1_0.urdf'
+# URDF = 'g1_description/g1_23dof_rev_5_0.urdf'
+URDF = "/home/caojiahang/Code/G1/resources/robots/g1_description/g1_23dof_rev_5.urdf"
 # URDF = 'g1/urdf/g1_29dof_boxcollision_fix_inertia_1.urdf'

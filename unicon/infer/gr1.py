@@ -430,8 +430,8 @@ def cb_infer_gr1(
         if states_left_target is not None:
             obs_list.append(states_left_target)
             obs_list.append(states_right_target)
-            print('states_left_target', states_left_target)
-            print('states_right_target', states_right_target)
+            # print('states_left_target', states_left_target)
+            # print('states_right_target', states_right_target)
             obs_list.append(states_reach_mask)
 
         obs = np.concatenate(obs_list)
