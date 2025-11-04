@@ -383,7 +383,7 @@ def cb_infer_gr1(
                 # foot_phases = [clock_scale * left_phase + 0.25 * (1-clock_scale), clock_scale * right_phase + 0.25 * (1-clock_scale)]
             else:
                 gait_idx = 1 - int(-0.05 < states_cmd[0] < 0.05 and -0.05 < states_cmd[1] < 0.05 and -0.1 < states_cmd[2] < 0.1) # 0 for standing and 1 for walking
-                print("GAIT idx", gait_idx, states_cmd[:3], gait_indices)
+                print("GAIT idx", gait_idx, states_cmd, gait_indices)
 
                 # left_phase, right_phase = [gait_indices + phases, gait_indices]
                 left_phase = gait_indices + phases
@@ -401,7 +401,8 @@ def cb_infer_gr1(
                 
                 last_gait = gait_idx
                 foot_phases = [left_phase, right_phase]
-            if enable_gait_modes and gait_idx == 0 and gait_alt0:
+            # if enable_gait_modes and gait_idx == 0 and gait_alt0:
+            if gait_idx == 0:
                 # clock_inputs = [np.sin([x]) for x in [1, 1]]
                 clock_inputs = [[1., 1.]]
             else:
