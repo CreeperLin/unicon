@@ -26,6 +26,25 @@ def planner_3dim(states_left_target, states_right_target, old_commands, old_reac
         'reach_mask': reach_mask,
     }
 
+def planner_dummy(states_left_target, states_right_target, old_commands, old_reach_mask):
+
+    if np.sum(states_left_target) < 0.001 or np.sum(states_right_target) < 0.001:
+        commands = np.array([0.0, 0.0, 0.0])
+        reach_mask = [0.0, 0.0]
+    
+    else:
+        commands = np.array([0.0, 0.0, 0.0])
+        reach_mask = [1.0, 1.0]
+
+    commands = _smooth_commands(old_commands, commands)
+    # reach_mask = _calculate_reach_mask(commands)
+    reach_mask = _smooth_reach_mask(old_reach_mask, reach_mask)
+
+    return {
+        'commands': commands,
+        'reach_mask': reach_mask,
+    }
+
 def _calculate_commands(ref_point, tgt_point):
 
     dx = tgt_point[0] - ref_point[0]
@@ -78,61 +97,6 @@ def _smooth_reach_mask(old_mask, new_mask, scale=5):
         return [old_val + step]
     else:
         return [new_val]
-
-    # def cmd2out1step(self, scale=3):
-    #     step = scale * self.dt
-
-    #     up_mask = (self.tgt_commands-self.commands[:, :3])<-step
-    #     down_mask = (self.tgt_commands-self.commands[:, :3])>step
-    #     others = ~torch.logical_or(up_mask, down_mask)
-
-    #     self.tgt_commands[up_mask] += step
-    #     self.tgt_commands[down_mask] -= step
-    #     self.tgt_commands[others] = self.commands[:, :3][others]
-
-    # def mask2stage1step(self, scale=5):
-    #     step = scale * self.dt
-
-    #     _mask_float = self.standing_envs_mask.to(dtype=torch.float32)
-
-    #     up_mask = (self.standing_stages-_mask_float)<-step
-    #     down_mask = (self.standing_stages-_mask_float)>step
-    #     others = ~torch.logical_or(up_mask, down_mask)
-
-    #     self.standing_stages[up_mask] += step
-    #     self.standing_stages[down_mask] -= step
-    #     self.standing_stages[others] = _mask_float[others].to(dtype=torch.float32)
-
-# class ThreeDimPlanner(BasePlanner):
-#     def __init__(self, cfg: G1ReachCfg, device, num_envs):
-#         super().__init__(cfg, device, num_envs, command_len=3)
-
-#     def plan(self, target_hand_states, current_hand_states):
-#         # under base coordinate system
-#         dx, dy, L, yaw = self.get_relative_target(target_hand_states, current_hand_states)
-
-
-#         self.commands[:, 0] = torch.clip(
-#             self.planner_cfg.kp_lin_x * dx,
-#             min=self.planner_cfg.lin_vel_x[0],
-#             max=self.planner_cfg.lin_vel_x[1],
-#         )
-#         self.commands[:, 1] = torch.clip(
-#             self.planner_cfg.kp_lin_y * dy,
-#             min=self.planner_cfg.lin_vel_y[0],
-#             max=self.planner_cfg.lin_vel_y[1],
-#         )
-#         self.commands[:, 2] = torch.clip(
-#             self.planner_cfg.kp_ang_yaw * yaw, 
-#             min=self.planner_cfg.ang_vel_yaw[0],
-#             max=self.planner_cfg.ang_vel_yaw[1]
-#         )
-
-#         mask_L = (L < self.planner_cfg.L_threshold) & (torch.abs(yaw) < self.planner_cfg.yaw_threshold_when_close)
-
-#         self.commands[mask_L, :] = 0.0
-
-#         return self.commands
 
 
 kp_lin_x = 1.0

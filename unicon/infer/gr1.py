@@ -383,7 +383,6 @@ def cb_infer_gr1(
                 # foot_phases = [clock_scale * left_phase + 0.25 * (1-clock_scale), clock_scale * right_phase + 0.25 * (1-clock_scale)]
             else:
                 gait_idx = 1 - int(-0.05 < states_cmd[0] < 0.05 and -0.05 < states_cmd[1] < 0.05 and -0.1 < states_cmd[2] < 0.1) # 0 for standing and 1 for walking
-                print("GAIT idx", gait_idx, states_cmd[:3], gait_indices)
 
                 # left_phase, right_phase = [gait_indices + phases, gait_indices]
                 left_phase = gait_indices + phases
@@ -401,11 +400,14 @@ def cb_infer_gr1(
                 
                 last_gait = gait_idx
                 foot_phases = [left_phase, right_phase]
-            if enable_gait_modes and gait_idx == 0 and gait_alt0:
+            # if enable_gait_modes and gait_idx == 0 and gait_alt0:
+            if gait_idx == 0:
                 # clock_inputs = [np.sin([x]) for x in [1, 1]]
                 clock_inputs = [[1., 1.]]
             else:
                 clock_inputs = [np.sin(2 * np.pi * x) for x in foot_phases]
+
+            print("gait_idx", gait_idx, "cmd", states_cmd[:3], "gait_indices", gait_indices, "clock_inputs", clock_inputs)
 
             if adaptive_gait_frequency:
                 v_level = 1.0 * np.linalg.norm(states_cmd[2]) + 0.5 * np.abs(states_cmd[2])
@@ -418,18 +420,19 @@ def cb_infer_gr1(
             # print('clock_inputs', foot_phases, clock_inputs)
             obs_list.extend(clock_inputs)
 
-        obs_list.append(base_ang_vel2 * scales_ang_vel)
-        obs_list.extend(rot_info2)
+        if base_ang_vel2 is not None:
+            obs_list.append(base_ang_vel2 * scales_ang_vel)
+            obs_list.extend(rot_info2)
 
         # print(commands, clock_inputs, enable_gait_modes)
         # print(base_ang_vel, rot_info, base_ang_vel2, rot_info2)
 
-        obs_list.append(states_left_target)
-        obs_list.append(states_right_target)
-        # print('states_left_target', states_left_target)
-        # print('states_right_target', states_right_target)
-
-        obs_list.append(states_reach_mask)
+        if states_left_target is not None:
+            obs_list.append(states_left_target)
+            obs_list.append(states_right_target)
+            print('states_left_target', states_left_target)
+            print('states_right_target', states_right_target)
+            obs_list.append(states_reach_mask)
 
         obs = np.concatenate(obs_list)
         # print("One step observation", obs.shape)

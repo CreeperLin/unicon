@@ -140,7 +140,7 @@ def run(args=None):
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
         import_obj, parse_robot_def, load_obj, match_keys, obj_update, get_ctx
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
-    from unicon.sensors.planners import planner_3dim
+    from unicon.sensors.planners import planner_3dim, planner_dummy
 
     if args['sudo']:
         os.system('sudo -v')
@@ -538,6 +538,8 @@ def run(args=None):
     if init_joint_angles is not None:
         default_dof_pos = np.array([init_joint_angles.get(n, 0.) for n in dof_names])
     if default_dof_pos is not None:
+        print('default_dof_pos', len(default_dof_pos), default_dof_pos[dof_src_map])
+        print('q_reset', len(q_reset))
         q_reset[dof_map] = default_dof_pos[dof_src_map]
 
     q_reset_update = args['q_reset_update']
@@ -1162,11 +1164,10 @@ def run(args=None):
         states_lin_acc=states_lin_acc,
         states_pos=states_pos,
         states_input=states_input,
-        states_left_target=states_extras['states_left_target'],
-        states_right_target=states_extras['states_right_target'],
-        states_left_target_real_time=states_extras['states_left_target_real_time'],
-        states_right_target_real_time=states_extras['states_right_target_real_time'],
     )
+    for k in states_extras:
+        if not k in states_extras_sys:
+            states_extras_sys[k] = states_extras[k]
     for k in states_custom_extra_obs:
         states_extras_sys[k] = states_custom_extra_obs[k]
     
@@ -1555,10 +1556,8 @@ def run(args=None):
             rec_cmd = loaded_rec.get('states_cmd')
             kwds['frames'] = rec_cmd
         if cmd_type == 'plan':
-            # kwds['states_left_target'] = states_extras['states_left_target']
-            # kwds['states_right_target'] = states_extras['states_right_target']
-            # kwds['states_reach_mask'] = states_extras['states_reach_mask']
-            kwds['planner_fn'] = planner_3dim
+            # kwds['planner_fn'] = planner_3dim
+            kwds['planner_fn'] = planner_dummy
         kwds.update(cmd_kwds)
         if cb_cmd_cls is not None:
             cb_cmd = autowired(cb_cmd_cls, states=cmd_states)(input_keys=input_keys, **kwds)
