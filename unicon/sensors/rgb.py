@@ -9,6 +9,9 @@ from scipy.spatial.transform import Rotation as R
 
 from unicon.states import states_get, states_init
 
+CIRCLE_RADIUS = 1.0         # 圆周半径（米）
+Z_CLIP = 0.2                # z轴clip范围（米）
+
 def open_camera(infrared, width=640, height=480, fps=30):
     pipeline = rs.pipeline()
     config = rs.config()
@@ -68,7 +71,7 @@ def draw_pose(frame, corners, rvec, tvec, camera_matrix, dist_coeffs, tag_size, 
     
     return frame
 
-def calculate_target_from_tag(corners, rvec, tvec, T_upstream, T_downstream):
+def calculate_target_from_tag(corners, rvec, tvec, T_upstream, T_downstream, circle_radius=CIRCLE_RADIUS, z_clip=Z_CLIP):
     rot_matrix, _ = cv2.Rodrigues(rvec[:, 0])
 
     T_tag_in_cam = np.eye(4)
@@ -78,6 +81,11 @@ def calculate_target_from_tag(corners, rvec, tvec, T_upstream, T_downstream):
     T_target_in_robot = T_upstream @ T_tag_in_cam @ T_downstream
 
     pos = T_target_in_robot[0:3, 3]
+    dist = np.linalg.norm(pos[:2])
+    if dist > circle_radius:
+        theta = np.arctan2(pos[1], pos[0])
+        pos[:2] = circle_radius *  * np.array([np.cos(theta), np.sin(theta)])
+    pos[2] = np.clip(pos[2], -z_clip, z_clip)
     rot = R.from_matrix(T_target_in_robot[0:3, 0:3])
     quat = rot.as_quat()
 
