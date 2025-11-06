@@ -5,14 +5,15 @@ import pygame
 from unicon.states import states_get, states_init
 
 # 可编辑参数
-TARGET_CLIP = 0.2  # target坐标clip范围（米）
-TARGET_STEP = 0.01 # 每次按键移动步长（米）
+CIRCLE_RADIUS = 1.0
+Z_CLIP = 0.2  # target坐标clip范围（米）
+TARGET_STEP = 0.05 # 每次按键移动步长（米）
 WINDOW_SIZE = (600, 400)
 FONT_SIZE = 24
 
 COLOR_BG = (30, 30, 30)
-COLOR_ON = (0, 255, 0)
-COLOR_OFF = (100, 0, 0)
+COLOR_ON = (0, 200, 0)
+COLOR_OFF = (200, 0, 0)
 COLOR_TARGET = (255, 255, 0)
 COLOR_TEXT = (200, 200, 200)
 
@@ -31,16 +32,20 @@ MODE_RIGHT = 2
 MODE_BOTH = 3
 
 
-def clip_target(target):
-    target[:3] = np.clip(target[:3], -TARGET_CLIP, TARGET_CLIP)
+def clip_target(target, circle_radius=CIRCLE_RADIUS, z_clip=Z_CLIP):
+    dist = np.linalg.norm(target[0:2])
+    if dist > circle_radius:
+        theta = np.arctan2(target[1], target[0])
+        target[0:2] = circle_radius * np.array([np.cos(theta), np.sin(theta)])
+    target[2] = np.clip(target[2], -z_clip, z_clip)
     return target
 
 def draw_status(screen, font, reach_mask, left_target, right_target, mode):
     # 灯状态
     pygame.draw.circle(screen, COLOR_ON if reach_mask[0] else COLOR_OFF, (80, 60), 30)
-    pygame.draw.circle(screen, COLOR_ON if reach_mask[1] else COLOR_OFF, (180, 60), 30)
-    screen.blit(font.render('Mask 0', True, COLOR_TEXT), (60, 100))
-    screen.blit(font.render('Mask 1', True, COLOR_TEXT), (160, 100))
+    pygame.draw.circle(screen, COLOR_ON if reach_mask[1] else COLOR_OFF, (260, 60), 30)
+    screen.blit(font.render('Reach-L', True, COLOR_TEXT), (40, 100))
+    screen.blit(font.render('Reach-R', True, COLOR_TEXT), (220, 100))
     # target显示
     lt_str = ', '.join([f'{v:.3f}' for v in left_target[:3]])
     rt_str = ', '.join([f'{v:.3f}' for v in right_target[:3]])
@@ -49,8 +54,9 @@ def draw_status(screen, font, reach_mask, left_target, right_target, mode):
     # 当前模式
     mode_str = {MODE_NONE: 'Normal', MODE_LEFT: 'Edit Left', MODE_RIGHT: 'Edit Right', MODE_BOTH: 'Edit Both'}[mode]
     screen.blit(font.render(f'Mode: {mode_str}', True, COLOR_TEXT), (40, 250))
-    screen.blit(font.render('WASD: x/y, O/P: z, ESC退出编辑', True, COLOR_TEXT), (40, 280))
-    screen.blit(font.render('1/2切换mask, Ctrl+L/R/M进入编辑', True, COLOR_TEXT), (40, 310))
+    screen.blit(font.render('WASD: x/y, O/P: z', True, COLOR_TEXT), (40, 280))
+    screen.blit(font.render('1/2 edit mask', True, COLOR_TEXT), (40, 310))
+    screen.blit(font.render('Ctrl+L/R/M/0 switch edit', True, COLOR_TEXT), (40, 340))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -72,12 +78,21 @@ def main():
 
     mode = MODE_NONE
     running = True
+
+    _local_reach_mask = np.zeros(2)
+    _local_left_target = np.zeros(7)
+    _local_right_target = np.zeros(7)
     while running:
         screen.fill(COLOR_BG)
         # 读取共享内存
-        reach_mask = states_get('states_reach_mask')
-        left_target = states_get('left_target_real_time')
-        right_target = states_get('right_target_real_time')
+        if args.unit_test:
+            reach_mask = _local_reach_mask
+            left_target = _local_left_target
+            right_target = _local_right_target
+        else:
+            reach_mask = states_get('states_reach_mask')
+            left_target = states_get('left_target_real_time')
+            right_target = states_get('right_target_real_time')
         draw_status(screen, font, reach_mask, left_target, right_target, mode)
         pygame.display.flip()
         for event in pygame.event.get():
@@ -98,7 +113,7 @@ def main():
                     mode = MODE_BOTH
                 # 编辑target
                 elif mode in [MODE_LEFT, MODE_RIGHT, MODE_BOTH]:
-                    if event.key == pygame.K_ESCAPE:
+                    if event.key == pygame.K_0 and pygame.key.get_mods() & pygame.KMOD_CTRL:
                         mode = MODE_NONE
                     elif event.key in KEY_MAP:
                         delta = KEY_MAP[event.key]
