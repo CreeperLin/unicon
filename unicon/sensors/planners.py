@@ -13,7 +13,7 @@ def planner_3dim(states_left_target, states_right_target, old_commands, old_reac
         ref_point = REF_POINT_M  # waist to mid-point of two hands
         tgt_point = (states_left_target[:3] + states_right_target[:3]) / 2
 
-        commands = _calculate_commands(ref_point, tgt_point)
+        commands = _calculate_commands_3dim(ref_point, tgt_point)
         # import ipdb; ipdb.set_trace()
         commands = _smooth_commands(old_commands, commands)
         reach_mask = _calculate_reach_mask(commands)
@@ -45,12 +45,43 @@ def planner_dummy(states_left_target, states_right_target, old_commands, old_rea
         'reach_mask': reach_mask,
     }
 
-def _calculate_commands(ref_point, tgt_point):
+def planner_fix(states_left_target, states_right_target, old_commands, old_reach_mask):
+    
+    reach_mask = [0.0, 0.0]
+    reach_mask[0] = 0.0 if np.sum(states_left_target) < 0.001 else 1.0
+    reach_mask[1] = 0.0 if np.sum(states_right_target) < 0.001 else 1.0
+
+    if reach_mask[0] == 0.0 and reach_mask[1] == 0.0:
+        commands = np.array([0.0, 0.0, 0.0])
+    else:
+        if reach_mask[0] == 1.0 and reach_mask[1] == 0.0:
+            ref_point = REF_POINT_L
+            tgt_point = states_left_target[:3]
+        elif reach_mask[0] == 0.0 and reach_mask[1] == 1.0:
+            ref_point = REF_POINT_R
+            tgt_point = states_right_target[:3]
+        else:
+            ref_point = REF_POINT_M
+            tgt_point = (states_left_target[:3] + states_right_target[:3]) / 2
+    
+        commands = _calculate_commands_fix(ref_point, tgt_point)
+
+    commands = _smooth_commands(old_commands, commands)
+    # reach_mask = _calculate_reach_mask(commands)
+    reach_mask = _smooth_reach_mask(old_reach_mask, reach_mask)
+
+    return {
+        'commands': commands,
+        'reach_mask': reach_mask,
+    }
+
+
+def _calculate_commands_3dim(ref_point, tgt_point):
 
     dx = tgt_point[0] - ref_point[0]
     dy = tgt_point[1] - ref_point[1]
     L = np.sqrt(dx**2 + dy**2)
-    if -np.abs(dy) < 0.001 and np.abs(dx) < 0.001:
+    if np.abs(dy) < 0.001 and np.abs(dx) < 0.001:
         yaw = 0.0 # np.arctan2 do not has this case
     else:
         yaw = np.arctan2(dy, dx)
@@ -64,6 +95,39 @@ def _calculate_commands(ref_point, tgt_point):
     else:
         return np.array([lin_vel_x_cmd, lin_vel_y_cmd, ang_vel_yaw_cmd])
     
+def _calculate_commands_fix(ref_point, tgt_point):
+
+    dx = tgt_point[0] - ref_point[0]
+    dy = tgt_point[1] - ref_point[1]
+    L = np.sqrt(dx**2 + dy**2)
+    if np.abs(dy) < 0.1 and np.abs(dx) < 0.1:
+        yaw = 0.0 # np.arctan2 do not has this case
+    else:
+        yaw = np.arctan2(dy, dx)
+
+    if dx < -standing_lin_thrd:
+        lin_vel_x_cmd = lin_vel_x[0]
+    elif dx > standing_lin_thrd:
+        lin_vel_x_cmd = lin_vel_x[1]
+    else:
+        lin_vel_x_cmd = 0.0
+
+    if dy < -standing_lin_thrd:
+        lin_vel_y_cmd = lin_vel_y[0]
+    elif dy > standing_lin_thrd:
+        lin_vel_y_cmd = lin_vel_y[1]
+    else:
+        lin_vel_y_cmd = 0.0
+
+    if yaw < -standing_ang_thrd:
+        ang_vel_yaw_cmd = ang_vel_yaw[0]
+    elif yaw > standing_ang_thrd:
+        ang_vel_yaw_cmd = ang_vel_yaw[1]
+    else:
+        ang_vel_yaw_cmd = 0.0
+
+    return np.array([lin_vel_x_cmd, lin_vel_y_cmd, ang_vel_yaw_cmd])
+
 def _calculate_reach_mask(commands):
         # _standing = torch.logical_and(
         #     torch.norm(self.commands[env_ids, :2], dim=1) <= self.cfg.commands.standing_lin_thrd if hasattr(self.cfg.commands, "standing_lin_thrd") else 0.2,
@@ -108,5 +172,5 @@ ang_vel_yaw = [-0.6, 0.6]  # min max [rad/s]
 L_threshold = 0.05
 yaw_threshold_when_close = np.pi / 4
 standing_lin_thrd = 0.1
-standing_ang_thrd = 0.1
+standing_ang_thrd = np.pi / 2
 dt = 0.02

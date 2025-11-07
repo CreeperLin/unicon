@@ -121,6 +121,7 @@ def get_args():
     parser.add_argument('-qru', '--q_reset_update', default=None)
     parser.add_argument('-uss', '--use_secondary_sensor', action='store_true')
     parser.add_argument('-imp2', '--infer_model_path2', default=None)
+    parser.add_argument('-pltp', '--planner_type', default='dummy')
     args, _ = parser.parse_known_args()
     return args
 
@@ -1556,8 +1557,8 @@ def run(args=None):
             rec_cmd = loaded_rec.get('states_cmd')
             kwds['frames'] = rec_cmd
         if cmd_type == 'plan':
-            # kwds['planner_fn'] = planner_3dim
-            kwds['planner_fn'] = planner_dummy
+            planner_fn = import_obj(args['planner_type'], default_name_prefix='planner', default_mod_prefix='unicon.sensors.planners')
+            kwds['planner_fn'] = planner_fn
         kwds.update(cmd_kwds)
         if cb_cmd_cls is not None:
             cb_cmd = autowired(cb_cmd_cls, states=cmd_states)(input_keys=input_keys, **kwds)

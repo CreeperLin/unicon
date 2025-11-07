@@ -90,7 +90,7 @@ def main():
             left_target = _local_left_target
             right_target = _local_right_target
         else:
-            reach_mask = states_get('states_reach_mask')
+            reach_mask = states_get('reach_mask')
             left_target = states_get('left_target_real_time')
             right_target = states_get('right_target_real_time')
         draw_status(screen, font, reach_mask, left_target, right_target, mode)
@@ -128,6 +128,10 @@ def main():
                             right_target[:3] += delta
                             left_target = clip_target(left_target)
                             right_target = clip_target(right_target)
+                        if np.sum(np.abs(left_target[3:])) < 1e-6:
+                            left_target[3:] = np.array([0,0,0,1])
+                        if np.sum(np.abs(right_target[3:])) < 1e-6:
+                            right_target[3:] = np.array([0,0,0,1])
                 # 退出
                 elif event.key == pygame.K_q:
                     running = False
