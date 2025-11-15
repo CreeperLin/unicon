@@ -16,20 +16,36 @@ _registry = {}
 ori_print = print
 
 
-def source(script_path, env_keys=None):
-    if os.path.exists(script_path):
-        raise RuntimeError('script not found')
-    res = cmd('bash -c', [f'source {script_path} && env'], capture_output=True).stdout
-    env = [x.split('=') for x in res.split('\n') if len(x)]
-    if not len(env):
-        return
+def source(*scripts, env_keys=None, update_sys_path=True):
+    # LD_LIBRARY_PATH does not affect current process
+    if env_keys is None:
+        env_keys = ['LD_LIBRARY_PATH', 'PATH', 'PYTHONPATH']
+    for path in scripts:
+        if not os.path.exists(path):
+            raise RuntimeError('script not found', path)
+    source_cmd = ' && '.join([f'source {path}' for path in scripts])
+    res = cmd('bash -c', [f'{source_cmd} && env'], capture_output=True).stdout
+
+    def parse(x):
+        idx = x.find('=')
+        return x[:idx], x[idx + 1:]
+
+    env = [parse(x) for x in res.split('\n') if len(x)]
     env = {k: v for k, v in env}
-    if env_keys is not None:
-        env = [env[k] for k in env_keys]
+    env = {k: env[k] for k in env_keys if k in env}
+    print('source', env)
     os.environ.update(env)
+    pythonpath = env.get('PYTHONPATH')
+    if update_sys_path and pythonpath is not None:
+        import sys
+        for p in pythonpath.split(':'):
+            if os.path.exists(p) and p not in sys.path:
+                sys.path.append(p)
+                print('update_sys_path', p)
+    return env
 
 
-def ssh(host, command, password=None, port=None, user=None):
+def ssh(host, command, password=None, port=None, user=None, strict=False, **opts):
     import pty
 
     def read(fd):
@@ -41,11 +57,7 @@ def ssh(host, command, password=None, port=None, user=None):
                 if b'password:' in chunk.lower():
                     if password is None:
                         print('ssh password required')
-                        return None
                     os.write(fd, (password + '\n').encode())
-                elif b'Permission denied' in chunk:
-                    print('ssh auth failed')
-                    return None
                 elif chunk == b'':
                     break
             except OSError:
@@ -57,13 +69,20 @@ def ssh(host, command, password=None, port=None, user=None):
     args = ['ssh', host]
     if port is not None:
         args.extend(['-p', port])
+    if not strict:
+        args.extend('-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'.split())
+    if len(opts):
+        args.extend(sum([['-o', f'{k}={v}'] for k, v in opts.items()], []))
     args.append(command)
     if pid == 0:
         os.execvp('ssh', args)
     else:
         output = read(fd)
         os.close(fd)
-        return output.decode(errors='ignore')
+        output = output.decode(errors='ignore')
+        print('ssh output\n', output)
+        ret = 'denied' in output or 'failed' in output
+        return ret
 
 
 def printv(fmt, *args, intv=2, key=None, **kwds):
@@ -76,15 +95,15 @@ def printv(fmt, *args, intv=2, key=None, **kwds):
 
 
 def coalesce(*args):
-    for a in args:
-        if a is not None:
-            return a
+    for arg in args:
+        if arg is not None:
+            return arg
 
 
 def coalesce_get(*args):
     key = args[-1]
-    for a in args:
-        v = a.get(key)
+    for arg in args[:-1]:
+        v = arg.get(key)
         if v is not None:
             return v
 
@@ -528,10 +547,18 @@ def parse_robot_def(robot_def):
             traceback.print_exc()
     robot_def['URDF'] = urdf_path
     robot_def['MJCF'] = mjcf_path
-    robot_def['NUM_DOFS'] = len(robot_def['DOF_NAMES'])
+    dof_names = robot_def.get('DOF_NAMES')
+    dof_names_std = robot_def.get('DOF_NAMES_STD')
+    if isinstance(dof_names_std, list):
+        dof_names_std = {k: k for k in dof_names_std}
+    if dof_names is None:
+        dof_names = list(dof_names_std.keys())
+    robot_def['DOF_NAMES'] = dof_names
+    if dof_names_std is not None:
+        robot_def['DOF_NAMES_STD'] = dof_names_std
+    robot_def['NUM_DOFS'] = len(dof_names)
     print('robot_def', robot_def.keys())
     num_dofs = robot_def['NUM_DOFS']
-    dof_names = robot_def['DOF_NAMES']
     dof_attrs = [
         'QD_LIMIT',
         'TAU_LIMIT',

@@ -120,7 +120,7 @@ def get_args():
     parser.add_argument('-pi', '--pre_imports', default=[], action='append')
     parser.add_argument('-sie', '--states_infer_extras', action='store_true')
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
-    parser.add_argument('-qru', '--q_reset_update', default=None)
+    parser.add_argument('-rdu', '--robot_def_update', default=None)
     parser.add_argument('-ht', '--hand_type', default='none')
     args, _ = parser.parse_known_args()
     return args
@@ -181,6 +181,10 @@ def run(args=None):
         robot_def = {}
     else:
         robot_def = import_obj(robot_type, default_mod_prefix='unicon.defs', prefer_mod=True)
+        robot_def_update = args['robot_def_update']
+        if robot_def_update is not None:
+            robot_def_update = load_obj(robot_def_update)
+            obj_update(robot_def, robot_def_update)
         robot_def = parse_robot_def(robot_def)
 
     KP = robot_def.get('KP', None)
@@ -207,6 +211,7 @@ def run(args=None):
         hand_def = import_obj(hand_type, default_mod_prefix='unicon.defs', prefer_mod=True)
         hand_def = parse_robot_def(hand_def)
         robot_def.update({f'HAND_{k}': v for k, v in hand_def.items()})
+        robot_def['hand_def'] = hand_def
     HAND_NUM_DOFS = robot_def.get('HAND_NUM_DOFS', 0)
 
     dt = args['dt']
@@ -417,6 +422,9 @@ def run(args=None):
         'states_xd': states_get('xd'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
+    if HAND_NUM_DOFS:
+        states_hand_q = states_get('hand_q')
+        states_hand_q_ctrl = states_get('hand_q_ctrl')
 
     states_infer_extras = {}
     inf_extras = args['states_infer_extras']
@@ -482,13 +490,6 @@ def run(args=None):
     print('dof_src_map', dof_src_map)
     print('DOF_NAMES_extra', len(DOF_NAMES_extra), DOF_NAMES_extra)
 
-    q_reset_update = args['q_reset_update']
-    if q_reset_update is not None:
-        q_reset_update = load_obj(q_reset_update)
-        if isinstance(q_reset_update, dict) and isinstance(list(q_reset_update.keys())[0], str):
-            q_reset_update = {DOF_NAMES.index(k): v for k, v in q_reset_update.items()}
-        obj_update(q_reset, q_reset_update)
-
     q_boot = q_reset if Q_BOOT is None else Q_BOOT
 
     ctx['Q_RESET'] = q_reset
@@ -553,9 +554,8 @@ def run(args=None):
 
     num_steps = args['num_steps']
     seq = []
-    mode = args['mode'] or []
-    print('mode', mode)
-    all_modes = [
+    arg_mode = args['mode'] or []
+    default_modes = [
         'noop',
         'const',
         'sample',
@@ -565,14 +565,13 @@ def run(args=None):
         'play',
         'follow',
     ]
-    modes = {k: False for k in all_modes}
-    for m in mode:
-        modes = {k: False for k in all_modes}
-        m = {k[0]: k for k in modes.keys()}[m]
-        modes[m] = True
-        if modes['noop']:
+    modes = []
+    for m in arg_mode:
+        m = {k[0]: k for k in default_modes}.get(m, m)
+        modes.append(m)
+        if m == 'noop':
             cb = cb_noop()
-        elif modes['const']:
+        elif m == 'const':
             q_ctrl_const = np.zeros(NUM_DOFS)
             q_ctrl_const[:] = q_reset
 
@@ -580,7 +579,7 @@ def run(args=None):
                 states_q_ctrl[:] = q_ctrl_const
 
             cb = cb_const
-        elif modes['sample']:
+        elif m == 'sample':
             num_steps = 1024 if num_steps == 0 else num_steps
             states_q_target[:] = q_reset
             smpl_dof_map = args['sample_dofs']
@@ -670,14 +669,14 @@ def run(args=None):
                     inds=smpl_dof_map,
                     loop=replay_loop,
                 )
-        elif modes['teleop']:
+        elif m == 'teleop':
             from unicon.teleop import cb_teleop_q
             cb = cb_teleop_q(
                 **states_ctrls,
                 states_q=states_q,
                 states_input=states_input,
             )
-        elif modes['replay']:
+        elif m == 'replay':
             rep_dof_map = dof_map
             replay_states_key = args['replay_states_key']
             states_dest = states_get(replay_states_key)
@@ -733,7 +732,7 @@ def run(args=None):
                 repeats=repeats,
                 loop=replay_loop,
             )
-        elif modes['infer']:
+        elif m == 'infer':
             print('infer_type', infer_type)
             cb_infer_cls = import_obj(infer_type, default_name_prefix='cb_infer', default_mod_prefix='unicon.infer')
 
@@ -795,7 +794,7 @@ def run(args=None):
                 print('q_ctrl', pp_arr(states_q_ctrl))
             reset_fn()
             cb = cb_infer
-        elif modes['play']:
+        elif m == 'play':
             from unicon.general import cb_replay
             cb = cb_replay(
                 **states_ctrls,
@@ -806,12 +805,30 @@ def run(args=None):
                 inds=dof_map,
                 use_tqdm=True,
             )
-        elif modes['follow']:
+        elif m == 'follow':
 
             def cb_follow():
                 states_q_ctrl[:] = states_q
 
             cb = cb_follow
+        elif m == 'hand_sample':
+            hand_pt = 0
+            hand_q_reset = hand_def.get('Q_RESET')
+            HAND_DOF_NAMES = hand_def.get('DOF_NAMES')
+
+            def cb_hand_sample():
+                nonlocal hand_pt
+                hand_pt += 1
+                idx = (hand_pt // 500) % len(states_hand_q_ctrl)
+                states_hand_q_ctrl[:] = hand_q_reset
+                states_hand_q_ctrl[idx] = 3.14 * (np.sin(hand_pt * 0.02) + 1) * 0.5
+                print('hand_pt', hand_pt, idx, states_hand_q_ctrl[idx], states_hand_q[idx])
+                # print('states_hand_q_ctrl', states_hand_q_ctrl)
+                # print('states_hand_q', states_hand_q)
+
+            cb = cb_hand_sample
+
+        print('mode', m, cb)
         seq.append(cb)
 
     if dof_states_padded:
@@ -982,9 +999,9 @@ def run(args=None):
     tau_limit_r = args['tau_limit_ratio']
     print('kp_r', kp_r)
     print('kd_r', kd_r)
-    kp = KP if KP is None else KP.copy()
-    kd = KD if KD is None else KD.copy()
-    tau_limit = TAU_LIMIT if TAU_LIMIT is None else TAU_LIMIT.copy()
+    kp = np.zeros(NUM_DOFS) if KP is None else KP.copy()
+    kd = np.zeros(NUM_DOFS) if KD is None else KD.copy()
+    tau_limit = np.zeros(NUM_DOFS) if TAU_LIMIT is None else TAU_LIMIT.copy()
     use_env_pd = args['use_env_pd']
     if env_cfg is not None and use_env_pd:
         nxs = []
@@ -1086,9 +1103,8 @@ def run(args=None):
         def cb_qtf_send():
             states_q_ctrl_sys[:] = states_q_ctrl * qtf_w + qtf_b
 
-    systems = {k: False for k in ['sims', 'none']}
     system_type = args['system']
-    system_type = {k[0]: k for k in systems.keys()}.get(system_type, system_type)
+    system_type = {k[0]: k for k in ['sims', 'none']}.get(system_type, system_type)
     print('system', system_type)
 
     sys_kwds = {
@@ -1154,7 +1170,7 @@ def run(args=None):
         sim_dof_names = DOF_NAMES
         system_config['realtime'] = False
         fix_base_link = system_config.get('fix_base_link', False) or args['sims_fixed_base']
-        fix_base_link = fix_base_link or modes['sample']
+        fix_base_link = fix_base_link or 'sample' in modes
         system_config['fix_base_link'] = fix_base_link
         sims_def_dof_pos = system_config.get('default_dof_pos', {})
         system_config['default_dof_pos'] = sims_def_dof_pos
@@ -1401,8 +1417,19 @@ def run(args=None):
             clip_qd_limit=clip_q_ctrl_qd,
             clip_tau_limit=clip_q_ctrl_tau,
         )
-
         seq.append(cb)
+
+        if HAND_NUM_DOFS:
+            cb = cb_ctrl_q_clip(
+                states_q_ctrl=states_hand_q_ctrl,
+                states_q=states_hand_q,
+                clip_q_limit=True,
+                clip_qd_limit=False,
+                clip_tau_limit=False,
+                q_ctrl_min=hand_def['Q_CTRL_MIN'],
+                q_ctrl_max=hand_def['Q_CTRL_MAX'],
+            )
+            seq.append(cb)
 
     clear_input = True
     if clear_input and states_input is not None:
@@ -1577,6 +1604,12 @@ def run(args=None):
     states_quat = states_get('quat')
     if states_quat is not None:
         states_quat[:] = [0, 0, 0, 1.]
+
+    if HAND_NUM_DOFS:
+        hand_q_ctrl_init = hand_def.get('Q_RESET', hand_def.get('Q_CTRL_MAX'))
+        print('hand_q_ctrl_init', hand_q_ctrl_init)
+        if hand_q_ctrl_init is not None:
+            states_hand_q_ctrl[:] = hand_q_ctrl_init
 
     loop_kwds = {}
     loop_sleep_block = args['loop_sleep_block']

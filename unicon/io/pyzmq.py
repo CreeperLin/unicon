@@ -78,7 +78,7 @@ def cb_recv_pyzmq(
     port=1337,
     host='localhost',
     addr=None,
-    recv_modes='+',
+    recv_modes=None,
     repeats=3,
     topic=None,
     recv_key_map=None,
@@ -171,6 +171,10 @@ def cb_recv_pyzmq(
 
     return cb()
 
+
+from functools import partial
+
+cb_recv_pyzmq1 = partial(cb_recv_pyzmq, recv_modes='+')
 
 if __name__ == '__main__':
     import time

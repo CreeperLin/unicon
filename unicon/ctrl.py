@@ -30,10 +30,11 @@ def cb_ctrl_q_clip(
     kp=None,
     kd=None,
     qd_limit_coef=2.5,
+    robot_def=None,
 ):
     from unicon.utils import get_ctx, coalesce_get, coalesce
     ctx = get_ctx()
-    robot_def = ctx['robot_def']
+    robot_def = ctx['robot_def'] if robot_def is None else robot_def
 
     attrs = [
         'Q_CTRL_MIN',

@@ -14,9 +14,14 @@ def cb_input_js(
     remap_trigger=True,
     wait_no_dev=False,
     try_chmod=True,
+    ecodes_abs_updates=None,
+    ecodes_btn_updates=None,
+    input_key_updates=None,
 ):
     from unicon.utils import cmd
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    input_key_updates = {} if input_key_updates is None else input_key_updates
+    input_keys = [input_key_updates.get(k, k) for k in input_keys]
     # Released by rdb under the Unlicense (unlicense.org)
     # Based on information from:
     # https://www.kernel.org/doc/Documentation/input/joystick-api.txt
@@ -24,12 +29,14 @@ def cb_input_js(
     import struct
     import array
     from fcntl import ioctl
+    ecodes = None
     try:
         import evdev
-        button_names = evdev.ecodes.BTN
-        axis_names = evdev.ecodes.ABS
+        import evdev.ecodes as ecodes
+        ecodes_btn = evdev.ecodes.BTN
+        ecodes_abs = evdev.ecodes.ABS
     except ImportError:
-        axis_names = {
+        ecodes_abs = {
             10: 'ABS_BRAKE',
             64: 'ABS_CNT',
             25: 'ABS_DISTANCE',
@@ -76,7 +83,7 @@ def cb_input_js(
             1: 'ABS_Y',
             2: 'ABS_Z'
         }
-        button_names = {
+        ecodes_btn = {
             256: ['BTN_0', 'BTN_MISC'],
             257: 'BTN_1',
             258: 'BTN_2',
@@ -151,16 +158,23 @@ def cb_input_js(
         z2r = (mode) & 1 > 0
         z2t = (mode >> 1) & 1 > 0
     if z2r:
-        axis_names.update({
+        ecodes_abs.update({
             2: 'ABS_RX',
             5: 'ABS_RY',
         })
     elif z2t:
-        axis_names.update({
+        ecodes_abs.update({
             2: 'ABS_BRAKE',
             5: 'ABS_GAS',
         })
     print('cb_input_js', 'z2t', z2t, 'z2r', z2r)
+    print('input_keys', input_keys)
+
+    for codes, updates in [[ecodes_abs, ecodes_abs_updates], [ecodes_btn, ecodes_btn_updates]]:
+        if updates is None:
+            continue
+        updates = {(getattr(ecodes, k) if isinstance(k, str) else k): v for k, v in updates.items()}
+        codes.update(updates)
 
     states = {}
     axis_map = []
@@ -195,14 +209,14 @@ def cb_input_js(
         buf = array.array('B', [0] * 0x40)
         ioctl(jsdev, 0x80406a32, buf)  # JSIOCGAXMAP
         for axis in buf[:num_axes]:
-            axis_name = axis_names.get(axis, 'unknown(0x%02x)' % axis)
+            axis_name = ecodes_abs.get(axis, 'unknown(0x%02x)' % axis)
             axis_map.append(axis_name)
             states[axis_name] = 0.0
         # Get the button map.
         buf = array.array('H', [0] * 200)
         ioctl(jsdev, 0x80406a34, buf)  # JSIOCGBTNMAP
         for btn in buf[:num_buttons]:
-            btn_names = button_names.get(btn, 'unknown(0x%03x)' % btn)
+            btn_names = ecodes_btn.get(btn, 'unknown(0x%03x)' % btn)
             btn_names = [btn_names] if isinstance(btn_names, str) else btn_names
             button_map.append(btn_names)
             for n in btn_names:
@@ -292,7 +306,7 @@ def cb_input_js(
             elif verbose:
                 print('unknown js ev', typ)
             if verbose:
-                print('states_input', states_input.tolist())
+                print('states', states)
 
     return cb
 

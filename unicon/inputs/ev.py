@@ -11,6 +11,10 @@ def cb_input_ev(
     z2r=False,
     z2t=True,
     use_nesw=True,
+    chmod=True,
+    ecodes_abs_updates=None,
+    ecodes_btn_updates=None,
+    input_key_updates=None,
 ):
     from unicon.utils import cmd
     import os
@@ -28,6 +32,8 @@ def cb_input_ev(
         for dev in os.listdir(dev_path):
             if dev.startswith('event'):
                 path = os.path.join(dev_path, dev)
+                if chmod and cmd('test -r', [path]):
+                    cmd('sudo chmod +r', [path])
                 try:
                     with open(path, 'rb') as f:
                         # EVIOCGNAME ioctl to get device name
@@ -50,40 +56,54 @@ def cb_input_ev(
         device = os.path.join(dev_root, sorted(devs, key=lambda x: int(x[5:]))[-1])
 
     import evdev
-    ecodes_kb = {}
-    ecodes_kb.update(evdev.ecodes.BTN)
-    ecodes_kb.update(evdev.ecodes.KEY)
+    import evdev.ecodes as ecodes
+    ecodes_btn = {}
+    ecodes_btn.update(ecodes.BTN)
+    ecodes_btn.update(ecodes.KEY)
 
+    input_key_updates = {} if input_key_updates is None else input_key_updates
     if use_nesw:
-        abxy2nesw = {
+        input_key_updates.update({
             'BTN_A': 'BTN_SOUTH',
             'BTN_B': 'BTN_EAST',
             'BTN_X': 'BTN_WEST',
             'BTN_Y': 'BTN_NORTH',
-        }
-        input_keys = [abxy2nesw.get(k, k) for k in input_keys]
+        })
+    input_keys = [input_key_updates.get(k, k) for k in input_keys]
 
-    ecodes_abs = evdev.ecodes.ABS.copy()
+    ecodes_abs = ecodes.ABS.copy()
     if z2r:
-        ecodes_abs[evdev.ecodes.ABS_Z] = ['ABS_Z', 'ABS_RX']
-        ecodes_abs[evdev.ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_RY']
+        ecodes_abs[ecodes.ABS_Z] = ['ABS_Z', 'ABS_RX']
+        ecodes_abs[ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_RY']
     elif z2t:
-        ecodes_abs[evdev.ecodes.ABS_Z] = ['ABS_Z', 'ABS_BRAKE']
-        ecodes_abs[evdev.ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_GAS']
+        ecodes_abs[ecodes.ABS_Z] = ['ABS_Z', 'ABS_BRAKE']
+        ecodes_abs[ecodes.ABS_RZ] = ['ABS_RZ', 'ABS_GAS']
+
+    for codes, updates in [[ecodes_abs, ecodes_abs_updates], [ecodes_btn, ecodes_btn_updates]]:
+        if updates is None:
+            continue
+        updates = {(getattr(ecodes, k) if isinstance(k, str) else k): v for k, v in updates.items()}
+        codes.update(updates)
+
+    ecodes_btn = {k: ([v] if isinstance(v, str) else v) for k, v in ecodes_btn.items()}
+    ecodes_abs = {k: ([v] if isinstance(v, str) else v) for k, v in ecodes_abs.items()}
 
     code_maps = {
-        evdev.ecodes.EV_KEY: ecodes_kb,
-        evdev.ecodes.EV_ABS: ecodes_abs,
-        evdev.ecodes.EV_REL: evdev.ecodes.REL,
-        evdev.ecodes.EV_MSC: evdev.ecodes.MSC,
+        ecodes.EV_KEY: ecodes_btn,
+        ecodes.EV_ABS: ecodes_abs,
+        ecodes.EV_REL: ecodes.REL,
+        ecodes.EV_MSC: ecodes.MSC,
     }
 
     print('cb_input_ev', use_nesw, z2r)
-    print('ecodes_kb', [ecodes_kb.get(getattr(evdev.ecodes, k)) for k in input_keys if k.startswith('BTN')])
-    print('ecodes_abs', [ecodes_abs.get(getattr(evdev.ecodes, k)) for k in input_keys if k.startswith('ABS')])
+    print('input_keys', input_keys)
+    print('ecodes_btn', [ecodes_btn.get(getattr(ecodes, k)) for k in input_keys if k.startswith('BTN')])
+    print('ecodes_abs', [ecodes_abs.get(getattr(ecodes, k)) for k in input_keys if k.startswith('ABS')])
 
     print('opening event device', device)
 
+    if chmod and cmd('test -r', [device]):
+        cmd('sudo chmod +r', [device])
     if cmd('test -r', [device]):
         raise RuntimeError(f'no read permission on {device}')
 
@@ -132,15 +152,14 @@ def cb_input_ev(
             codes = code_maps.get(etype)
             if codes is None:
                 if verbose:
-                    print('ignored event', evdev.ecodes.EV[etype], ecode, evalue)
+                    print('ignored event', ecodes.EV[etype], ecode, evalue)
                     continue
             else:
                 cds = codes[ecode]
-                cds = [cds] if isinstance(cds, str) else cds
                 for c in cds:
                     input_states[c] = evalue
                 if verbose:
-                    print(evdev.ecodes.EV[etype], cds, evalue)
+                    print(ecodes.EV[etype], cds, evalue)
             # print('input_states', input_states)
             for i, k in enumerate(input_keys):
                 v = input_states.get(k)
@@ -159,8 +178,8 @@ def cb_input_ev(
                 if remap_trigger and k in ['ABS_BRAKE', 'ABS_GAS'] and k in input_states:
                     v = (v + 1) * 0.5
                 states[k] = v
-        if verbose:
-            print('states_input', states_input.tolist())
+        # if verbose:
+        # print('states_input', states_input.tolist())
 
     return cb
 
