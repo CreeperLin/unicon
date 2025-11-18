@@ -4,52 +4,51 @@ REF_POINT_L = np.array([0.2443, 0.1517, -0.0455], dtype=float)  # waist to left 
 REF_POINT_M = np.array([0.2443, 0, -0.0455], dtype=float)  # waist to mid-point of two hands
 REF_POINT_R = np.array([0.2443, -0.1517, -0.0455], dtype=float)  # waist to right hand
 
-def planner_3dim(states_left_target, states_right_target, old_commands, old_reach_mask):
+# def planner_3dim(states_left_target, states_right_target, states_reach_mask, old_commands, old_standing_stage):
 
-    if np.sum(states_left_target) < 0.001 or np.sum(states_right_target) < 0.001:
-        commands = np.array([0.0, 0.0, 0.0])
-        reach_mask = [0.0]
-    else:
-        ref_point = REF_POINT_M  # waist to mid-point of two hands
-        tgt_point = (states_left_target[:3] + states_right_target[:3]) / 2
+#     if np.sum(states_left_target) < 0.001 or np.sum(states_right_target) < 0.001:
+#         commands = np.array([0.0, 0.0, 0.0])
+#         reach_mask = [0.0]
+#     else:
+#         ref_point = REF_POINT_M  # waist to mid-point of two hands
+#         tgt_point = (states_left_target[:3] + states_right_target[:3]) / 2
 
-        commands = _calculate_commands_3dim(ref_point, tgt_point)
-        # import ipdb; ipdb.set_trace()
-        commands = _smooth_commands(old_commands, commands)
-        reach_mask = _calculate_reach_mask(commands)
-        reach_mask = _smooth_reach_mask(old_reach_mask, reach_mask)
-    # print("planner_3dim: old_commands", old_commands, "old_reach_mask", old_reach_mask)
-    # print("planner_3dim: commands", commands, "reach_mask", reach_mask, "states_left_target", states_left_target,)
+#         commands = _calculate_commands_3dim(ref_point, tgt_point)
+#         # import ipdb; ipdb.set_trace()
+#         commands = _smooth_commands(old_commands, commands)
+#         reach_mask = _calculate_reach_mask(commands)
+#     # print("planner_3dim: old_commands", old_commands, "old_reach_mask", old_reach_mask)
+#     # print("planner_3dim: commands", commands, "reach_mask", reach_mask, "states_left_target", states_left_target,)
 
-    return {
-        'commands': commands,
-        'reach_mask': reach_mask,
-    }
+#     return {
+#         'commands': commands,
+#         'reach_mask': reach_mask,
+#     }
 
-def planner_dummy(states_left_target, states_right_target, old_commands, old_reach_mask):
+# def planner_dummy(states_left_target, states_right_target, states_reach_mask, old_commands, old_standing_stage):
 
-    if np.sum(states_left_target) < 0.001 or np.sum(states_right_target) < 0.001:
-        commands = np.array([0.0, 0.0, 0.0])
-        reach_mask = [0.0, 0.0]
+#     if np.sum(states_left_target) < 0.001 or np.sum(states_right_target) < 0.001:
+#         commands = np.array([0.0, 0.0, 0.0])
+#         reach_mask = [0.0, 0.0]
+#         standing_stage = [0.0, 0.0]
+#     else:
+#         commands = np.array([0.0, 0.0, 0.0])
+#         reach_mask = [1.0, 1.0]
+#         standing_stage = [1.0, 1.0]
+
+#     commands = _smooth_commands(old_commands, commands)
+#     # reach_mask = _calculate_reach_mask(commands)
+#     standing_stage = _smooth_reach_mask(old_standing_stage, standing_stage)
+
+#     return {
+#         'commands': commands,
+#         'standing_stage': standing_stage,
+#     }
+
+
+def planner_fix(states_left_target, states_right_target, states_reach_mask, old_commands, old_standing_stage):
     
-    else:
-        commands = np.array([0.0, 0.0, 0.0])
-        reach_mask = [1.0, 1.0]
-
-    commands = _smooth_commands(old_commands, commands)
-    # reach_mask = _calculate_reach_mask(commands)
-    reach_mask = _smooth_reach_mask(old_reach_mask, reach_mask)
-
-    return {
-        'commands': commands,
-        'reach_mask': reach_mask,
-    }
-
-def planner_fix(states_left_target, states_right_target, old_commands, old_reach_mask):
-    
-    reach_mask = [0.0, 0.0]
-    reach_mask[0] = 0.0 if np.sum(states_left_target) < 0.001 else 1.0
-    reach_mask[1] = 0.0 if np.sum(states_right_target) < 0.001 else 1.0
+    reach_mask = [states_reach_mask[0], states_reach_mask[1]]
 
     if reach_mask[0] == 0.0 and reach_mask[1] == 0.0:
         commands = np.array([0.0, 0.0, 0.0])
@@ -68,11 +67,11 @@ def planner_fix(states_left_target, states_right_target, old_commands, old_reach
 
     commands = _smooth_commands(old_commands, commands)
     # reach_mask = _calculate_reach_mask(commands)
-    reach_mask = _smooth_reach_mask(old_reach_mask, reach_mask)
+    standing_stage = _smooth_reach_mask(old_standing_stage, reach_mask)
 
     return {
         'commands': commands,
-        'reach_mask': reach_mask,
+        'standing_stage': standing_stage,
     }
 
 
@@ -153,14 +152,17 @@ def _smooth_commands(old_commands, new_commands, scale=3):
 
 def _smooth_reach_mask(old_mask, new_mask, scale=5):
     step = scale * dt
-    old_val = float(old_mask[0]) if isinstance(old_mask, (list, np.ndarray)) else float(old_mask)
-    new_val = float(new_mask[0]) if isinstance(new_mask, (list, np.ndarray)) else float(new_mask)
-    if (new_val - old_val) < -step:
-        return [old_val - step]
-    elif (new_val - old_val) > step:
-        return [old_val + step]
-    else:
-        return [new_val]
+    smoothed_mask = np.zeros(2)
+    for i in range(len(old_mask)):
+        old_val = old_mask[i]
+        new_val = new_mask[i]
+        if (new_val - old_val) < -step:
+            smoothed_mask[i] = old_val - step
+        elif (new_val - old_val) > step:
+            smoothed_mask[i] = old_val + step
+        else:
+            smoothed_mask[i] = new_val
+    return smoothed_mask
 
 
 kp_lin_x = 1.0
@@ -173,4 +175,4 @@ L_threshold = 0.05
 yaw_threshold_when_close = np.pi / 4
 standing_lin_thrd = 0.1
 standing_ang_thrd = np.pi / 2
-dt = 0.02
+dt = 0.02   

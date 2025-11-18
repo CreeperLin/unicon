@@ -546,6 +546,7 @@ def cb_cmd_plan(
     states_left_target,
     states_right_target,
     states_reach_mask,
+    states_standing_stage,
     planner_fn,
     input_keys=None,
     cmd_list=None,
@@ -557,12 +558,13 @@ def cb_cmd_plan(
         planner_info = planner_fn(
             states_left_target,
             states_right_target,
+            states_reach_mask,
             states_cmd[:3],
-            states_reach_mask
+            states_standing_stage,
         )
         states_cmd[:3] = planner_info['commands']
-        states_cmd[3:] = [1.2, 0.5, 0.5, 0, 0, 0]
-        states_reach_mask[:] = planner_info['reach_mask']
+        states_cmd[3:] = [1.2, 0.5, 0.5, 0., 0, 0]
+        states_standing_stage[:] = planner_info['standing_stage']
     
     return cb
 

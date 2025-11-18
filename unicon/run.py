@@ -141,7 +141,6 @@ def run(args=None):
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
         import_obj, parse_robot_def, load_obj, match_keys, obj_update, get_ctx
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
-    from unicon.sensors.planners import planner_3dim, planner_dummy
 
     if args['sudo']:
         os.system('sudo -v')
@@ -472,6 +471,7 @@ def run(args=None):
         'states_left_target_real_time': states_get('left_target_real_time'),
         'states_right_target_real_time': states_get('right_target_real_time'),
         'states_reach_mask': states_get('reach_mask'),
+        'states_standing_stage': states_get('standing_stage'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
 
@@ -839,8 +839,6 @@ def run(args=None):
             infer_kwds = load_obj(args['infer_kwargs'] or '') or {}
             if policy_type == 'double':
                 infer_kwds['double_policy'] = (args['infer_model_path2'] is not None)
-            # if robot_type == 'g1reach':
-            #     infer_kwds['planner_type'] = '3dim'
             infer_states = {}
             infer_states.update(states_props_inf)
             infer_states.update(states_infer_extras)

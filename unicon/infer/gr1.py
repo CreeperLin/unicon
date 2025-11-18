@@ -36,9 +36,8 @@ def cb_infer_gr1(
     states_ang_vel2=None,
     states_left_target=None,
     states_right_target=None,
-    states_reach_mask=None,
+    states_standing_stage=None,
     double_policy=False,
-    # planner_type='',
 ):
     from unicon.utils import get_ctx, import_obj
     robot_def = get_ctx()['robot_def']
@@ -53,6 +52,7 @@ def cb_infer_gr1(
     use_rpy = env_cfg.get('use_rpy', True) if use_rpy is None else use_rpy
     flatten_hist = env_cfg['env'].get('flatten_hist', flatten_hist)
     num_actions = env_cfg['env']['num_actions']
+    imu2_before_cmd = env_cfg['env'].get('imu2_before_cmd', False)
     print('use_rpy', use_rpy)
     print('gravity_from_rpy', gravity_from_rpy)
     print('flatten_hist', flatten_hist)
@@ -338,8 +338,14 @@ def cb_infer_gr1(
             (dof_pos - default_dof_pos) * scales_dof_pos,
             dof_vel * scales_dof_vel,
             actions,
-            states_cmd[:3] * cmds_scale[:3],
         ]
+
+        if imu2_before_cmd:
+            if base_ang_vel2 is not None:
+                obs_list.append(base_ang_vel2 * scales_ang_vel)
+                obs_list.extend(rot_info2)
+
+        obs_list.append(states_cmd[:3] * cmds_scale[:3])
         if observe_gait_commands:
             # nonlocal gait_indices
             frequencies = cmd_frequency
@@ -420,9 +426,10 @@ def cb_infer_gr1(
             # print('clock_inputs', foot_phases, clock_inputs)
             obs_list.extend(clock_inputs)
 
-        if base_ang_vel2 is not None:
-            obs_list.append(base_ang_vel2 * scales_ang_vel)
-            obs_list.extend(rot_info2)
+        if not imu2_before_cmd:
+            if base_ang_vel2 is not None:
+                obs_list.append(base_ang_vel2 * scales_ang_vel)
+                obs_list.extend(rot_info2)
 
         # print(commands, clock_inputs, enable_gait_modes)
         # print(base_ang_vel, rot_info, base_ang_vel2, rot_info2)
@@ -430,9 +437,11 @@ def cb_infer_gr1(
         if states_left_target is not None:
             obs_list.append(states_left_target)
             obs_list.append(states_right_target)
-            # print('states_left_target', states_left_target)
-            # print('states_right_target', states_right_target)
-            obs_list.append(states_reach_mask)
+            print('states_left_target', states_left_target)
+            print('states_right_target', states_right_target)
+            # obs_list.append(states_reach_mask)
+            obs_list.append(states_standing_stage)
+            print('states_standing_stage', states_standing_stage)
 
         obs = np.concatenate(obs_list)
         # print("One step observation", obs.shape)
