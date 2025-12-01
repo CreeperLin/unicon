@@ -22,7 +22,7 @@ def get_args():
     parser.add_argument('-iks', '--input_keys', default=None)
     parser.add_argument('-d', '--dry', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('-nowrp', '--no_wrap', action='store_true')
+    parser.add_argument('-nwp', '--no_wrap', action='store_true')
     parser.add_argument('-w', '--wait', type=float, default=0)
     parser.add_argument('-kp', '--kp', default=None)
     parser.add_argument('-kd', '--kd', default=None)
@@ -50,7 +50,7 @@ def get_args():
     parser.add_argument('-qcm', '--q_ctrl_mask', default=None)
     parser.add_argument('-imp', '--infer_model_path', default=None)
     parser.add_argument('-ikwds', '--infer_kwargs', default=None)
-    parser.add_argument('-wi', '--wait_input', action='store_true')
+    parser.add_argument('-nwi', '--no_wait_input', action='store_true')
     parser.add_argument('-ecp', '--env_cfg_path', default=None)
     parser.add_argument('-eco', '--env_cfg_override', default=None)
     parser.add_argument('-sst', '--sims_type', default='sims.systems.ig')
@@ -971,7 +971,7 @@ def run(args=None):
 
     input_dev_type = args['input_dev_type']
     input_dev_type = None if input_dev_type == 'none' else input_dev_type
-    wait_input = args['wait_input']
+    wait_input = not args['no_wait_input']
     if wait_input:
         # key = 'BTN_TL'
         start_keys = ['BTN_SELECT', 'BTN_START']

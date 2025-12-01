@@ -1,109 +1,3 @@
-import numpy as np
-
-rad2deg = 180. / np.pi
-deg2rad = np.pi / 180.
-
-_r = None
-_sdk = None
-
-
-def get_consys(servo_on=False, config=None):
-    import time
-    import threading
-
-    def consys_wd(ctx):
-        import time
-        time.sleep(20)
-        if not ctx.get('inited', False):
-            print('init timeout')
-            from unicon.utils import force_quit
-            force_quit()
-
-    ctx = {}
-    wd = threading.Thread(target=consys_wd, args=(ctx,), daemon=True)
-    wd.start()
-    t0 = time.time()
-    import sys
-    # print(sys.argv)
-    sys.argv = sys.argv[:1]
-    if config is not None:
-        sys.argv.extend(['--config', config])
-    mod_path = 'fourier_grx.sdk.developer'
-    consys_cls = 'ControlSystem'
-    sdk = __import__(mod_path, fromlist=[''])
-    mod_path = 'fourier_grx.sdk.user'
-    user_sdk = __import__(mod_path, fromlist=[''])
-    ControlSystem = getattr(sdk, consys_cls)
-    consys = ControlSystem()
-    consys.developer_mode(servo_on=servo_on)
-    print(consys.get_info())
-    ctx['inited'] = True
-    print('consys init', time.time() - t0)
-    # mod = 'fourier_grx.sdk.grmini1.developer'
-    sdk.TaskCommand = user_sdk.TaskCommand
-    global _sdk
-    _sdk = sdk
-    global _r
-    _r = consys.robot_interface
-    return consys
-
-
-def get_robot_interface():
-    return _r
-
-
-def servo_off(consys):
-    # r = get_robot_interface()
-    # ips = r.actuator_group.ips
-    # r.actuator_group.download_command_servo_off(ips)
-    consys.robot_control_set_task_command(task_command=_sdk.TaskCommand.TASK_SERVO_OFF)
-    __import__('time').sleep(1)
-
-
-def servo_on(consys, control_mode=None, q_send=None):
-    r = get_robot_interface()
-    ips = r.actuator_group.ips
-    # print(len(ips), num_dofs)
-    num_dofs = len(ips)
-    if control_mode == 4:
-        # JointControlMode.POSITION
-        params = {
-            'control_mode': [4] * num_dofs,
-            'kp': [0.] * num_dofs,
-            'kd': [0.] * num_dofs,
-            'position': q_send,
-        }
-        consys.robot_control_loop_set_control(params)
-    if control_mode == 6:
-        # JointControlMode.PD
-        params = {
-            'control_mode': [6] * num_dofs,
-            'pd_control_kp': [0] * num_dofs,
-            'pd_control_kd': [0] * num_dofs,
-            'position': q_send,
-        }
-        consys.robot_control_loop_set_control(params)
-    # r.actuator_group.download_command_servo_off(ips)
-    # import time; time.sleep(1)
-    servo_off(consys)
-    # r.actuator_group.download_command_servo_on(ips)
-    consys.robot_control_set_task_command(task_command=_sdk.TaskCommand.TASK_SERVO_ON)
-    __import__('time').sleep(1)
-
-
-def ag_set_control_modes(ag, modes):
-    ag.download_command_control_mode(ag.ips, modes)
-
-
-def ag_cmd_q_ctrl(ag, q_ctrl):
-    ag.download_command_position_control(ag.ips, q_ctrl)
-
-
-def set_home(consys):
-    from robot_rcs.robot.fi_robot_base_task import RobotBaseTask
-    consys.robot_control_set_task_command(task_command=RobotBaseTask.TASK_SET_HOME)
-    print('home set')
-
 
 _default_mmc = [100] * 15
 _default_mma = [60000] * 15
@@ -126,25 +20,82 @@ def cb_n1_recv_send_close(
     kp=None,
     kd=None,
     # radian
-    dtype=np.float64,
     enable_motors=True,
     servo_on_all=False,
-    # set_control_params=True,
     set_control_params=False,
     motor_max_current=None,
     motor_max_acceleration=None,
     motor_max_speed=None,
     config=None,
-    # use_r=True,
     use_r=False,
-    control_mode=4,
-    # control_mode=6,
-    # reboot=True,
+    # control_mode=4,
+    control_mode=6,
     reboot=False,
     use_fi_fsa=True,
-    # init_servo_on=False,
     init_servo_on=True,
+    use_deg2rad=None,
 ):
+    import sys
+    import time
+    import numpy as np
+    from unicon.utils import watchdog
+
+    rad2deg = 180. / np.pi
+    deg2rad = np.pi / 180.
+
+    def get_consys(servo_on=False, config=None):
+        with watchdog(20):
+            t0 = time.time()
+            # print(sys.argv)
+            sys.argv = sys.argv[:1]
+            if config is not None:
+                sys.argv.extend(['--config', config])
+            mod_path = 'fourier_grx.sdk.developer'
+            consys_cls = 'ControlSystem'
+            sdk = __import__(mod_path, fromlist=[''])
+            mod_path = 'fourier_grx.sdk.user'
+            user_sdk = __import__(mod_path, fromlist=[''])
+            ControlSystem = getattr(sdk, consys_cls)
+            consys = ControlSystem()
+            consys.developer_mode(servo_on=servo_on)
+            print(consys.get_info())
+            print('consys init', time.time() - t0)
+        sdk.TaskCommand = user_sdk.TaskCommand
+        return consys, sdk
+
+
+    def servo_off(consys):
+        consys.robot_control_set_task_command(task_command=_sdk.TaskCommand.TASK_SERVO_OFF)
+        time.sleep(1)
+
+
+    def servo_on(consys, control_mode=None, q_send=None):
+        ips = r.actuator_group.ips
+        # print(len(ips), num_dofs)
+        num_dofs = len(ips)
+        if control_mode == 4:
+            # JointControlMode.POSITION
+            params = {
+                'control_mode': [4] * num_dofs,
+                'kp': [0.] * num_dofs,
+                'kd': [0.] * num_dofs,
+                'position': q_send,
+            }
+            consys.robot_control_loop_set_control(params)
+        if control_mode == 6:
+            # JointControlMode.PD
+            params = {
+                'control_mode': [6] * num_dofs,
+                'pd_control_kp': [0] * num_dofs,
+                'pd_control_kd': [0] * num_dofs,
+                'position': q_send,
+            }
+            consys.robot_control_loop_set_control(params)
+        servo_off(consys)
+        consys.robot_control_set_task_command(task_command=_sdk.TaskCommand.TASK_SERVO_ON)
+        time.sleep(1)
+
+
     from unicon.utils import get_ctx
     robot_def = get_ctx()['robot_def']
     fi_fsa = None
@@ -183,11 +134,26 @@ def cb_n1_recv_send_close(
     num_dofs = len(states_q_ctrl)
     if config is None:
         import os
-        config = os.path.join(os.environ['HOME'], 'fourier-grx/config/grmini1/config_GRMini1_T2_debug.yaml')
+        default_config_path = os.path.join(
+            os.environ['HOME'], 'fourier-grx/config/grmini1/config_GRMini1_T2_debug.yaml'
+        )
+        config = default_config_path
     if consys is None:
-        consys = get_consys(servo_on=init_servo_on, config=config)
+        consys, _sdk = get_consys(servo_on=init_servo_on, config=config)
+    r = consys.robot_interface
+    import fourier_grx
+    grx_version = fourier_grx.__version__
+    print('grx_version', grx_version)
 
-    r = get_robot_interface()
+    if use_deg2rad is None:
+        use_deg2rad = int(grx_version.split('.')[0]) < 4
+    deg2rad_st = None
+    rad2deg_st = None
+    if use_deg2rad:
+        deg2rad_st = deg2rad
+        rad2deg_st = rad2deg
+    print('use_deg2rad', use_deg2rad)
+
     fsa_ips = r.actuator_group.ips
 
     if enable_motors:
@@ -237,9 +203,9 @@ def cb_n1_recv_send_close(
             servo_on(consys, control_mode=control_mode, q_send=q_send)
         infos = get_root_infos(fi_fsa, fsa_ips)
         print('root_infos', infos)
-        # from unicon.utils.fftai import get_comm_infos
-        # infos = get_comm_infos(fi_fsa, fsa_ips)
-        # print('comm_infos', infos)
+        from unicon.utils.fftai import get_comm_infos
+        infos = get_comm_infos(fi_fsa, fsa_ips)
+        print('comm_infos', infos)
         if servo_on_all:
             servo_on_fsa(fi_fsa, fsa_ips)
 
@@ -256,8 +222,8 @@ def cb_n1_recv_send_close(
     kds = ([kd] * num_dofs) if isinstance(kd, float) else kd
     modes = ([control_mode] * num_dofs) if isinstance(control_mode, int) else control_mode
     modes = np.array(modes, dtype=np.int32)
-    kps = np.array(kps, dtype=dtype)
-    kds = np.array(kds, dtype=dtype)
+    kps = np.array(kps, dtype=np.float64)
+    kds = np.array(kds, dtype=np.float64)
     params = {
         'control_mode': modes.tolist(),
     }
@@ -278,11 +244,11 @@ def cb_n1_recv_send_close(
     print('q_ctrl', len(states_q_ctrl))
 
     _states_map = [
-        (states_rpy, deg2rad, "imu_euler_angle"),
-        (states_ang_vel, deg2rad, "imu_angular_velocity"),
+        (states_rpy, deg2rad_st, "imu_euler_angle"),
+        (states_ang_vel, deg2rad_st, "imu_angular_velocity"),
         (states_quat, None, "imu_quat"),
-        (states_q, deg2rad, "joint_position"),
-        (states_qd, deg2rad, "joint_velocity"),
+        (states_q, deg2rad_st, "joint_position"),
+        (states_qd, deg2rad_st, "joint_velocity"),
         # (states_pos, None, "base_estimate_xyz"),
         # (states_lin_vel, None, "base_estimate_xyz_vel"),
         (states_q_tau, None, "joint_effort"),
@@ -297,11 +263,11 @@ def cb_n1_recv_send_close(
             # (states_rpy, deg2rad, imu, "measured_angle"),
             # (states_ang_vel, deg2rad, imu, "measured_angular_velocity"),
             # (states_quat, None, imu, "measured_quat"),
-            (states_rpy, deg2rad, r, "share_sensor_usb_imu_group_measured_angle"),
-            (states_ang_vel, deg2rad, r, "share_sensor_usb_imu_group_measured_angular_velocity"),
+            (states_rpy, deg2rad_st, r, "share_sensor_usb_imu_group_measured_angle"),
+            (states_ang_vel, deg2rad_st, r, "share_sensor_usb_imu_group_measured_angular_velocity"),
             (states_quat, None, r, "share_sensor_usb_imu_group_measured_quat"),
-            (states_q, deg2rad, r, "joint_urdf_group_measured_position"),
-            (states_qd, deg2rad, r, "joint_urdf_group_measured_velocity"),
+            (states_q, deg2rad_st, r, "joint_urdf_group_measured_position"),
+            (states_qd, deg2rad_st, r, "joint_urdf_group_measured_velocity"),
             (states_pos, None, r, "base_xyz"),
             (states_lin_vel, None, r, "base_xyz_vel"),
             (states_q_tau, None, r, "joint_urdf_group_measured_kinetic"),
@@ -334,7 +300,9 @@ def cb_n1_recv_send_close(
     def cb_send_sync():
         # t0 = time.time()
         q_ctrl = states_q_ctrl
-        params['position'] = (q_ctrl * rad2deg).tolist()
+        if rad2deg_st is not None:
+            q_ctrl = q_ctrl * rad2deg_st
+        params['position'] = q_ctrl.tolist()
         consys.robot_control_loop_set_control(params)
         # print('send', time.time() - t0)
 
