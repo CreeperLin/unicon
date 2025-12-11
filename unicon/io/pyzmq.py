@@ -1,7 +1,10 @@
 import os
 import numpy as np
 import json
-import zmq
+try:
+    import zmq
+except ImportError:
+    zmq = None
 
 BUF_SIZE = 128
 RCVHWM = 32

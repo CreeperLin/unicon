@@ -17,14 +17,18 @@ def cb_chain(*cbs, next_on=[True], verbose=True):
                 continue
             return ret
 
+    cb._cbs = cbs
     return cb
+
+
+cb_cat = cb_chain
 
 
 def cb_zip(*cbs, return_on=[True], verbose=False):
     if not len(cbs):
-        return lambda: None
-
-    prev_cbs, last_cb = cbs[:-1], cbs[-1]
+        prev_cbs, last_cb = [], lambda: None
+    else:
+        prev_cbs, last_cb = cbs[:-1], cbs[-1]
 
     def cb():
         for cur_cb in prev_cbs:
@@ -35,6 +39,24 @@ def cb_zip(*cbs, return_on=[True], verbose=False):
                 return ret
         return last_cb()
 
+    cb._cbs = cbs
+    return cb
+
+
+def cb_zip_all(*cbs, return_on=[True], verbose=False):
+    cbs_set = list(cbs)
+
+    def cb():
+        for cur_cb in list(cbs_set):
+            ret = cur_cb()
+            if ret in return_on:
+                if verbose:
+                    print('return on', cur_cb, ret)
+                    cbs_set.pop(cur_cb)
+        if not len(cbs_set):
+            return True
+
+    cb._cbs = cbs
     return cb
 
 
@@ -57,6 +79,7 @@ def cb_loop(_cb=None, pred=None, max_steps=100, ret_val=True, recycle=False, ver
         if _cb is not None:
             return _cb()
 
+    cb._cbs = [_cb]
     return cb
 
 
@@ -74,13 +97,17 @@ def cb_prod(outer, inner):
         if ret is True:
             run_outer = True
 
+    cb._cbs = [outer, inner]
     return cb
 
 
-def cb_print():
-    from unicon.states import states_get, states_get_specs
+def cb_print(keys=None, **states):
     from unicon.utils import pp_arr
-    states = {k: states_get(k) for k in states_get_specs()}
+    if not len(states):
+        from unicon.states import states_get, states_get_specs
+        states = {k: states_get(k) for k in states_get_specs()}
+    if keys is not None:
+        states = {k: v for k, v in states.items() if k in keys}
     steps = -1
 
     def cb():
@@ -286,6 +313,7 @@ def cb_fixed_lat(
         sleep_fn(t0, fixed_lat)
         return ret
 
+    cb._cbs = [_cb]
     return cb
 
 
@@ -443,4 +471,114 @@ def cb_if(_cb, pred):
         _pt += 1
         return _cb() if pred(_pt) else None
 
+    cb._cbs = [_cb]
+    return cb
+
+
+def cb_scheduled(*cbs, sched='rr', sched_args=None, repeat=1):
+    pt = 0
+    cb_pt = -1
+    cur_cb = None
+    num_cbs = len(cbs)
+
+    def sched_rr(n):
+        from itertools import cycle
+        yield from cycle(range(n))
+
+    def sched_random(n, seed=None):
+        import random
+        random.seed(seed)
+        while True:
+            yield random.randint(0, n - 1)
+
+    sched = locals().get(f'sched_{sched}') if isinstance(sched, str) else sched
+    sched_args = {} if sched_args is None else sched_args
+    gen = sched(num_cbs, **sched_args) if callable(sched) else gen
+
+    def cb():
+        nonlocal pt, cb_pt, cur_cb
+        if pt == 0:
+            pt = repeat
+            cb_pt = next(gen)
+            cur_cb = cbs[cb_pt]
+        pt -= 1
+        return cur_cb()
+
+    return cb
+
+
+def cb_loop_timed(
+    _cb,
+    num_steps=None,
+    dt=0.02,
+    dt_ofs=0,
+    cb_dt=False,
+    time_fn=None,
+    sleep_fn='sleep_spin',
+    stats=True,
+):
+    import time
+    import numpy as np
+    from unicon import utils
+    from unicon.utils import latency
+    sleep_fn = getattr(utils, sleep_fn) if isinstance(sleep_fn, str) else sleep_fn
+    time_fn = time.perf_counter if time_fn is None else time_fn
+    
+    if int(dt_ofs) == 1:
+
+        def test_fn():
+            t0 = time_fn()
+            sleep_fn(t0, dt)
+            time_fn()
+
+        lat = latency(test_fn, num_runs=int(3 // dt)) - dt
+        print('sleep_fn lat', lat)
+        dt_ofs = -lat
+    print('dt_ofs', dt_ofs)
+
+    def cb():
+        frameno = -1
+        timeouts = 0
+        t_idles = 0
+        if stats:
+            t_ss = 0
+            tis = []
+        t_start = t0 = time_fn()
+        while True:
+            frameno += 1
+            if num_steps is not None and frameno >= num_steps:
+                break
+            t_s = t0 + dt - time_fn()
+            if t_s > 0:
+                sleep_fn(t0, dt + dt_ofs)
+            else:
+                timeouts += 1
+                if timeouts < 64:
+                    print('### loop timeout:', frameno, t_s)
+            if stats:
+                t1 = time_fn()
+            ret = _cb()
+            if stats:
+                t_ss += (t1 - t0)
+                tis.append(t_s)
+            if ret is True:
+                break
+            t0 += dt
+            t_idles += t_s
+            if cb_dt:
+                t0 = time_fn()
+        t_stop = time_fn()
+        dura = t_stop - t_start
+        print(f'{frameno} steps in {dura}s')
+        if frameno > 0:
+            avg = dura / frameno
+            print(f'avg/timeout/idle: {avg}, {timeouts}, {t_idles / frameno}')
+            if stats:
+                tis = np.array(tis)[1:]
+                print('t_idle min/max/avg/std', np.min(tis), np.max(tis), np.mean(tis), np.std(tis))
+                t_ss_avg = t_ss / frameno
+                print('t_ss avg/err', t_ss_avg, t_ss_avg - dt)
+        return True
+
+    cb._cbs = [_cb]
     return cb

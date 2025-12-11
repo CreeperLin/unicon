@@ -11,7 +11,7 @@ DOF_NAMES = [
     'torso_joint',
     'left_hip_yaw_joint',
     'right_hip_yaw_joint',
-    # '<none>',
+    '<none>',
     'left_ankle_joint',
     'right_ankle_joint',
     'right_shoulder_pitch_joint',

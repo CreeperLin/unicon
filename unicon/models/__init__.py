@@ -47,10 +47,44 @@ def load_model_ort(model_path, device=None):
     return model
 
 
+def load_model_torch2ort(model_path, in_size=None, **kwds):
+    import torch
+    jit_model = torch.jit.load(model_path)
+    jit_model.eval()
+    print(jit_model)
+    onnx_path = model_path + '.onnx'
+    # if not os.path.exists(onnx_path):
+    if True:
+        # in_size = [1, 5, 113]
+        if in_size is None:
+            for ndim in range(1, 5):
+                in_size = [100] * ndim
+                print('trying', ndim, in_size)
+                try:
+                    jit_model(torch.randn(*in_size))
+                    print('ok', ndim)
+                except Exception as e:
+                    print('failed', e)
+        dummy_input = torch.zeros(*in_size)
+        torch.onnx.export(
+            jit_model,
+            dummy_input,
+            onnx_path,
+            # export_params=True,
+            # opset_version=17,
+            # do_constant_folding=True,
+            input_names=['input'],
+            output_names=['output'],
+            # dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
+        )
+    return load_model_ort(onnx_path, **kwds)
+
+
 _model_type_ext = {
     '.pt': 'torch',
     '.onnx': 'ort',
     # '.onnx': 'onnx2pytorch',
+    # '.pt': 'torch2ort',
 }
 
 from unicon.utils import import_obj

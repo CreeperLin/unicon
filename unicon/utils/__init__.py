@@ -14,6 +14,61 @@ _edge_memo = {}
 _print_memo = {}
 _registry = {}
 ori_print = print
+_timer_memo = {}
+
+
+def timer_set(key='default', t0=None, t0_key=None, t1=None, rec_len=2**16, stat=50):
+    t1 = time.monotonic() if t1 is None else t1
+    rec = _timer_memo.get(key)
+    if rec is None:
+        mem = np.zeros(rec_len)
+        rec = [mem, 0, {}]
+        _timer_memo[key] = rec
+    mem, pt, t0_map = rec
+    _t0 = t0_map.get(t0_key)
+    t0 = _t0 if t0 is None else t0
+    if t0 is None:
+        t0_map[t0_key] = time.monotonic()
+        return
+    dt = t1 - t0
+    mem[pt] = dt
+    rec[1] = (pt + 1) % len(mem)
+    t0_map.pop(t0_key, None)
+    if stat is not False and pt % int(stat) == 0:
+        timer_stat(key)
+
+
+def timer_stat(key='default'):
+    rec = _timer_memo.get(key)
+    if rec is None:
+        return
+    mem, pt, t0_map = rec
+    mem = mem[:pt]
+    print('timer', key, pt, t0_map, [round(float(x), 6) for x in [np.min(mem), np.max(mem), np.mean(mem), np.std(mem)]])
+
+
+def timer_save(path='timer'):
+    for k in _timer_memo.keys():
+        timer_stat(k)
+    np.save(path, _timer_memo, allow_pickle=True)
+
+
+def timer_load(path='timer'):
+    global _timer_memo
+    for ext in ['', '.pkl', '.npy']:
+        if os.path.exists(path + ext):
+            break
+    else:
+        print('timer_load path not found', path)
+        return
+    path = path + ext
+    print('timer_load', path)
+    memo = np.load(path, allow_pickle=True).item()
+    for v in memo.values():
+        v[-1] = {}
+    _timer_memo.update(memo)
+    for k in _timer_memo.keys():
+        timer_stat(k)
 
 
 def source(*scripts, env_keys=None, update_sys_path=True):
@@ -151,7 +206,7 @@ def expect(cond, exc=None):
 
 
 def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
-    run_args = sum([(x.split() if isinstance(x, str) else list(x)) for x in args], [])
+    run_args = sum([(list(x) if isinstance(x, (list, tuple)) else str(x).split()) for x in args], [])
     if timeout is not None:
         run_args = ['timeout', str(int(timeout))] + run_args
     run_args = filter(len, map(str, run_args))
@@ -476,8 +531,8 @@ def parse_urdf(
             kps.append(kp)
             kds.append(kd)
     num_dofs = len(dof_names)
-    print('dof_names', num_dofs, dof_names)
-    print('link_names', len(link_names), link_names)
+    print('urdf DOF_NAMES', num_dofs, dof_names)
+    print('urdf LINK_NAMES', len(link_names), link_names)
     locs = {}
     for k in ['q_min', 'q_max', 'tau_limit', 'qd_limit', 'damping', 'friction', 'armature', 'kps', 'kds']:
         val = locals().get(k)
@@ -1077,7 +1132,7 @@ def set_cpu_affinity2(cpu_affinity):
     cmd('sudo taskset -cp', [cpu_affinity], os.getpid())
 
 
-def fn_lat(func, num_runs=2**16, time_fn=_default_time_fn):
+def latency(func, num_runs=2**16, time_fn=_default_time_fn):
     lat = 0
     v_lat = 0
 
@@ -1154,7 +1209,6 @@ def get_sleep_cffi(t_spin=0.0004):
         return _utils.lib._sleep
 
 
-_default_sleep_fn = sleep_spin
 
 use_cffi_sleep = True
 use_cffi_sleep = False
@@ -1162,7 +1216,6 @@ if use_cffi_sleep:
     sleep_cffi = None
     try:
         sleep_cffi = get_sleep_cffi()
-        _default_sleep_fn = sleep_cffi
     except Exception:
         import traceback
         traceback.print_exc()
@@ -1188,72 +1241,6 @@ def time_res(time_fn=_default_time_fn):
     mean_dt = np.mean(dt)
     print('dt', mean_dt, np.min(dt), np.max(dt))
     return mean_dt
-
-
-def loop_timed(
-    cb,
-    num_steps=None,
-    dt=0.02,
-    dt_ofs=0,
-    cb_dt=False,
-    time_fn=_default_time_fn,
-    sleep_fn=_default_sleep_fn,
-    stats=True,
-):
-    sleep_fn = globals().get(sleep_fn) if isinstance(sleep_fn, str) else sleep_fn
-    if int(dt_ofs) == 1:
-
-        def test_fn():
-            t0 = time_fn()
-            sleep_fn(t0, dt)
-            time_fn()
-
-        lat = fn_lat(test_fn, num_runs=int(3 // dt)) - dt
-        print('sleep_fn lat', lat)
-        dt_ofs = -lat
-    print('dt_ofs', dt_ofs)
-    frameno = -1
-    timeouts = 0
-    t_idles = 0
-    if stats:
-        t_ss = 0
-        tis = []
-    t_start = t0 = time_fn()
-    while True:
-        frameno += 1
-        if num_steps is not None and frameno >= num_steps:
-            break
-        t_s = t0 + dt - time_fn()
-        if t_s > 0:
-            sleep_fn(t0, dt + dt_ofs)
-        else:
-            timeouts += 1
-            if timeouts < 64:
-                print('### loop timeout:', frameno, t_s)
-        if stats:
-            t1 = time_fn()
-        ret = cb()
-        if stats:
-            t_ss += (t1 - t0)
-            tis.append(t_s)
-        if ret is True:
-            break
-        t0 += dt
-        t_idles += t_s
-        if cb_dt:
-            t0 = time_fn()
-    t_stop = time_fn()
-    dura = t_stop - t_start
-    print(f'{frameno} steps in {dura}s')
-    if frameno > 0:
-        avg = dura / frameno
-        print(f'avg/timeout/idle: {avg}, {timeouts}, {t_idles / frameno}')
-        if stats:
-            tis = np.array(tis)[1:]
-            print('t_idle min/max/avg/std', np.min(tis), np.max(tis), np.mean(tis), np.std(tis))
-            t_ss_avg = t_ss / frameno
-            print('t_ss avg/err', t_ss_avg, t_ss_avg - dt)
-    return frameno
 
 
 UPDATE_PREFIX = '__update__'

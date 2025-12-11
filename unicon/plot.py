@@ -1,9 +1,21 @@
 import numpy as np
+import yaml
 try:
     from matplotlib import pyplot as plt
     import matplotlib.animation as animation
 except ImportError:
     plt = None
+
+
+def configure_plt():
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.rcParams['ps.fonttype'] = 42
+    plt.rcParams['mathtext.default'] = 'rm'
+    plt.rcParams['mathtext.fontset'] = 'cm'
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = [
+        'Times New Roman',
+    ]
 
 
 def get_plot_args(args=None):
@@ -18,7 +30,7 @@ def get_plot_args(args=None):
     parser.add_argument('-o', '--offsets', type=int, action='append')
     parser.add_argument('-i', '--info', action='store_true')
     parser.add_argument('-rt', '--robot_type', default=None)
-    parser.add_argument('-sp', '--single_plot', action='store_true')
+    # parser.add_argument('-sp', '--single_plot', action='store_true')
     parser.add_argument('-al', '--auto_lim', action='store_true')
     parser.add_argument('-np', '--no_plot', action='store_true')
     parser.add_argument('-el', '--eval_loss', action='store_true')
@@ -40,6 +52,8 @@ def get_plot_args(args=None):
     parser.add_argument('-ae', '--aniext', default=None)
     parser.add_argument('-pr', '--plot_root', default='plots2')
     parser.add_argument('-tl', '--traj_len', type=int, default=2**8)
+    parser.add_argument('-sp', '--states_plot', type=str, action='append')
+    parser.add_argument('-ct', '--cmp_tuple', type=str, action='append')
     args, _ = parser.parse_known_args(args)
     return args
 
@@ -205,26 +219,31 @@ def plot(args=None):
         cond = diff > eps
         dofs = np.where(cond)[0].tolist()
         print('auto dofs', len(dofs), dofs)
-    dofs = __import__('yaml').safe_load(dofs) if isinstance(dofs, str) else dofs
+    dofs = yaml.safe_load(dofs) if isinstance(dofs, str) else dofs
     dofs = list(range(num_dofs)) if dofs is None else dofs
     dofs = list(dofs) if isinstance(dofs, range) else dofs
     dofs = list(range(num_dofs))[dofs] if isinstance(dofs, slice) else dofs
     dofs = [dofs] if not isinstance(dofs, (list, tuple)) else dofs
+    print('dofs', dofs)
+    dofs = [i for i, n in enumerate(DOF_NAMES) if any(p in n for p in dofs)] if isinstance(dofs[0], str) else dofs
     dofs = dofs[:len(DOF_NAMES)]
     print('dofs', dofs)
     num_dofs = len(dofs)
     print('DOF_NAMES', [DOF_NAMES[i] for i in dofs])
     diff_qc = 0
     if num_recs > 1:
+        cmp_tuple = args.cmp_tuple
         fixed_inds0 = args.fixed_inds0
-        if fixed_inds0 is not None:
+        if cmp_tuple:
+            inds0, inds1 = map(list, zip(*[yaml.safe_load(t) for t in cmp_tuple]))
+        elif fixed_inds0 is not None:
             inds1 = list(range(num_recs))
             inds1 = [x for x in inds1 if x != fixed_inds0]
             inds0 = [fixed_inds0 for _ in range(len(inds1))]
         else:
             import itertools
             inds0, inds1 = map(list, zip(*list(itertools.combinations(range(num_recs), 2))))
-        print(inds0, inds1)
+        print('inds0, inds1', inds0, inds1)
         q_ctrls = [rec['states_q_ctrl'][st:ed, dofs] for rec in recs]
         qs = [rec['states_q'][st:ed, dofs] for rec in recs]
         q_ctrls = np.stack(q_ctrls, axis=0)
@@ -330,6 +349,8 @@ def plot(args=None):
         return
     plot_root = args.plot_root
     os.makedirs(plot_root, exist_ok=True)
+    if plt is not None:
+        configure_plt()
     if states_i_extras:
         nplts = num_recs
         # nplts = 3
@@ -742,6 +763,10 @@ def plot(args=None):
         num_pairs = len(inds0)
         import torch
         trajs = []
+        elm_types = [
+            'q',
+            'qd',
+        ]
         for rec in recs:
             states_qd = rec['states_qd']
             states_q = rec['states_q']
@@ -752,7 +777,13 @@ def plot(args=None):
             # s = np.concatenate([q, qd], axis=-1)
             # traj = q
             # traj = np.concatenate([q, 2 * dt * qd, qc], axis=-1)
-            traj = np.concatenate([q, 2 * dt * qd], axis=-1)
+            elms = [
+                # qc,
+                q,
+                2 * dt * qd,
+                # qd,
+            ]
+            traj = np.concatenate(elms, axis=-1)
             trajs.append(traj)
         trajs = np.stack(trajs, axis=0)
         trajs = torch.from_numpy(trajs)
@@ -826,11 +857,16 @@ def plot(args=None):
 
         colors = hex_to_rgb(COLORS_5)
 
-        figsize = (20 * num_losses, 7 * (num_pairs + 1))
+        # figsize = (20 * num_losses, 7 * (num_pairs + 1))
+        figsize = (12 * num_losses, 7 * (num_pairs + 1))
+        # figsize = (9 * num_losses, 16 * (num_pairs))
         fig, axes = plt.subplots(1, num_losses, figsize=figsize, layout='constrained')
         axes = axes.flatten().tolist() if num_losses > 1 else [axes]
         dof_names = [DOF_NAMES[i] for i in dofs]
-        elm_names = sum([[f'{t} - {n}' for n in dof_names] for t in ['q', 'qd', 'qc']], [])
+        if len(elm_types) > 1:
+            elm_names = sum([[f'{t} - {n}' for n in dof_names] for t in elm_types], [])
+        else:
+            elm_names = dof_names
         multiplier = -(num_pairs // 2)
         maxs = np.zeros((num_pairs, num_losses))
         loss_scale = traj_len
@@ -854,6 +890,7 @@ def plot(args=None):
             x = np.arange(num_elms) * num_pairs * 0.5
             width = 0.3  # the width of the bars
             labels = elm_names[:num_elms]
+            labels = [x.replace('_joint', '') for x in labels]
             for i, k in enumerate(loss_all):
                 ax = axes[i]
                 loss = loss_all[k]
@@ -862,17 +899,21 @@ def plot(args=None):
                 offset = width * multiplier
                 # offset = 0
                 # rects = ax.bar(x + offset, mean, width, label=k, yerr=traj_std)
-                rects = ax.barh(x + offset,
-                                mean,
-                                height=width,
-                                label=k,
-                                xerr=traj_std,
-                                tick_label=labels,
-                                color=colors[m])
-                ax.bar_label(rects, padding=5)
+                rects = ax.barh(
+                    x + offset,
+                    mean,
+                    height=width,
+                    label=k,
+                    xerr=traj_std,
+                    tick_label=labels,
+                    # color=colors[m],
+                )
+                ax.bar_label(rects, padding=15, fontsize=36, fmt="%.3f")
                 ax.set_yticks(x)
-                ax.set_yticklabels(labels, fontsize='xx-large')
-                ax.set_title(k)
+                # ax.set_yticklabels(labels, fontsize=32)
+                # ax.set_yticklabels(labels, fontsize=32, rotation=45)
+                ax.set_yticklabels(labels, fontsize=36)
+                ax.set_title(k, fontsize=36)
                 maxs[m, i] = max(maxs[m, i], np.max(mean + traj_std))
                 # ax.set_xlim(0, max(0.5, np.max(mean + traj_std) + 0.5))
                 ax.set_xlim(0)
@@ -882,8 +923,11 @@ def plot(args=None):
             # plt.suptitle(f'elm loss ')
             # plt.savefig(plot_prefix + f'loss_elm_{i1}_{i2}.{ext}')
         for i, ax in enumerate(axes):
-            ax.set_xlim(0, max(np.max(maxs[:, i]) * 1.2, 0.1))
-        ax.legend(pair_names)
+            x_max = max(np.max(maxs[:, i]) * 1.2 + 2, 0.1)
+            ax.set_xlim(0, x_max)
+            ax.set_xticklabels(ax.get_xticklabels(), fontsize=36)
+        if len(pair_names) > 1:
+            ax.legend(pair_names, fontsize=32)
         plot_prefix = plot_dir
         plt.savefig(plot_prefix + f'loss_elm.{ext}')
         plt.close()
@@ -1039,10 +1083,39 @@ def plot(args=None):
         plot_prefix = plot_dir
         plt.savefig(plot_prefix + f'root_states.{ext}')
         plt.close()
+    states_plot = args.states_plot
+    states_plot = [] if states_plot is None else states_plot
+    for key in states_plot:
+        nplts = 1
+        fig, axes = plt.subplots(nplts, num_recs, figsize=(10 * x_scale * num_recs, 10 * nplts))
+        axes = axes if isinstance(axes, np.ndarray) else np.array([axes])
+        axes = axes.reshape(nplts, num_recs)
+        axes = axes.T
+        print('axes', axes.shape)
+        dof_names = [DOF_NAMES[i] for i in dofs]
+        for axs, rec, name in zip(axes, recs, rec_names):
+            ax1 = axs[0]
+            t = list(range(st, ed))
+            states = rec.get(f'states_{key}')
+            name = name + '   '
+            s = states[st:ed]
+            print(name, key, s.shape, np.min(s, axis=0), np.max(s, axis=0))
+            # s = states[st:ed, dofs]
+            ax1.plot(t, s, marker='.')
+            legends = list(range(s.shape[1]))
+            ax1.legend(legends, loc="lower right")
+            # ax3.legend(dof_names[:h_num_dofs], loc="lower right")
+            ax1.set_title(name + key)
+        fig.tight_layout()
+        plot_dir = f'{plot_root}/'
+        plot_prefix = plot_dir
+        plt.savefig(plot_prefix + f'states_{key}.{ext}')
+        plt.close()
     plot_rel = True
     plot_rel = False
     print('plot_rel', plot_rel)
-    single_plot = args.single_plot
+    # single_plot = args.single_plot
+    single_plot = False
     auto_lim = args.auto_lim
     if args.no_dof_states:
         return

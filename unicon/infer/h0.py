@@ -37,6 +37,7 @@ def parse_env_cfg_h0(env_cfg):
     env_cfg_args = env_cfg.get('cmd_args', env_cfg.get('argv', None))
     print('num_acts', num_acts, 'num_obs', num_obs, 'num_dofs', len(dof_names))
     print('env_cfg_args', env_cfg_args)
+    print('env_dof_names_std', dof_names_std)
     env_cfg_commands = env_cfg['commands']
     env_num_commands = env_cfg_commands['num_commands']
     env_cfg_env = env_cfg['env']

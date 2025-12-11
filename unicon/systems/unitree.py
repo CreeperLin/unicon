@@ -1,4 +1,3 @@
-import numpy as np
 
 
 def cb_unitree_recv_send_close(
@@ -10,7 +9,6 @@ def cb_unitree_recv_send_close(
     states_qd,
     states_input=None,
     states_q_tau=None,
-    states_rpy2=None,
     kp=None,
     kd=None,
     input_keys=None,
@@ -24,14 +22,13 @@ def cb_unitree_recv_send_close(
 ):
     import time
     from unicon.utils import get_ctx
-    robot_def = get_ctx()['robot_def']
+    ctx = get_ctx()
+    robot_def = ctx['robot_def']
     NAME = robot_def.get('NAME')
     num_dofs = len(states_q)
-    motor_inds = range(num_dofs)
+    motor_inds = list(range(num_dofs))
     if NAME == 'h1':
         msg_type = 'go'
-        motor_inds = list(range(num_dofs + 1))
-        motor_inds.pop(9)
     if NAME == 'go2':
         msg_type = 'go'
     assert kp is not None and kd is not None
@@ -40,26 +37,31 @@ def cb_unitree_recv_send_close(
         ChannelSubscriber,
         ChannelFactoryInitialize,
     )
-    # from unitree_sdk2py.idl.unitree_go.msg.dds_ import WirelessController_
+    from unitree_sdk2py.utils.crc import CRC
     if msg_type == 'go':
         from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowCmd_ as LowCmdGo
         from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_ as LowStateGo
-        from unitree_sdk2py.utils.crc import CRC
         low_cmd_cls = LowCmdGo
         low_state_cls = LowStateGo
         low_cmd_def_cls = unitree_go_msg_dds__LowCmd_
+
+        crc = CRC()
+        crc_fn = lambda x: crc._crc_ctypes(crc._CRC__PackLowCmd(x))
+
     elif msg_type == 'hg':
         # g1 and h1_2 use the hg msg type
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_ as LowCmdHG
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_ as LowStateHG
-        from unitree_sdk2py.utils.crc import CRC
         low_cmd_cls = LowCmdHG
         low_state_cls = LowStateHG
         low_cmd_def_cls = unitree_hg_msg_dds__LowCmd_
 
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+        crc = CRC()
+        crc_fn = lambda x: crc._crc_ctypes(crc._CRC__PackHGLowCmd(x))
+
+    input_keys = ctx.get('input_keys') if input_keys is None else input_keys
     from unicon.utils.unitree import get_key_mapping, unpack_wireless_remote
     key_mapping = get_key_mapping()
     mapped_keys = [key_mapping.get(k) for k in input_keys]
@@ -81,10 +83,10 @@ def cb_unitree_recv_send_close(
     sub = ChannelSubscriber(lowstate_topic, low_state_cls)
     sub.Init(None, 10)
     cmd = low_cmd_def_cls()
+    crc_fn(cmd)
     state = None
-    crc = CRC()
     go_motor_modes = {
-        'h1': [0x0A] * 9 + [0x01] * 10,
+        'h1': [0x0A] * 9 + [0x01] * 11,
         'go2': 0x01,
         # 'h1_2': [0x0A, 0x0A, 0x0A, 0x0A, 0x01, 0x01] * 2 + [0x0A] + [0x01] * 14,
     }
@@ -97,26 +99,25 @@ def cb_unitree_recv_send_close(
         VelStopF = 16000.0
         motor_cmd = cmd.motor_cmd
         modes = go_motor_modes.get(NAME, 0x0A)
-        modes = ([modes] * len(motor_inds)) if isinstance(modes, int) else modes
-        for i, mi in enumerate(motor_inds):
-            c = motor_cmd[mi]
+        modes = ([modes] * num_dofs) if isinstance(modes, int) else modes
+        for i, c in enumerate(motor_cmd):
             c.mode = modes[i]
             c.q = PosStopF
             c.qd = VelStopF
-            c.kp = 0
-            c.kd = 0
-            c.tau = 0
+            c.kp = 0.
+            c.kd = 0.
+            c.tau = 0.
     elif msg_type == 'hg':
         cmd.mode_machine = mode_machine
         cmd.mode_pr = mode_pr
         motor_cmd = cmd.motor_cmd
         for i, c in enumerate(motor_cmd):
             c.mode = 0x01
-            c.q = 0
-            c.qd = 0
-            c.kp = 0
-            c.kd = 0
-            c.tau = 0
+            c.q = 0.
+            c.qd = 0.
+            c.kp = 0.
+            c.kd = 0.
+            c.tau = 0.
 
     print('disabling motion')
     from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
@@ -168,8 +169,8 @@ def cb_unitree_recv_send_close(
         c = motor_cmd[mi]
         c.kp = kp[i]
         c.kd = kd[i]
-        c.qd = 0
-        c.tau = 0
+        c.qd = 0.
+        c.tau = 0.
 
     motor_cmd_ctrl = [motor_cmd[mi] for mi in motor_inds]
 
@@ -206,9 +207,7 @@ def cb_unitree_recv_send_close(
         # input_fn()
 
     def cb_send():
-        # udp.InitCmdData(cmd)
         q_ctrl = states_q_ctrl
-        # motor_cmd = cmd.motor_cmd
         for i, c in enumerate(motor_cmd_ctrl):
             # c = motor_cmd[mi]
             # c.kp = kp[i]
@@ -216,7 +215,7 @@ def cb_unitree_recv_send_close(
             c.q = q_ctrl[i]
             # c.qd = 0
             # c.tau = 0
-        cmd.crc = crc.Crc(cmd)
+        cmd.crc = crc_fn(cmd)
         # print(cmd)
         pub.Write(cmd)
         if states_input is not None:
@@ -225,8 +224,8 @@ def cb_unitree_recv_send_close(
     def cb_close():
         motor_cmd = cmd.motor_cmd
         for c in motor_cmd:
-            c.kp = 0
-            c.kd = 0
+            c.kp = 0.
+            c.kd = 0.
             c.mode = 0x00
         pub.Write(cmd)
         pub.Close()

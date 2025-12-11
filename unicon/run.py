@@ -84,7 +84,7 @@ def get_args():
     parser.add_argument('-iis', '--inner_input_stop', action='store_true')
     parser.add_argument('-nois', '--no_outer_input_stop', action='store_true')
     parser.add_argument('-sd', '--seed', type=int, default=None)
-    parser.add_argument('-inp', '--infer_no_profile', action='store_true')
+    parser.add_argument('-ip', '--infer_profile', action='store_true')
     parser.add_argument('-id', '--infer_device', default='cpu')
     parser.add_argument('-fl', '--fixed_lat', type=float, default=None)
     parser.add_argument('-fw', '--fixed_wait', type=float, default=None)
@@ -143,7 +143,7 @@ def run(args=None):
     except ImportError:
         pass
     from unicon.states import states_init, states_news, states_new, states_get, states_destroy, autowired
-    from unicon.general import cb_chain, cb_noop, cb_print, cb_prod, cb_zip, cb_if, \
+    from unicon.general import cb_chain, cb_noop, cb_print, cb_prod, cb_zip, cb_if, cb_loop_timed,\
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
         import_obj, parse_robot_def, load_obj, match_keys, obj_update, get_ctx
@@ -296,7 +296,8 @@ def run(args=None):
             ctx.update(ret)
 
     dof_names = ctx.get('dof_names', dof_names)
-    dof_names_std = ctx.get('dof_names_std', DOF_NAMES_STD)
+    dof_names_std = {} if DOF_NAMES_STD is None else DOF_NAMES_STD.copy()
+    dof_names_std.update(ctx.get('dof_names_std', {}))
     ctrl_dt = ctx.get('ctrl_dt', ctrl_dt)
     env_kps = ctx.get('env_kps', None)
     env_kds = ctx.get('env_kds', None)
@@ -368,10 +369,11 @@ def run(args=None):
         specs.extend(states_custom_specs)
     states_news(specs)
     input_keys = args['input_keys']
-    input_keys = import_obj('unicon.inputs:_default_input_keys') if input_keys is None else input_keys
+    input_keys = import_obj('unicon.inputs:_default_input_keys') if input_keys is None else load_obj(input_keys)
     ctx['input_keys'] = input_keys
     num_inputs = len(input_keys)
-    states_new('input', num_inputs)
+    if num_inputs > 0:
+        states_new('input', num_inputs)
     num_commands = args['num_commands']
     if env_num_commands is not None and num_commands <= 0:
         num_commands = env_num_commands - num_commands
@@ -776,7 +778,7 @@ def run(args=None):
             )
 
             reset_fn()
-            infer_profile = not args['infer_no_profile']
+            infer_profile = args['infer_profile']
             if infer_profile:
                 import timeit
                 # n = 2**11
@@ -901,7 +903,7 @@ def run(args=None):
 
     inner_input_stop = args['inner_input_stop']
     outer_stop_keys = ['BTN_TL', 'BTN_TR']
-    if inner_input_stop:
+    if inner_input_stop and num_inputs > 0:
         seq.append(cb_wait_input(states_input=states_input, keys=outer_stop_keys[:-1]))
         outer_stop_keys = outer_stop_keys[1:]
 
@@ -909,6 +911,9 @@ def run(args=None):
     cb = seq[0] if len(seq) == 1 else cb_zip(*seq)
     chain = [cb]
 
+    if args['system'] == 's':
+        args['no_wrap'] = True
+        args['no_wait_input'] = True
     wrapped = not args['no_wrap']
     if not NUM_DOFS:
         pass
@@ -971,7 +976,7 @@ def run(args=None):
 
     input_dev_type = args['input_dev_type']
     input_dev_type = None if input_dev_type == 'none' else input_dev_type
-    wait_input = not args['no_wait_input']
+    wait_input = num_inputs > 0 and not args['no_wait_input']
     if wait_input:
         # key = 'BTN_TL'
         start_keys = ['BTN_SELECT', 'BTN_START']
@@ -1547,7 +1552,7 @@ def run(args=None):
         seq.append(cb_print())
 
     outer_input_stop = not args['no_outer_input_stop']
-    if outer_input_stop:
+    if outer_input_stop and num_inputs > 0:
         seq.append(cb_wait_input(states_input=states_input, keys=outer_stop_keys))
 
     if args['safety_ctrl']:
@@ -1621,15 +1626,13 @@ def run(args=None):
 
     loop_dt = args['loop_dt']
     loop_dt = dt if loop_dt is None else loop_dt
-    from unicon.utils import loop_timed
+    if not args['fast']:
+        cb = cb_loop_timed(cb, dt=loop_dt, **loop_kwds)
     try:
-        if args['fast']:
-            while True:
-                ret = cb()
-                if ret is True:
-                    break
-        else:
-            loop_timed(cb, dt=loop_dt, **loop_kwds)
+        while True:
+            ret = cb()
+            if ret is True:
+                break
     except KeyboardInterrupt:
         import traceback
         traceback.print_exc()

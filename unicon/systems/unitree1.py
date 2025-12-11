@@ -1,5 +1,3 @@
-import numpy as np
-
 
 def cb_unitree1_recv_send_close(
     states_q_ctrl,
