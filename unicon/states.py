@@ -49,8 +49,23 @@ def states_new(name, shape, dtype=np.float32):
 
 
 def states_news(specs):
-    for s in specs:
-        states_new(*s)
+    if isinstance(specs, dict):
+        spec_kwds = [
+            {'name': k, **v} if isinstance(v, dict) else {} for k, v in specs.items()
+        ]
+        spec_args = [
+            [] if isinstance(v, dict) else ([k] + (list(v) if isinstance(v, (tuple, list)) else [v]))
+            for k, v in specs.items()
+        ]
+    else:
+        spec_kwds = [
+            v if isinstance(v, dict) else {} for v in specs
+        ]
+        spec_args = [
+            [] if isinstance(v, dict) else (v if isinstance(v, (tuple, list)) else [v]) for v in specs
+        ]
+    for args, kwds in zip(spec_args, spec_kwds):
+        states_new(*args, **kwds)
 
 
 def states_create(size, use_shm=False, max_size=0, reuse=False, clear=False, name=_states_name):

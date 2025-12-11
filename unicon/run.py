@@ -322,51 +322,51 @@ def run(args=None):
     })
 
     tau_ctrl = args['tau_ctrl']
-    specs = []
+    specs = {}
     if NUM_DOFS:
         assert NUM_DOFS == len(DOF_NAMES)
-        specs.extend([
-            ('rpy', 3),
-            ('ang_vel', 3),
-            ('quat', 4),
-            ('q', NUM_DOFS),
-            ('qd', NUM_DOFS),
-            ('q_ctrl', NUM_DOFS),
-            ('q_target', NUM_DOFS),
-        ])
+        specs.update({
+            'rpy': 3,
+            'ang_vel': 3,
+            'quat': 4,
+            'q': NUM_DOFS,
+            'qd': NUM_DOFS,
+            'q_ctrl': NUM_DOFS,
+            'q_target': NUM_DOFS,
+        })
     if HAND_NUM_DOFS:
-        specs.extend([
-            ('hand_q', HAND_NUM_DOFS),
-            ('hand_q_ctrl', HAND_NUM_DOFS),
-        ])
+        specs.update({
+            'hand_q': HAND_NUM_DOFS,
+            'hand_q_ctrl': HAND_NUM_DOFS,
+        })
     if tau_ctrl:
-        specs.append(('tau_ctrl', NUM_DOFS))
+        specs['tau_ctrl'] = NUM_DOFS
     q_extras = args['states_q_extras']
     if q_extras:
-        specs.extend([
-            ('q_tau', NUM_DOFS),
-            ('q_cur', NUM_DOFS),
-            ('q_temp', NUM_DOFS),
-        ])
+        specs.update({
+            'q_tau': NUM_DOFS,
+            'q_cur': NUM_DOFS,
+            'q_temp': NUM_DOFS,
+        })
     x_extras = args['states_x_extras']
     x_extras2 = args['states_x_extras2']
     num_links = 0 if LINK_NAMES is None else len(LINK_NAMES)
     if x_extras or x_extras2:
-        specs.extend([
-            ('pos', 3),
-            ('lin_vel', 3),
-            ('lin_acc', 3),
-        ])
+        specs.update({
+            'pos': 3,
+            'lin_vel': 3,
+            'lin_acc': 3,
+        })
     if num_links and x_extras2:
-        specs.extend([
-            ('x', (num_links, 4, 4)),
-            ('xd', (num_links, 6)),
-        ])
+        specs.update({
+            'x': (num_links, 4, 4),
+            'xd': (num_links, 6),
+        })
     states_custom_specs = args['states_custom_specs']
     if states_custom_specs is not None:
         states_custom_specs = load_obj(states_custom_specs)
         print('states_custom_specs', states_custom_specs)
-        specs.extend(states_custom_specs)
+        specs.update(states_custom_specs)
     states_news(specs)
     input_keys = args['input_keys']
     input_keys = import_obj('unicon.inputs:_default_input_keys') if input_keys is None else load_obj(input_keys)
@@ -460,7 +460,7 @@ def run(args=None):
         dof_names = [remap.get(n, n) for n in dof_names]
 
     if args['dof_names_std']:
-        DOF_NAMES_std = [dof_names_std[n] for n in DOF_NAMES]
+        DOF_NAMES_std = [dof_names_std.get(n, n) for n in DOF_NAMES]
         print('DOF_NAMES_std', DOF_NAMES_std)
         dof_names_std_rev = {v: k for k, v in dof_names_std.items()}
         dof_names = [dof_names_std_rev.get(n, n) for n in dof_names]

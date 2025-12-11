@@ -101,21 +101,39 @@ def cb_prod(outer, inner):
     return cb
 
 
-def cb_print(keys=None, **states):
-    from unicon.utils import pp_arr
+def cb_print(keys=None, intvs=None, **states):
+    from unicon.utils import pp_arr, get_ctx
     if not len(states):
         from unicon.states import states_get, states_get_specs
         states = {k: states_get(k) for k in states_get_specs()}
     if keys is not None:
         states = {k: v for k, v in states.items() if k in keys}
+    if intvs is None:
+        intvs = 1
+    if isinstance(intvs, (int, float)):
+        intvs = {k: intvs for k in states.keys()}
+    dt = get_ctx().get('dt')
+    if dt is not None:
+        intvs = {k: (max(v // dt, 1) if isinstance(v, float) else v) for k, v in intvs.items()}
+    pts = intvs.copy()
     steps = -1
+    print('cb_print', list(states.keys()))
 
     def cb():
         nonlocal steps
         steps += 1
-        print(steps)
+        flg = 1
         for k, v in states.items():
-            print(k, pp_arr(v))
+            pt = pts[k]
+            if pt == 1:
+                pt = intvs[k]
+                if flg:
+                    print(steps)
+                    flg = 0
+                print(k, pp_arr(v))
+            else:
+                pt = pt - 1
+            pts[k] = pt
 
     return cb
 

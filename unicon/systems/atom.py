@@ -25,7 +25,7 @@ def cb_atom_recv_send_close(
     init_bat_th=2000,
     use_schunk_hands=False,
     use_hands=None,
-    kill_algs=False,
+    kill_algs=True,
 ):
     import numpy as np
     import time
@@ -333,10 +333,15 @@ def cb_atom_recv_send_close(
     if check_main_msg_enabled(msg):
         return None
 
-    if new_fsm_id is not None:
-        fsm_topic = Topic(participant, 'rt/set/fsm/id', dds_.SetFsmId_)
+    alg_killed = os.system('pgrep "humanoid"')
+    fsm_press_key = {
+        0: 'LB + A',
+        1: 'LT + RT',
+    }
+    fsm_topic = Topic(participant, 'rt/set/fsm/id', dds_.SetFsmId_)
+    fsm_reader = DataReader(participant, fsm_topic)
+    if not alg_killed and new_fsm_id is not None:
         # fsm_cmd_writer = DataWriter(participant, fsm_topic)
-        fsm_reader = DataReader(participant, fsm_topic)
         fsm_msg = fsm_reader.take_one(timeout=timeout)
         print('fsm_msg', fsm_msg)
         # cmd_fsm = type(fsm_msg)(new_fsm_id)
@@ -351,16 +356,18 @@ def cb_atom_recv_send_close(
             time.sleep(1)
             fsm_msg = fsm_reader.take_one(timeout=timeout)
             print('fsm_msg', fsm_msg)
-            if fsm_msg.id == new_fsm_id:
+            fsm_id = fsm_msg.id
+            if fsm_id == new_fsm_id:
                 break
-            print('fsm state != 2: press LB + A then LT + RT')
+            print(f'fsm state {fsm_id} != 2: press {fsm_press_key.get(fsm_id)}')
         expect(fsm_msg.id == new_fsm_id)
 
-    if switch_upper_limb_control is not None:
-        expect(not rpc('SwitchUpperLimbControl', is_on=False))
+    if not alg_killed and switch_upper_limb_control is not None:
+        expect(not rpc('SwitchUpperLimbControl', is_on=switch_upper_limb_control))
 
     if kill_algs:
         os.system('sudo pkill -ef "humanoid"')
+        alg_killed = True
 
     def cb_recv():
         if recv_upper:
@@ -413,6 +420,12 @@ def cb_atom_recv_send_close(
             return
         if check_main_msg_errs(msg):
             return True
+
+        if not alg_killed:
+            fsm_msg = fsm_reader.take_next()
+            fsm_id = None if fsm_msg is None else fsm_msg.id
+            if fsm_id is not None and fsm_id != new_fsm_id:
+                print(f'fsm state {fsm_id} != 2: press {fsm_press_key.get(fsm_id)}')
 
         if not use_hands:
             return

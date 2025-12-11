@@ -1,3 +1,4 @@
+import sys
 import os
 import time
 import types
@@ -15,6 +16,23 @@ _print_memo = {}
 _registry = {}
 ori_print = print
 _timer_memo = {}
+
+
+def find_import_ext(name, ext_dir=None):
+    import sysconfig
+    try:
+        return __import__(name)
+    except ImportError:
+        pass
+    if ext_dir is None:
+        ext_suffix = sysconfig.get_config_var('EXT_SUFFIX')
+        so_name = name + ext_suffix
+        print('finding ext_dir', so_name)
+        ext_dir = os.path.dirname(find('~', name=so_name)[0])
+    print('ext_dir', ext_dir)
+    if ext_dir not in sys.path:
+        sys.path.append(ext_dir)
+    return __import__(name)
 
 
 def timer_set(key='default', t0=None, t0_key=None, t1=None, rec_len=2**16, stat=50):
@@ -92,7 +110,6 @@ def source(*scripts, env_keys=None, update_sys_path=True):
     os.environ.update(env)
     pythonpath = env.get('PYTHONPATH')
     if update_sys_path and pythonpath is not None:
-        import sys
         for p in pythonpath.split(':'):
             if os.path.exists(p) and p not in sys.path:
                 sys.path.append(p)
@@ -200,9 +217,10 @@ def get_print_fn(use_logger=False, use_println=True, name=None, **kwds):
     return ori_print
 
 
-def expect(cond, exc=None):
+def expect(cond, *args):
     if not cond:
-        raise (exc if isinstance(exc, Exception) else RuntimeError(exc))
+        exc = None if len(args) < 1 else args[0]
+        raise (exc if isinstance(exc, Exception) else RuntimeError(*args))
 
 
 def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
@@ -689,7 +707,6 @@ def register_obj(
         return
     mod_path = '.'.join(path)
     if isinstance(obj, types.ModuleType):
-        import sys
         sys.modules[mod_path] = obj
         print('register_obj mod', mod_path, obj)
         return
@@ -707,7 +724,6 @@ def register_obj(
 
 def import_file(path, name=None):
     """Import modules from file."""
-    import sys
     import importlib
     name = '_default' if name is None else name
     spec = importlib.util.spec_from_file_location(name, path)
@@ -1202,7 +1218,6 @@ def get_sleep_cffi(t_spin=0.0004):
             tmpdir=tmpdir,
             verbose=True,
         )
-        import sys
         sys.path.append(tmpdir)
         import _utils
         # print(dir(_utils.lib))

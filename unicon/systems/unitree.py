@@ -9,6 +9,8 @@ def cb_unitree_recv_send_close(
     states_qd,
     states_input=None,
     states_q_tau=None,
+    states_q_temp=None,
+    states_sys=None,
     kp=None,
     kd=None,
     input_keys=None,
@@ -119,35 +121,11 @@ def cb_unitree_recv_send_close(
             c.kd = 0.
             c.tau = 0.
 
+    from unicon.utils.unitree import disable_motion, disable_lidar
     print('disabling motion')
-    from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
-    from unitree_sdk2py.go2.sport.sport_client import SportClient
-    sc = SportClient()
-    sc.SetTimeout(5.0)
-    sc.Init()
-    msc = MotionSwitcherClient()
-    msc.SetTimeout(5.0)
-    msc.Init()
-    status, result = msc.CheckMode()
-    for i in range(10):
-        sc.StandDown()
-        msc.ReleaseMode()
-        status, result = msc.CheckMode()
-        if result is None or not result['name']:
-            break
-        time.sleep(1)
-
-    if NAME == 'go2':
-        print('disabling lidar')
-        from unitree_sdk2py.idl.default import std_msgs_msg_dds__String_
-        from unitree_sdk2py.idl.std_msgs.msg.dds_ import String_
-        lidar_pub = ChannelPublisher("rt/utlidar/switch", String_)
-        lidar_pub.Init()
-        lidar_cmd = std_msgs_msg_dds__String_()
-        lidar_cmd.data = "OFF"
-        lidar_pub.Write(lidar_cmd)
-        del lidar_pub
-        del lidar_cmd
+    disable_motion()
+    print('disabling lidar')
+    disable_lidar()
 
     for i in range(10):
         print('waiting for sub', i)
@@ -218,8 +196,31 @@ def cb_unitree_recv_send_close(
         cmd.crc = crc_fn(cmd)
         # print(cmd)
         pub.Write(cmd)
+
         if states_input is not None:
             input_fn()
+        motor_state = state.motor_state
+        motor_states_ctrl = [motor_state[mi] for mi in motor_inds]
+        if states_q_temp is not None:
+            for i, s in enumerate(motor_states_ctrl):
+                states_q_temp[i] = s.temperature
+        if states_sys is not None:
+            states_sys[:] = [
+                state.bit_flag,
+                state.adc_reel,
+                state.temperature_ntc1,
+                state.temperature_ntc2,
+                state.power_v,
+                state.power_a,
+            ]
+        # if state.bit_flag > 0:
+        #     print('state.bit_flag', state.bit_flag)
+        #     return True
+        for i, s in enumerate(motor_states_ctrl):
+            err = s.reserve[0]
+            if err > 0:
+                print('motor_states_ctrl err', i, err)
+                return True
 
     def cb_close():
         motor_cmd = cmd.motor_cmd
