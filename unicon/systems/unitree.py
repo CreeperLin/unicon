@@ -21,6 +21,7 @@ def cb_unitree_recv_send_close(
     mode_machine=None,
     mode_pr=0,
     sim=False,
+    disable_services=True,
 ):
     import time
     from unicon.utils import get_ctx
@@ -51,6 +52,9 @@ def cb_unitree_recv_send_close(
         crc = CRC()
         crc_fn = lambda x: crc._crc_ctypes(crc._CRC__PackLowCmd(x))
 
+        from unicon.utils.unitree import detect_state_err_go
+        detect_err_fn = detect_state_err_go
+
     elif msg_type == 'hg':
         # g1 and h1_2 use the hg msg type
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
@@ -62,6 +66,9 @@ def cb_unitree_recv_send_close(
 
         crc = CRC()
         crc_fn = lambda x: crc._crc_ctypes(crc._CRC__PackHGLowCmd(x))
+
+        from unicon.utils.unitree import detect_state_err_hg
+        detect_err_fn = detect_state_err_hg
 
     input_keys = ctx.get('input_keys') if input_keys is None else input_keys
     from unicon.utils.unitree import get_key_mapping, unpack_wireless_remote
@@ -83,7 +90,7 @@ def cb_unitree_recv_send_close(
     pub = ChannelPublisher(lowcmd_topic, low_cmd_cls)
     pub.Init()
     sub = ChannelSubscriber(lowstate_topic, low_state_cls)
-    sub.Init(None, 10)
+    sub.Init(None, 0)
     cmd = low_cmd_def_cls()
     crc_fn(cmd)
     state = None
@@ -96,7 +103,6 @@ def cb_unitree_recv_send_close(
         cmd.head[0] = 0xFE
         cmd.head[1] = 0xEF
         cmd.level_flag = 0xFF
-        cmd.gpio = 0
         PosStopF = 2.146e9
         VelStopF = 16000.0
         motor_cmd = cmd.motor_cmd
@@ -121,11 +127,15 @@ def cb_unitree_recv_send_close(
             c.kd = 0.
             c.tau = 0.
 
-    from unicon.utils.unitree import disable_motion, disable_lidar
-    print('disabling motion')
-    disable_motion()
-    print('disabling lidar')
-    disable_lidar()
+    if disable_services:
+        from unicon.utils.unitree import disable_motion, disable_lidar
+        print('disabling motion')
+        disable_motion()
+        print('disabling lidar')
+        disable_lidar()
+
+        from unicon.utils.unitree import pkill_services
+        pkill_services()
 
     for i in range(10):
         print('waiting for sub', i)
@@ -136,6 +146,18 @@ def cb_unitree_recv_send_close(
         time.sleep(1)
     else:
         raise RuntimeError('sub read timeout')
+
+    if msg_type == 'hg':
+        from unitree_sdk2py.idl.unitree_hg.msg.dds_ import MainBoardState_
+        mbs_sub = ChannelSubscriber('rt/lf/mainboardstate', MainBoardState_)
+        mbs_sub.Init(None, 0)
+        mbs = mbs_sub.Read()
+        print('mainboardstate', mbs)
+        errs = detect_err_fn(low_state=state, mainboard_state=mbs)
+    else:
+        errs = detect_err_fn(low_state=state)
+    if errs:
+        raise RuntimeError('state err', errs)
 
     if msg_type == 'hg' and mode_machine is None:
         mode_machine = state.mode_machine
@@ -203,7 +225,9 @@ def cb_unitree_recv_send_close(
         motor_states_ctrl = [motor_state[mi] for mi in motor_inds]
         if states_q_temp is not None:
             for i, s in enumerate(motor_states_ctrl):
-                states_q_temp[i] = s.temperature
+                temp = s.temperature
+                temp = temp[1] if isinstance(temp, list) else temp
+                states_q_temp[i] = temp
         if states_sys is not None:
             states_sys[:] = [
                 state.bit_flag,
@@ -213,14 +237,11 @@ def cb_unitree_recv_send_close(
                 state.power_v,
                 state.power_a,
             ]
-        # if state.bit_flag > 0:
-        #     print('state.bit_flag', state.bit_flag)
-        #     return True
-        for i, s in enumerate(motor_states_ctrl):
-            err = s.reserve[0]
-            if err > 0:
-                print('motor_states_ctrl err', i, err)
-                return True
+            print('states_sys', states_sys)
+        errs = detect_err_fn(low_state=state)
+        if len(errs):
+            print('errs', errs)
+            return True
 
     def cb_close():
         motor_cmd = cmd.motor_cmd

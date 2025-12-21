@@ -1,3 +1,130 @@
+_err_codes = {
+    256: "Lower limb power supply abnormal",
+    257: "Upper limb power supply abnormal",
+    258: "24V1 power supply abnormal",
+    259: "24V2 power supply abnormal",
+    260: "12V power supply abnormal",
+    261: "Peripheral power supply abnormal",
+    262: "Energy port power supply abnormal",
+
+    263: "Lower limb voltage too low",
+    264: "Lower limb voltage too high",
+    265: "Upper limb voltage too low",
+    266: "Upper limb voltage too high",
+
+    512: "Cell overvoltage",
+    513: "Cell undervoltage",
+    514: "Battery failure",
+
+    515: "Battery pack overvoltage",
+    516: "Battery pack undervoltage",
+    517: "Charge overcurrent",
+    518: "Discharge overcurrent",
+    519: "Charge short circuit",
+    520: "Discharge short circuit",
+    521: "Chip overtemperature",
+    522: "Battery overtemperature",
+    523: "Battery low temperature",
+    524: "PCB overtemperature",
+    525: "Open circuit alarm",
+    526: "Cell mismatch",
+    527: "MOSFET driver abnormal",
+
+    528: "MCU alarm",
+    529: "Sensor alarm",
+
+    1280: "alarm_host.json parse failed",
+    1281: "alarm_servo.json parse failed",
+    1282: "Offset.json parse failed",
+    1283: "equipment_config.json parse failed",
+    1284: "robotType.json parse failed",
+    1285: "snCode.json parse failed",
+    1286: "is_virtual.json parse failed",
+    1287: "offset.json.default parse failed",
+    1288: "Offset.json.bak parse failed",
+
+    1289: "Modify Offset.json failed",
+    1290: "Modify offset.json.default failed",
+    1291: "Modify offset.json.bak failed",
+    1292: "Modify equipment_config.json failed",
+    1293: "Modify is_virtual.json failed",
+
+    1294: "Enable failed",
+    1295: "CAN1 board offline",
+    1296: "CAN2 board offline",
+    1297: "Position limit exceeded",
+    1298: "Speed limit exceeded",
+    1299: "Torque limit exceeded",
+    1300: "Zeroing failed",
+    1301: "Bus communication abnormal",
+    1302: "Mode switch failed",
+    1303: "IMU zeroing failed",
+    1304: "Log file compression failed",
+    1305: "Joint offset modification failed",
+    1306: "Dexterous hand config file abnormal",
+    1307: "Position limit file abnormal",
+    1308: "Speed limit file abnormal",
+    1309: "Torque limit file abnormal",
+    1310: "Position limit file modification failed",
+    1311: "Speed limit file modification failed",
+    1312: "Torque limit file modification failed",
+    1314: "AtomOs.version parse failed",
+    1315: "Power heartbeat abnormal",
+    1316: "BMS heartbeat abnormal",
+
+    8752: "Hardware overcurrent protection",
+    8992: "Software overcurrent protection",
+    9040: "Module overload protection",
+    9088: "Zero current offset too large protection",
+    12592: "Driver input phase loss protection",
+    12816: "PN overvoltage protection",
+    12832: "PN undervoltage protection",
+    12928: "Servo and motor power mismatch fault",
+
+    13184: "Driver output phase sequence error protection",
+    17168: "Driver overheating protection",
+    17169: "Temperature sensor damaged or not installed",
+    21008: "Driver board identification abnormal protection",
+    21120: "FPGA configuration error",
+    21121: "Internal error",
+    21122: "STO safety wiring fault protection",
+    21569: "Driver board connection abnormal protection",
+    25378: "DI function duplicate assignment",
+    25379: "DO function assignment exceeded",
+    25382: "Software position limit setting error",
+    25383: "Origin offset setting error",
+    28961: "Stalled motor overheating protection",
+    29056: "Motor overload protection",
+    29568: "Encoder communication disconnection protection",
+    29569: "Encoder fault",
+    29570: "Encoder battery abnormal protection",
+    29571: "Encoder battery power supply abnormal",
+    29572: "Main encoder CRC error",
+    29573: "Auxiliary encoder disconnection error",
+    29574: "Auxiliary encoder internal error",
+    29575: "Auxiliary encoder CRC error",
+    29576: "PWM output buffer abnormal",
+    29577: "Brake power abnormal",
+    29584: "Joint position deviation large",
+
+    30080: "Servo bus communication abnormal",
+    30081: "XML configuration file not burned",
+    30082: "Sync cycle configuration error",
+    30083: "Master sync signal lost",
+    30084: "Sync cycle error too large",
+
+    33920: "Exceed maximum speed protection",
+    33921: "Speed deviation too large protection",
+    33922: "Motor stall protection",
+    34321: "Position deviation too large protection",
+    34322: "Position command limit exceeded protection",
+    34323: "Full closed-loop position deviation too large",
+
+    65282: "Angle identification failed",
+    65344: "Parameter identification failed",
+}
+
+
 def cb_atom_recv_send_close(
     states_q_ctrl,
     states_rpy,
@@ -26,6 +153,7 @@ def cb_atom_recv_send_close(
     use_schunk_hands=False,
     use_hands=None,
     kill_algs=True,
+    keepalive=True,
 ):
     import numpy as np
     import time
@@ -184,6 +312,8 @@ def cb_atom_recv_send_close(
             errs = [[getattr(xx, k, False) for xx in x] for x in attrs]
             if any(any(x) for x in errs):
                 print('errs', k, errs)
+                sum_errs = sum(errs, [])
+                print('err_codes', {k: _err_codes.get(k) for k in sum_errs if k})
                 print('attr_keys', attr_keys)
                 if k == 'warn_code':
                     continue
@@ -352,6 +482,9 @@ def cb_atom_recv_send_close(
         # fsm_cmd_writer.write(fsm_msg)
         if fsm_msg.id != new_fsm_id:
             rpc('SetFsmId', fsm_id=new_fsm_id)
+        time.sleep(1)
+        for _ in range(10):
+            fsm_reader.take_next()
         for _ in range(100):
             time.sleep(1)
             fsm_msg = fsm_reader.take_one(timeout=timeout)
@@ -404,6 +537,31 @@ def cb_atom_recv_send_close(
             states_rpy[:] = imu.rpy
             states_ang_vel[:] = imu.gyroscope
 
+    locs = {'running': True}
+
+    def keepalive_loop():
+        intv = 0.02
+        while locs['running']:
+            time.sleep(intv)
+            msg = main_state_reader.take_next()
+            if msg is None:
+                continue
+            if check_main_msg_enabled(msg):
+                os.system('/dobot/debug/bin/enableMotors 1')
+                print("\nkeepalive: motors down, trying toggle")
+            if alg_killed:
+                continue
+            fsm_msg = fsm_reader.take_next()
+            if fsm_msg is not None and fsm_msg.id != new_fsm_id:
+                os.system('/dobot/debug/bin/enableMotors 1')
+                print("\nkeepalive: FSM mismatch, trying reset")
+                rpc("SetFsmId", fsm_id=new_fsm_id)
+                print(f'fsm state {fsm_msg.id} != {new_fsm_id}: press {fsm_press_key.get(fsm_msg.id)}')
+
+    if keepalive:
+        import threading
+        threading.Thread(target=keepalive_loop, daemon=True).start()
+
     def cb_send():
         q_ctrl = states_q_ctrl
 
@@ -416,16 +574,22 @@ def cb_atom_recv_send_close(
         upper_cmd_writer.write(cmd_msg_upper)
 
         msg = main_state_reader.take_next()
-        if msg is None:
-            return
-        if check_main_msg_errs(msg):
-            return True
+        if msg is not None:
+            if check_main_msg_errs(msg):
+                print("check_main_msg_errs failed")
+                # os.system('/dobot/debug/bin/enableMotors 1')
+                # return True
+            if not keepalive and check_main_msg_enabled(msg):
+                print("check_main_msg_enabled failed")
+                os.system('/dobot/debug/bin/enableMotors 1')
+                # return True
 
-        if not alg_killed:
+        if not alg_killed and not keepalive:
             fsm_msg = fsm_reader.take_next()
             fsm_id = None if fsm_msg is None else fsm_msg.id
             if fsm_id is not None and fsm_id != new_fsm_id:
-                print(f'fsm state {fsm_id} != 2: press {fsm_press_key.get(fsm_id)}')
+                print("FSM mismatch")
+                return True
 
         if not use_hands:
             return
@@ -443,6 +607,7 @@ def cb_atom_recv_send_close(
             # states_hand_qd[:] = dq
 
     def cb_close():
+        locs['running'] = False
         if close:
             toggle_motors(False)
 

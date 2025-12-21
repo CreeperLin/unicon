@@ -110,7 +110,7 @@ def get_args():
     parser.add_argument('-rtp', '--rec_type', default=None)
     parser.add_argument('-rpt', '--rec_pt', type=int, default=None)
     parser.add_argument('-rkwds', '--rec_kwds', default=None)
-    parser.add_argument('-ncmd', '--num_commands', type=int, default=3)
+    parser.add_argument('-ncmd', '--num_commands', type=int, default=None)
     parser.add_argument('-nice', '--nice', type=int, default=None)
     parser.add_argument('-su', '--sudo', action='store_true')
     parser.add_argument('-qtf', '--q_transform', default=None)
@@ -198,7 +198,8 @@ def run(args=None):
     QD_LIMIT = robot_def.get('QD_LIMIT', None)
     Q_BOOT = robot_def.get('Q_BOOT', None)
     Q_RESET = robot_def.get('Q_RESET', None)
-    DOF_NAMES_STD = robot_def.get('DOF_NAMES_STD', None)
+    DOF_NAMES_STD = robot_def.get('DOF_NAMES_STD', {})
+    robot_def['DOF_NAMES_STD'] = DOF_NAMES_STD
     LINK_NAMES = robot_def.get('LINK_NAMES', None)
 
     if args['no_q_boot']:
@@ -296,8 +297,7 @@ def run(args=None):
             ctx.update(ret)
 
     dof_names = ctx.get('dof_names', dof_names)
-    dof_names_std = {} if DOF_NAMES_STD is None else DOF_NAMES_STD.copy()
-    dof_names_std.update(ctx.get('dof_names_std', {}))
+    DOF_NAMES_STD.update(ctx.get('dof_names_std', {}))
     ctrl_dt = ctx.get('ctrl_dt', ctrl_dt)
     env_kps = ctx.get('env_kps', None)
     env_kds = ctx.get('env_kds', None)
@@ -375,7 +375,8 @@ def run(args=None):
     if num_inputs > 0:
         states_new('input', num_inputs)
     num_commands = args['num_commands']
-    if env_num_commands is not None and num_commands <= 0:
+    num_commands = env_num_commands if num_commands is None else num_commands
+    if env_num_commands is not None and num_commands < 0:
         num_commands = env_num_commands - num_commands
     if num_commands > 0:
         states_new('cmd', num_commands)
@@ -460,9 +461,9 @@ def run(args=None):
         dof_names = [remap.get(n, n) for n in dof_names]
 
     if args['dof_names_std']:
-        DOF_NAMES_std = [dof_names_std.get(n, n) for n in DOF_NAMES]
-        print('DOF_NAMES_std', DOF_NAMES_std)
-        dof_names_std_rev = {v: k for k, v in dof_names_std.items()}
+        dof_names2std = [DOF_NAMES_STD.get(n, n) for n in DOF_NAMES]
+        print('dof_names2std', dof_names2std)
+        dof_names_std_rev = {v: k for k, v in DOF_NAMES_STD.items()}
         dof_names = [dof_names_std_rev.get(n, n) for n in dof_names]
 
     dof_names_map = {k: nk for k, nk in zip(dof_names_ori, dof_names)}
@@ -795,7 +796,11 @@ def run(args=None):
                 print('infer min/max/mean/std', np.min(ts), np.max(ts), np.mean(ts), np.std(ts))
                 print('q_ctrl', pp_arr(states_q_ctrl))
             reset_fn()
-            cb = cb_infer
+            if dof_states_padded:
+                cb = [cb_pad_in, cb_infer, cb_pad_out]
+            else:
+                cb = cb_infer
+
         elif m == 'play':
             from unicon.general import cb_replay
             cb = cb_replay(
@@ -809,8 +814,16 @@ def run(args=None):
             )
         elif m == 'follow':
 
+            pats = ['shoulder', 'elbow', 'wrist']
+            follow_dof_names = [n for n in DOF_NAMES if any(p in n for p in pats)]
+            # follow_dof_names = DOF_NAMES
+            follow_inds = [DOF_NAMES.index(n) for n in follow_dof_names]
+            follow_inds = list2slice(follow_inds)
+            print('follow_dof_names', follow_dof_names)
+            print('follow_inds', follow_inds)
+
             def cb_follow():
-                states_q_ctrl[:] = states_q
+                states_q_ctrl[follow_inds] = states_q[follow_inds]
 
             cb = cb_follow
         elif m == 'hand_sample':
@@ -830,13 +843,9 @@ def run(args=None):
 
             cb = cb_hand_sample
 
-        print('mode', m, cb)
-        seq.append(cb)
-
-    if dof_states_padded:
-        seq.insert(0, cb_pad_in)
-        # seq.insert(-1, cb_pad_out)
-        seq.append(cb_pad_out)
+        cbs = cb if isinstance(cb, (list, tuple)) else [cb]
+        print('mode', m, cbs)
+        seq.extend(cbs)
 
     q_ctrl_default_mask = args['q_ctrl_default_mask']
     q_ctrl_mask = args['q_ctrl_mask']

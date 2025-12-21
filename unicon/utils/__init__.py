@@ -18,6 +18,12 @@ ori_print = print
 _timer_memo = {}
 
 
+def pkill(*args, opts='-ef'):
+    pats = '|'.join(args)
+    _cmd = f'sudo pkill {opts} "{pats}"'
+    os.system(_cmd)
+
+
 def find_import_ext(name, ext_dir=None):
     import sysconfig
     try:
@@ -626,8 +632,10 @@ def parse_robot_def(robot_def):
         dof_names_std = {k: k for k in dof_names_std}
     if dof_names is None:
         dof_names = list(dof_names_std.keys())
+    dof_names = ['<null>' if n is None else n for n in dof_names]
     robot_def['DOF_NAMES'] = dof_names
     if dof_names_std is not None:
+        dof_names_std.update({k: dof_names_std.get(k, k) for k in dof_names})
         robot_def['DOF_NAMES_STD'] = dof_names_std
     robot_def['NUM_DOFS'] = len(dof_names)
     print('robot_def', robot_def.keys())
