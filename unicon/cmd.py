@@ -106,6 +106,10 @@ def cb_cmd_vel(
     idx_btn_b = input_keys.index('BTN_B')
     idx_btn_x = input_keys.index('BTN_X')
     idx_btn_y = input_keys.index('BTN_Y')
+    idx_btn_select = input_keys.index('BTN_SELECT')
+    # idx_btn_start = input_keys.index('BTN_START')
+
+    idx_btn_pyaw = idx_btn_select
 
     if range_lin_vel_x is None:
         rng_lin_vel_x = cmd_ranges[cmd_keys.index('lin_vel_x')]
@@ -139,8 +143,8 @@ def cb_cmd_vel(
         print('gait_modes', init_gait_mode, num_gait_modes)
 
     if enable_extra_commands is None:
-        enable_extra_commands = num_commands > num_vel_cmds and num_cmd == num_commands + (1
-                                                                                           if enable_gait_modes else 0)
+        _dim = 1 if enable_gait_modes else 0
+        enable_extra_commands = num_commands > num_vel_cmds and num_cmd == num_commands + _dim
     if enable_extra_commands:
         if use_dpad:
             idx_extra_cmd = input_keys.index('ABS_HAT0Y')
@@ -200,7 +204,7 @@ def cb_cmd_vel(
     def cb():
         states_input_hist[:] = np.clip(states_input_hist / 2 + states_input * 2, -3, 3)
         nonlocal cmd, ctrl_lin_vel_x, ctrl_lin_vel_y, ctrl_ang_vel_yaw, range_pt, last_chg, mode_pt
-        nonlocal pyaw_cmd
+        nonlocal pyaw_cmd, pyaw_cmd_init
         inp_vx = states_input[idx_vx]
         inp_vy = states_input[idx_vy]
         inp_vyaw = states_input[idx_vyaw]
@@ -219,15 +223,14 @@ def cb_cmd_vel(
         cmd[0] = ctrl_lin_vel_x
         cmd[1] = ctrl_lin_vel_y
         cmd[2] = ctrl_ang_vel_yaw
-        if use_pyaw_cmd and pyaw_cmd is not None:
-            if range_pt == num_ranges - 1:
-                inp_pyaw = states_input[idx_pyaw]
-                inp_pyaw = 0 if abs(inp_pyaw) < eps else inp_pyaw
+        if use_pyaw_cmd and pyaw_cmd is not None and abs(inp_vyaw) < 0.8:
+            inp_pyaw = states_input[idx_pyaw]
+            if abs(inp_pyaw) > eps and states_input[idx_btn_pyaw] > 0:
                 pyaw_cmd = wrap(inp_pyaw * step_vel_size + pyaw_cmd)
-                if abs(inp_pyaw) > 0 and int(pyaw_cmd * 100) % 10 == 0:
+                if int(pyaw_cmd * 100) % 10 == 0:
                     print('pyaw_cmd', pyaw_cmd)
             cur_yaw = states_rpy[2]
-            yaw_error = wrap(pyaw_cmd - cur_yaw)
+            yaw_error = wrap(pyaw_cmd - wrap(cur_yaw))
             vyaw_cmd = pyaw_cmd_kp * yaw_error
             cmd[2] += vyaw_cmd
 
@@ -242,8 +245,9 @@ def cb_cmd_vel(
             range_pt = (range_pt + d + num_ranges) % num_ranges
             update_ctrl_wb()
             if use_pyaw_cmd and range_pt == num_ranges - 1:
-                pyaw_cmd = states_rpy[2] if pyaw_cmd_init is None else pyaw_cmd_init
-                print('pyaw_cmd reset', pyaw_cmd)
+                pyaw_cmd_init = states_rpy[2] if pyaw_cmd_init is None else pyaw_cmd_init
+                pyaw_cmd = wrap(pyaw_cmd_init)
+                print('pyaw_cmd reset', pyaw_cmd, pyaw_cmd_init)
             last_chg = time.time()
         if enable_gait_modes:
             if (states_input_hist[idx_btn_x] == 2 or states_input_hist[idx_btn_y] == 2) and chg:
@@ -504,8 +508,10 @@ def cb_cmd_rec(
     verbose=True,
     # rec_inds=None,
     rec_inds=[0, 1, 2],
+    key_rec='BTN_TR',
+    key_play='BTN_START',
 ):
-    from unicon.utils import list2slice, is_rising_edge
+    from unicon.utils import list2slice, is_edge
     input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
     is_rec = False
     is_play = False
@@ -514,15 +520,13 @@ def cb_cmd_rec(
     frames = np.zeros((max_frames, len(states_cmd[rec_inds])), dtype=states_cmd.dtype)
     rec_pt = -1
     play_pt = -1
-    key_rec = 'BTN_TR'
     idx_rec = input_keys.index(key_rec)
     # key_play = 'BTN_TR'
-    key_play = 'BTN_SELECT'
     idx_play = input_keys.index(key_play)
 
     def cb():
         nonlocal play_pt, rec_pt, is_rec, is_play
-        rec_p = is_rising_edge(states_input, idx_rec)
+        rec_p = is_edge(states_input, idx_rec) > 0
         if rec_p:
             is_play = False
             is_rec = not is_rec
@@ -542,7 +546,7 @@ def cb_cmd_rec(
                 print('rec_pt', rec_pt)
             frames[rec_pt] = states_cmd[rec_inds]
             return
-        play_p = is_rising_edge(states_input, idx_play)
+        play_p = is_edge(states_input, idx_play) > 0
         if play_p:
             is_rec = False
             is_play = not is_play

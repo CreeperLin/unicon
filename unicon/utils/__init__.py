@@ -255,15 +255,16 @@ def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
     return res if capture_output else res.returncode
 
 
-def is_rising_edge(x, idx=None, key=None, th=0):
-    v = float(x[idx]) if idx is not None else x
-    if key is None:
-        key = (id(x), idx) if idx is not None else id(x)
-    last_v = _edge_memo.get(key, 0)
-    r = last_v <= th and v > th
+def is_edge(x, idx=None, key=None, th=0):
+    if idx is not None:
+        x = float(x[idx])
+    key = idx if key is None else key
+    last_x = _edge_memo.get(key, 0)
+    r = last_x <= th and x > th
+    f = last_x >= th and x < th
     # print(_edge_memo, idx, key, r, last_x, x)
-    _edge_memo[key] = v
-    return r
+    _edge_memo[key] = x
+    return 1 if r else (-1 if f else 0)
 
 
 def set_ctx(ctx):

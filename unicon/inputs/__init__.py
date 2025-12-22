@@ -14,6 +14,8 @@ _default_input_keys = [
     'BTN_Y',
     'BTN_SELECT',
     'BTN_START',
+    'BTN_THUMBL',
+    'BTN_THUMBR',
     'BTN_TL',
     'BTN_TR',
 ]
