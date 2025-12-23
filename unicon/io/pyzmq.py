@@ -125,14 +125,14 @@ def cb_recv_pyzmq(
                 last_msg = msg
                 rem = repeats
                 if n_again == -1:
-                    print('cb_recv_pyzmq connected')
+                    print('cb_recv_pyzmq connected', addr)
                 if n_again > 1000:
-                    print('cb_recv_pyzmq reconnected')
+                    print('cb_recv_pyzmq reconnected', addr)
                 n_again = 0
             except zmq.Again:
                 n_again += 1
                 if n_again > 1000 and n_again % 100 == 0:
-                    print('cb_recv_pyzmq timeout', n_again)
+                    print('cb_recv_pyzmq timeout', addr, n_again)
                 if rem <= 0 or last_msg is None:
                     return
                 rem -= 1
@@ -168,7 +168,7 @@ def cb_recv_pyzmq(
             n_recv += 1
 
         def __del__(_):
-            print('cb_recv_pyzmq destroy')
+            print('cb_recv_pyzmq destroy', addr)
             sub.close()
             context.term()
 

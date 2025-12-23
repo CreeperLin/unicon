@@ -1134,7 +1134,13 @@ def compose_mat_np(xyz=None, rpy=None):
 
 
 def pp_arr(arr):
+    if arr is None:
+        return None
     return np.round(arr.astype(float), decimals=3).tolist()
+
+
+def wrap_to_pi(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
 
 
 def set_nice(nice):

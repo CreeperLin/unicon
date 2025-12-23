@@ -23,7 +23,8 @@ def cb_input_hidapi(
         remap_trigger: remap trigger axes from [-1,1] to [0,1]
         blocking: use blocking reads (not recommended)
     """
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    from unicon.utils import coalesce, get_ctx, import_obj
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
 
     try:
         import hid

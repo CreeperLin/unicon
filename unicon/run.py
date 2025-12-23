@@ -369,7 +369,7 @@ def run(args=None):
         specs.update(states_custom_specs)
     states_news(specs)
     input_keys = args['input_keys']
-    input_keys = import_obj('unicon.inputs:_default_input_keys') if input_keys is None else load_obj(input_keys)
+    input_keys = import_obj('unicon.inputs:DEFAULT_INPUT_KEYS') if input_keys is None else load_obj(input_keys)
     ctx['input_keys'] = input_keys
     num_inputs = len(input_keys)
     if num_inputs > 0:
@@ -917,7 +917,9 @@ def run(args=None):
         outer_stop_keys = outer_stop_keys[1:]
 
     print('inner seq', seq)
-    cb = seq[0] if len(seq) == 1 else cb_zip(*seq)
+    cb = None
+    if len(seq):
+        cb = seq[0] if len(seq) == 1 else cb_zip(*seq)
     chain = [cb]
 
     if args['system'] == 's':

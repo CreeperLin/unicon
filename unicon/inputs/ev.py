@@ -15,11 +15,12 @@ def cb_input_ev(
     ecodes_abs_updates=None,
     ecodes_btn_updates=None,
     input_key_updates=None,
+    choose_last=False,
 ):
-    from unicon.utils import cmd
+    from unicon.utils import cmd, coalesce, get_ctx, import_obj, expect
     import os
     import fcntl
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
 
     input_states = {}
     states = {}
@@ -44,16 +45,17 @@ def cb_input_ev(
                 except Exception as e:
                     print(path, e)
         print('devices', devices)
-        anti_pats = ['touchpad', 'sensor']
+        anti_pats = ['touchpad', 'sensor', 'hdmi', 'pch', 'button', 'video bus', 'hotkey', 'hid events']
         devices = list(filter(lambda x: all(p not in x[1].lower() for p in anti_pats), devices))
         pats = ['joystick', 'controller', 'wireless']
         devices = list(filter(lambda x: any(p in x[1].lower() for p in pats), devices))
         if len(devices):
             device = devices[0][0]
-    if device is None:
+    if device is None and choose_last:
         dev_root = dev_path
         devs = filter(lambda x: 'event' in x, os.listdir(dev_root))
         device = os.path.join(dev_root, sorted(devs, key=lambda x: int(x[5:]))[-1])
+    expect(device is not None, 'ev device not found')
 
     import evdev
     import evdev.ecodes as ecodes

@@ -49,9 +49,8 @@ def cb_unitree1_recv_send_close(
     legged_type = getattr(sdk.LeggedType, legged_type)
 
     num_dofs = len(states_q)
-    if input_keys is None:
-        from unicon.inputs import _default_input_keys
-        input_keys = _default_input_keys
+    from unicon.utils import coalesce
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
     from unicon.utils.unitree import get_key_mapping, unpack_wireless_remote
     key_mapping = get_key_mapping()
     mapped_keys = [key_mapping.get(k) for k in input_keys]

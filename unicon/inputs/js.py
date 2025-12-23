@@ -18,8 +18,8 @@ def cb_input_js(
     ecodes_btn_updates=None,
     input_key_updates=None,
 ):
-    from unicon.utils import cmd
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    from unicon.utils import cmd, coalesce, get_ctx, import_obj
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
     input_key_updates = {} if input_key_updates is None else input_key_updates
     input_keys = [input_key_updates.get(k, k) for k in input_keys]
     # Released by rdb under the Unlicense (unlicense.org)

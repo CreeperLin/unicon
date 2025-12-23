@@ -13,7 +13,8 @@ def cb_input_term(
     import sys
     import os
     import numpy as np
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    from unicon.utils import coalesce, get_ctx, import_obj
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
     nabs_inds = [i for i, k in enumerate(input_keys) if not (k.startswith('ABS') and not k.startswith('ABS_HAT'))]
     abs_inds = [i for i, k in enumerate(input_keys) if (k.startswith('ABS') and not k.startswith('ABS_HAT'))]
     mapping = {

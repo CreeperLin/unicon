@@ -41,6 +41,7 @@ def cb_cmd_vel(
     pyaw_cmd_kp=1.,
     pyaw_cmd_init=None,
 ):
+    from unicon.utils import coalesce, get_ctx
     inp_min = -1.
     inp_max = 1.
     import numpy as np
@@ -96,7 +97,7 @@ def cb_cmd_vel(
     print('cmd_keys', list(enumerate(cmd_keys)))
     print('num_cmd', num_cmd)
     print('num_commands', num_commands)
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
 
     idx_vx = input_keys.index('ABS_Y')
     idx_vy = input_keys.index('ABS_X')
@@ -311,11 +312,12 @@ def cb_cmd_wb(
     init_gait_mode=0,
     enable_gait_mode=True,
 ):
+    from unicon.utils import coalesce, get_ctx
 
     def rising_edge(s0, s1, idx):
         return s0[idx] == 0 and s1[idx] == 1
 
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
     num_cmds = len(states_cmd)
     if axis_names is None:
         axis_names = [
@@ -511,8 +513,8 @@ def cb_cmd_rec(
     key_rec='BTN_TR',
     key_play='BTN_START',
 ):
-    from unicon.utils import list2slice, is_edge
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    from unicon.utils import list2slice, is_edge, coalesce, get_ctx
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
     is_rec = False
     is_play = False
     rec_inds = list2slice(rec_inds)

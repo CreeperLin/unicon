@@ -381,8 +381,8 @@ def cb_timer_wait(
                 _lats = lats[pt - intv:pt]
                 print('cb_timer_wait lat min/max/std/mean', pt, timeouts, np.min(_lats), np.max(_lats), np.std(_lats),
                       np.mean(_lats))
-        if pt >= len(lats):
-            pt = 0
+            if pt >= len(lats):
+                pt = 0
         if wait <= 0:
             return
         if lat > wait:
@@ -409,7 +409,8 @@ def cb_wait_input(
     input_keys=None,
 ):
     import numpy as np
-    input_keys = __import__('unicon.inputs', fromlist=[''])._default_input_keys if input_keys is None else input_keys
+    from unicon.utils import coalesce, get_ctx
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
     inds = [input_keys.index(k) for k in keys] if inds is None else inds
     keys = [input_keys[i] for i in inds] if keys is None else keys
     _pt = 0

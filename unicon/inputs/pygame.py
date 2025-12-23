@@ -15,6 +15,8 @@ btn_mapping_dinput = {
     'BTN_TR': 7,
     'BTN_SELECT': 8,
     'BTN_START': 9,
+    'BTN_THUMBL': 2,
+    'BTN_THUMBR': 5,
 }
 hat_mapping_dinput = {
     'ABS_HAT0': (0, 1, -1),
@@ -37,6 +39,8 @@ btn_mapping_xbox = {
     'BTN_TR': 5,
     'BTN_SELECT': 6,
     'BTN_START': 7,
+    'BTN_THUMBL': 8,
+    'BTN_THUMBR': 9,
 }
 hat_mapping_xbox = {
     'ABS_HAT0': (0, 1, -1),
@@ -59,6 +63,8 @@ btn_mapping_ps4 = {
     'BTN_TR': 10,
     'BTN_SELECT': 4,
     'BTN_START': 6,
+    'BTN_THUMBL': 7,
+    'BTN_THUMBR': 8,
     'ABS_HAT0Y-': 11,
     'ABS_HAT0Y+': 12,
     'ABS_HAT0X-': 13,
@@ -82,6 +88,8 @@ btn_mapping_ps5 = {
     'BTN_TR': 10,
     'BTN_SELECT': 4,
     'BTN_START': 6,
+    'BTN_THUMBL': 7,
+    'BTN_THUMBR': 8,
     'ABS_HAT0Y-': 11,
     'ABS_HAT0Y+': 12,
     'ABS_HAT0X-': 13,
@@ -127,6 +135,8 @@ btn_mapping_switchpro = {
     'BTN_TR': 10,
     'BTN_SELECT': 4,
     'BTN_START': 6,
+    'BTN_THUMBL': 7,
+    'BTN_THUMBR': 8,
     'ABS_HAT0Y-': 11,
     'ABS_HAT0Y+': 12,
     'ABS_HAT0X-': 13,
@@ -143,9 +153,10 @@ def cb_input_pygame(
     remap_trigger=True,
     alt=False,
 ):
-    from unicon.utils import printv
-    input_keys = __import__('unicon.inputs').inputs._default_input_keys if input_keys is None else input_keys
+    from unicon.utils import printv, coalesce, get_ctx, import_obj, expect
+    input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
     import pygame
+    expect(int(pygame.__version__[0]) == 2, 'pygame 2.x required')
     pygame.init()
     pygame.joystick.init()
     assert pygame.joystick.get_init()

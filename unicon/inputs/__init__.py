@@ -1,5 +1,4 @@
-# _default_input_keys = ['ABS_X', 'ABS_Y', 'ABS_Z', 'ABS_RZ', 'BTN_A', 'BTN_B', 'BTN_X', 'BTN_Y', 'BTN_TL', 'BTN_TR']
-_default_input_keys = [
+DEFAULT_INPUT_KEYS = [
     'ABS_X',
     'ABS_Y',
     'ABS_RX',
@@ -43,8 +42,10 @@ _key_descs = {
     'BTN_Y': 'button north',
     'BTN_SELECT': 'button option left',
     'BTN_START': 'button option right',
-    'BTN_TL': 'left bumper',
-    'BTN_TR': 'right bumper',
+    'BTN_THUMBL': 'left joystick button',
+    'BTN_THUMBR': 'right joystick button',
+    'BTN_TL': 'bumper left',
+    'BTN_TR': 'bumper right',
 }
 
 
@@ -53,7 +54,7 @@ def test_cb_input(cb_input_cls, cb=None, states_input=None, input_keys=None):
     import time
     dt = 0.02
     th = 0.1
-    input_keys = _default_input_keys if input_keys is None else input_keys
+    input_keys = DEFAULT_INPUT_KEYS if input_keys is None else input_keys
     states_input = np.zeros(len(input_keys)) if states_input is None else states_input
     cb = cb_input_cls(states_input) if cb is None else cb
     assert cb is not None
