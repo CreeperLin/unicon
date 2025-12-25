@@ -592,13 +592,43 @@ def parse_robot_def(robot_def):
     print('robot_def', robot_def.keys())
     urdf_path = robot_def.get('URDF')
     mjcf_path = robot_def.get('MJCF')
-    asset_dir = os.environ.get('UNICON_ASSET_DIR')
-    if asset_dir is None:
-        res = find('..', path='*resources/robots')
-        asset_dir = res[0] if res is not None else './'
-    print('asset_dir', asset_dir)
-    asset_paths = urdf_path, mjcf_path
-    urdf_path, mjcf_path = [(x if x is None or x.startswith('/') else os.path.join(asset_dir, x)) for x in asset_paths]
+    asset_paths = {
+        'urdf': urdf_path,
+        'mjcf': mjcf_path,
+    }
+    rel_paths = {
+        k: v for k, v in asset_paths.items() if v is not None and not v.startswith('/')
+    }
+    if len(rel_paths):
+        asset_dir = os.environ.get('UNICON_ASSET_DIR')
+        if asset_dir is None:
+            res = find('~', path='*resources/robots')
+            if res is not None:
+                asset_dir = res[0]
+        if asset_dir is not None:
+            print('asset_dir', asset_dir)
+            rel_paths = {
+                k: os.path.join(asset_dir, v) for k, v in rel_paths.items()
+            }
+            asset_paths.update(rel_paths)
+            rel_paths = {}
+    if len(rel_paths):
+        for k, v in rel_paths.copy().items():
+            res = find('~', path='*'+v)
+            if res is not None:
+                v = res[0]
+                asset_paths[k] = v
+                rel_paths.pop(k)
+    if len(rel_paths):
+        for k, v in rel_paths.copy().items():
+            v = os.path.basename(v)
+            res = find('~', path='*'+v)
+            if res is not None:
+                v = res[0]
+                asset_paths[k] = v
+                rel_paths.pop(k)
+    urdf_path = asset_paths['urdf']
+    mjcf_path = asset_paths['mjcf']
     has_urdf_path = urdf_path is not None
     has_mjcf_path = mjcf_path is not None
     if has_urdf_path:

@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import json
 try:
     import zmq
 except ImportError:
@@ -9,15 +8,6 @@ except ImportError:
 BUF_SIZE = 128
 RCVHWM = 32
 SNDHWM = 32
-
-
-def dump_json(states):
-    data = {k: s.astype(np.float64).round(3).tolist() for k, s in states.items()}
-    return json.dumps(data, indent=None, separators=(',', ':')).encode()
-
-
-def load_json(msg):
-    return json.loads(msg.decode())
 
 
 def cb_send_pyzmq(
@@ -29,11 +19,13 @@ def cb_send_pyzmq(
     topic=None,
     send_key_map=None,
     verbose=False,
+    serializer='json',
     **states,
 ):
+    from unicon.utils.serializers import get_factory
+    dump_fn, _ = get_factory(serializer)()
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
-    dump_fn = dump_json
     context = zmq.Context()
     pub = context.socket(zmq.PUB)
     # pub.setsockopt(zmq.CONFLATE, 1)
@@ -87,8 +79,11 @@ def cb_recv_pyzmq(
     recv_key_map=None,
     match_len=False,
     verbose=False,
+    serializer='json',
     **states,
 ):
+    from unicon.utils.serializers import get_factory
+    _, load_fn = get_factory(serializer)()
     keys = list(states.keys()) if keys is None else keys
     states = {k: states[k] for k in keys}
     context = zmq.Context()
@@ -106,7 +101,6 @@ def cb_recv_pyzmq(
     for tp in topic:
         sub.setsockopt(zmq.SUBSCRIBE, tp)
     sub.connect(addr)
-    load_fn = load_json
     n_again = -1
     recv_modes = {} if recv_modes is None else recv_modes
     recv_modes = {k: recv_modes for k in keys} if isinstance(recv_modes, str) else recv_modes
@@ -124,10 +118,10 @@ def cb_recv_pyzmq(
                 msg = sub.recv(flags=zmq.NOBLOCK)
                 last_msg = msg
                 rem = repeats
-                if n_again == -1:
+                if n_recv == 0:
                     print('cb_recv_pyzmq connected', addr)
                 if n_again > 1000:
-                    print('cb_recv_pyzmq reconnected', addr)
+                    print('cb_recv_pyzmq reconnected', addr, n_again)
                 n_again = 0
             except zmq.Again:
                 n_again += 1
