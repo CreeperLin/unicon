@@ -1,5 +1,3 @@
-
-
 def cb_x2_recv_send_close(
     states_q_ctrl,
     states_rpy,

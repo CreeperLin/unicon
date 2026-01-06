@@ -1,5 +1,3 @@
-
-
 def cb_unitree_recv_send_close(
     states_q_ctrl,
     states_rpy,

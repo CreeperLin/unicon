@@ -146,12 +146,17 @@ btn_mapping_switchpro = {
 
 def cb_input_pygame(
     states_input,
-    device_index=0,
+    device_index=None,
+    device_guid=None,
+    device_js_type=None,
     verbose=False,
     input_keys=None,
     joystick_type=None,
     remap_trigger=True,
     alt=False,
+    mappings=None,
+    connect_new=True,
+    connect_rem=True,
 ):
     from unicon.utils import printv, coalesce, get_ctx, import_obj, expect
     input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
@@ -168,9 +173,11 @@ def cb_input_pygame(
     name = None
     instance_id = None
     axis_mapping, btn_mapping, hat_mapping = None, None, None
+    mappings = {} if mappings is None else mappings
     states = {}
 
     def init_js(dev_idx):
+        print('pygame joystick initing', dev_idx)
         nonlocal js
         nonlocal num_buttons, num_axes, num_hats, name, instance_id
         nonlocal axis_mapping, btn_mapping, hat_mapping
@@ -179,6 +186,7 @@ def cb_input_pygame(
         if not js.get_init():
             js.quit()
             js = None
+            print('pygame joystick init failed get_init', dev_idx)
             return 1
         num_buttons = js.get_numbuttons()
         num_axes = js.get_numaxes()
@@ -208,15 +216,30 @@ def cb_input_pygame(
             elif 'Wireless' in name:
                 js_type = 'dinput'
         if js_type is None:
+            print('pygame joystick init failed unknown js_type', dev_idx)
+            return 1
+        if device_js_type is not None and device_js_type != js_type:
+            print('pygame joystick init failed unmatched js_type', device_js_type, js_type)
             return 1
         js_type = f'{js_type}_alt' if alt else js_type
         print('joystick_type', js_type)
         axis_mapping = globals().get(f'axis_mapping_{js_type}', {})
+        axis_mapping.update(mappings.get('axis', {}))
         btn_mapping = globals().get(f'btn_mapping_{js_type}', {})
+        btn_mapping.update(mappings.get('btn', {}))
         hat_mapping = globals().get(f'hat_mapping_{js_type}', {})
+        hat_mapping.update(mappings.get('hat', {}))
+
+    def quit_js():
+        nonlocal js
+        if js is None:
+            return
+        print('pygame joystick quitting', js)
+        js.quit()
+        js = None
 
     def cb():
-        nonlocal js
+        nonlocal js, remap_trigger
         for i, k in enumerate(input_keys):
             if k.startswith('ABS_HAT'):
                 neg = states.get(k + '-', 0)
@@ -228,35 +251,43 @@ def cb_input_pygame(
         pygame.event.pump()
         try:
             evs = list(pygame.event.get())
-        except SystemError:
-            if js is not None:
-                js.quit()
-            js = None
+        except SystemError as e:
+            printv('pygame event exc', e)
             evs = []
         for event in evs:
             if event.type == pygame.QUIT:
                 return True
             if event.type == pygame.JOYDEVICEADDED:
-                if js is None and event.device_index == device_index:
-                    if init_js(device_index):
-                        print(f"Joystick init failed")
-                print(f"Joystick {event.device_index} connencted {js}")
+                print(f'pygame joystick {event.device_index} connected {event.dict}')
+                dev_id = event.device_index
+                dev_guid = event.guid
+                guid_matched = (True if device_guid is None else dev_guid == device_guid)
+                id_matched = (True if device_index is None else dev_id == device_index)
+                if (js is None or connect_new) and id_matched and guid_matched:
+                    quit_js()
+                    init_js(dev_id)
 
             if event.type == pygame.JOYDEVICEREMOVED:
-                if event.instance_id == instance_id:
-                    if js is not None:
-                        js.quit()
-                    js = None
-                    states_input[:] = 0.
-                print(f"Joystick {event.instance_id} disconnected {js}")
+                print(f'pygame joystick {event.instance_id} disconnected {event.dict}')
+                dev_id = event.instance_id
+                if dev_id == instance_id:
+                    quit_js()
 
         if js is None:
-            if pygame.joystick.get_count() == 0:
+            joy_count = pygame.joystick.get_count()
+            if joy_count == 0:
                 printv('pygame no joystick')
+                return
+            if connect_rem and init_js(joy_count - 1):
+                return
+        try:
+            axes = [js.get_axis(i) for i in range(num_axes)]
+            btns = [js.get_button(i) for i in range(num_buttons)]
+            hats = [js.get_hat(i) for i in range(num_hats)]
+        except Exception as e:
+            printv('pygame joystick exc', e)
+            quit_js()
             return
-        axes = [js.get_axis(i) for i in range(num_axes)]
-        btns = [js.get_button(i) for i in range(num_buttons)]
-        hats = [js.get_hat(i) for i in range(num_hats)]
         if verbose:
             print(axes, btns, hats)
         for k, v in axis_mapping.items():
@@ -275,6 +306,9 @@ def cb_input_pygame(
             hat = hats[idx]
             states[k + 'X'] = hat[0] * xd
             states[k + 'Y'] = hat[1] * yd
+        if remap_trigger is None:
+            if any([states.get(k, 0) < 0 for k in ['ABS_BRAKE', 'ABS_GAS']]):
+                remap_trigger = True
         if remap_trigger:
             for k in ['ABS_BRAKE', 'ABS_GAS']:
                 if k not in states:

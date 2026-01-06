@@ -21,7 +21,7 @@ def get_args():
     parser.add_argument('-ccv', '--cmd_const_v', default=None)
     parser.add_argument('-iks', '--input_keys', default=None)
     parser.add_argument('-d', '--dry', action='store_true')
-    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-v', '--verbose', default=None)
     parser.add_argument('-nwp', '--no_wrap', action='store_true')
     parser.add_argument('-w', '--wait', type=float, default=0)
     parser.add_argument('-kp', '--kp', default=None)
@@ -122,6 +122,8 @@ def get_args():
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-rdu', '--robot_def_update', default=None)
     parser.add_argument('-ht', '--hand_type', default='none')
+    parser.add_argument('-xcn', '--x_ctrl_names', default=None)
+    parser.add_argument('-xcdn', '--x_ctrl_dof_names', default=None)
     args, _ = parser.parse_known_args()
     return args
 
@@ -350,17 +352,44 @@ def run(args=None):
         })
     x_extras = args['states_x_extras']
     x_extras2 = args['states_x_extras2']
-    num_links = 0 if LINK_NAMES is None else len(LINK_NAMES)
+    from unicon.utils import pats2inds
+    NUM_LINKS = 0 if LINK_NAMES is None else len(LINK_NAMES)
+    x_ctrl_names = load_obj(args['x_ctrl_names'])
+    x_ctrl_names = [] if x_ctrl_names is None else x_ctrl_names
+    # x_ctrl_names = [n for n in x_ctrl_names if n in LINK_NAMES]
+    x_ctrl_inds, x_ctrl_names, _ = pats2inds(x_ctrl_names, LINK_NAMES, None)
+    ctx['x_ctrl_names'] = x_ctrl_names
+    ctx['x_ctrl_inds'] = x_ctrl_inds
+    num_x_ctrl = len(x_ctrl_names)
+    print('x_ctrl_names', num_x_ctrl, x_ctrl_names, x_ctrl_inds)
+
+    x_ctrl_dof_names = load_obj(args['x_ctrl_dof_names'])
+    # x_ctrl_dof_names = [] if x_ctrl_dof_names is None else x_ctrl_dof_names
+    x_ctrl_dof_names = DOF_NAMES[:] if x_ctrl_dof_names is None else x_ctrl_dof_names
+    x_ctrl_dof_inds, x_ctrl_dof_names, _ = pats2inds(x_ctrl_dof_names, DOF_NAMES, DOF_NAMES_STD)
+    # x_ctrl_dof_names = [n for n in x_ctrl_dof_names if n in DOF_NAMES]
+    # x_ctrl_dof_inds = [DOF_NAMES.index(n) for n in x_ctrl_dof_names]
+    ctx['x_ctrl_dof_names'] = x_ctrl_dof_names
+    ctx['x_ctrl_dof_inds'] = x_ctrl_dof_inds
+    print('x_ctrl_dof_names', len(x_ctrl_dof_names), x_ctrl_dof_names, x_ctrl_dof_inds)
+
     if x_extras or x_extras2:
         specs.update({
             'pos': 3,
             'lin_vel': 3,
             'lin_acc': 3,
         })
-    if num_links and x_extras2:
+    if NUM_LINKS and x_extras2:
         specs.update({
-            'x': (num_links, 4, 4),
-            'xd': (num_links, 6),
+            'x': [(NUM_LINKS, 4, 4)],
+            'xd': [(NUM_LINKS, 6)],
+            'J': [(NUM_LINKS, 6, NUM_DOFS)],
+        })
+    if num_x_ctrl:
+        specs.update({
+            'x_ctrl': [(NUM_LINKS, 4, 4)],
+            # 'x_ctrl': [(num_x_ctrl, 4, 4)],
+            'x_err': [(NUM_LINKS, 6)],
         })
     states_custom_specs = args['states_custom_specs']
     if states_custom_specs is not None:
@@ -413,6 +442,8 @@ def run(args=None):
     states_pos = states_get('pos')
     states_lin_vel = states_get('lin_vel')
     states_lin_acc = states_get('lin_acc')
+    states_x = states_get('x')
+    states_x_ctrl = states_get('x_ctrl')
     states_extras = {
         'states_cmd': states_cmd,
         'states_q_temp': states_q_temp,
@@ -421,8 +452,9 @@ def run(args=None):
         'states_pos': states_pos,
         'states_lin_vel': states_lin_vel,
         'states_lin_acc': states_lin_acc,
-        'states_x': states_get('x'),
+        'states_x': states_x,
         'states_xd': states_get('xd'),
+        'states_x_ctrl': states_x_ctrl,
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
     if HAND_NUM_DOFS:
@@ -499,6 +531,28 @@ def run(args=None):
     print('q_reset', q_reset.tolist())
     print('q_boot', q_boot.tolist())
 
+    if states_x_ctrl is not None or states_x is not None:
+        from unicon.utils.pin import pin_fk
+        robot_pin = robot_def.get('robot_pin')
+        if robot_pin is not None:
+            URDF_DOF_NAMES = robot_def.get('URDF_DOF_NAMES', DOF_NAMES)
+            print('URDF_DOF_NAMES', URDF_DOF_NAMES)
+            q_reset_urdf = np.zeros(len(URDF_DOF_NAMES), dtype=np.float32)
+            inds = [DOF_NAMES.index(u) for u in URDF_DOF_NAMES if u in DOF_NAMES]
+            q_reset_urdf[:] = q_reset[inds]
+            x_reset = pin_fk(q_reset_urdf, robot_pin=robot_pin, link_names=LINK_NAMES)
+        else:
+            x_reset = np.stack([np.eye(4, dtype=np.float32) for _ in range(len(states_x_ctrl))], axis=0)
+        print('x_reset', x_reset.shape)
+        for ei in x_ctrl_inds:
+            print(ei, LINK_NAMES[ei])
+            print(np.round(x_reset[ei].astype(np.float32), 3))
+        ctx['x_reset'] = x_reset
+    if states_x_ctrl is not None:
+        states_x_ctrl[:] = x_reset
+    if states_x is not None:
+        states_x[:] = x_reset
+
     if dof_states_padded:
         dtype = states_q_ctrl.dtype
         states_q_ctrl_inf = np.zeros(NUM_DOFS + 1, dtype=dtype)
@@ -510,6 +564,7 @@ def run(args=None):
         def cb_pad_in():
             states_q_inf[:NUM_DOFS] = states_q
             states_qd_inf[:NUM_DOFS] = states_qd
+            states_q_ctrl_inf[:NUM_DOFS] = states_q_ctrl
 
         def cb_pad_out():
             states_q_ctrl[:] = states_q_ctrl_inf[:NUM_DOFS]
@@ -782,8 +837,7 @@ def run(args=None):
             infer_profile = args['infer_profile']
             if infer_profile:
                 import timeit
-                # n = 2**11
-                n = 2**12
+                n = 2**11
                 t = timeit.timeit(cb_infer, number=n)
                 print('infer t', t / n)
                 ts = []
@@ -795,6 +849,9 @@ def run(args=None):
                 ts = np.array(ts)
                 print('infer min/max/mean/std', np.min(ts), np.max(ts), np.mean(ts), np.std(ts))
                 print('q_ctrl', pp_arr(states_q_ctrl))
+            else:
+                for _ in range(32):
+                    cb_infer()
             reset_fn()
             if dof_states_padded:
                 cb = [cb_pad_in, cb_infer, cb_pad_out]
@@ -1493,11 +1550,37 @@ def run(args=None):
             cb_input_dev,
         ])
 
+    cmd_states = dict()
+    cmds = args['cmd']
+    cmds = [] if cmds is None else cmds
+    for cmd in cmds:
+        if cmd == 'none':
+            continue
+        cmd_kwds = load_obj(cmd)
+        cmd_kwds = {'type': cmd_kwds} if isinstance(cmd_kwds, str) else cmd_kwds
+        cmd_type = cmd_kwds.pop('type')
+        print('cmd_type', cmd_type)
+        cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.cmd')
+        kwds = {}
+        ccv = args['cmd_const_v']
+        if ccv is not None:
+            ccv = load_obj(ccv)
+            ccv = [ccv] if isinstance(ccv, (float, int)) else ccv
+            kwds['cmd'] = ccv
+        if cmd_type == 'replay':
+            rec_cmd = loaded_rec.get('states_cmd')
+            kwds['frames'] = rec_cmd
+        kwds.update(cmd_kwds)
+        if cb_cmd_cls is not None:
+            cb_cmd = autowired(cb_cmd_cls, states=cmd_states)(input_keys=input_keys, **kwds)
+            cb_cmd()
+            seq.append(cb_cmd)
+
     print('seq before io', seq)
     inputs = args['inputs']
     outputs = args['outputs']
-    # n_cmd_cbs = len(cmds)
-    # def_insert_pos = -n_cmd_cbs if n_cmd_cbs else None
+    n_cmd_cbs = len(cmds)
+    def_insert_pos = -n_cmd_cbs if n_cmd_cbs else None
     def_insert_pos = None
     for output_kwds in outputs:
         output_kwds = load_obj(output_kwds)
@@ -1520,47 +1603,11 @@ def run(args=None):
         cb = autowired(cb_input_cls)(**input_kwds)
         seq.insert(insert_pos, cb)
 
-    cmd_states = dict()
-    cmds = args['cmd']
-    cmds = [] if cmds is None else cmds
-    for cmd in cmds:
-        if cmd == 'none':
-            continue
-        cmd_kwds = load_obj(cmd)
-        cmd_kwds = {'type': cmd_kwds} if isinstance(cmd_kwds, str) else cmd_kwds
-        cmd_type = cmd_kwds.pop('type')
-        print('cmd_type', cmd_type)
-        cb_cmd_cls = import_obj(cmd_type, default_name_prefix='cb_cmd', default_mod_prefix='unicon.cmd')
-        kwds = {}
-        ccv = args['cmd_const_v']
-        if ccv is not None:
-            ccv = load_obj(ccv)
-            ccv = [ccv] if isinstance(ccv, (float, int)) else ccv
-            kwds['cmd'] = ccv
-        if env_cfg is not None:
-            if cmd_type in ['vel', 'wb']:
-                kwds['cmd_keys'] = env_command_keys
-                kwds['cmd_ranges'] = env_command_ranges
-                kwds['cmd_def_vals'] = env_command_def_vals
-        if cmd_type == 'replay':
-            rec_cmd = loaded_rec.get('states_cmd')
-            kwds['frames'] = rec_cmd
-        kwds.update(cmd_kwds)
-        if cb_cmd_cls is not None:
-            cb_cmd = autowired(cb_cmd_cls, states=cmd_states)(input_keys=input_keys, **kwds)
-            cb_cmd()
-            seq.append(cb_cmd)
-
-    if x_extras2:
-        from unicon.kinematics import cb_kinematics_fwd
-        cb = autowired(cb_kinematics_fwd)()
-        seq.append(cb)
-
     if rec_post_send and rec_output is not None:
         seq.append(_cb_rec)
 
-    if verbose:
-        seq.append(cb_print())
+    if verbose is not None:
+        seq.append(cb_print(intvs=load_obj(verbose)))
 
     outer_input_stop = not args['no_outer_input_stop']
     if outer_input_stop and num_inputs > 0:
@@ -1620,7 +1667,6 @@ def run(args=None):
     states_quat = states_get('quat')
     if states_quat is not None:
         states_quat[:] = [0, 0, 0, 1.]
-
     if HAND_NUM_DOFS:
         hand_q_ctrl_init = hand_def.get('Q_RESET', hand_def.get('Q_CTRL_MAX'))
         print('hand_q_ctrl_init', hand_q_ctrl_init)

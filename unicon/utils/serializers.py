@@ -144,7 +144,7 @@ def serializer_npz():
     return dump_fn, load_fn
 
 
-_factories.update({k[k.index('_')+1:]: v for k, v in globals().items() if k.startswith('serializer_')})
+_factories.update({k[k.index('_') + 1:]: v for k, v in globals().items() if k.startswith('serializer_')})
 
 
 def main():

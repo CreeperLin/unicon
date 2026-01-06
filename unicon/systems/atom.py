@@ -6,16 +6,13 @@ _err_codes = {
     260: "12V power supply abnormal",
     261: "Peripheral power supply abnormal",
     262: "Energy port power supply abnormal",
-
     263: "Lower limb voltage too low",
     264: "Lower limb voltage too high",
     265: "Upper limb voltage too low",
     266: "Upper limb voltage too high",
-
     512: "Cell overvoltage",
     513: "Cell undervoltage",
     514: "Battery failure",
-
     515: "Battery pack overvoltage",
     516: "Battery pack undervoltage",
     517: "Charge overcurrent",
@@ -29,10 +26,8 @@ _err_codes = {
     525: "Open circuit alarm",
     526: "Cell mismatch",
     527: "MOSFET driver abnormal",
-
     528: "MCU alarm",
     529: "Sensor alarm",
-
     1280: "alarm_host.json parse failed",
     1281: "alarm_servo.json parse failed",
     1282: "Offset.json parse failed",
@@ -42,13 +37,11 @@ _err_codes = {
     1286: "is_virtual.json parse failed",
     1287: "offset.json.default parse failed",
     1288: "Offset.json.bak parse failed",
-
     1289: "Modify Offset.json failed",
     1290: "Modify offset.json.default failed",
     1291: "Modify offset.json.bak failed",
     1292: "Modify equipment_config.json failed",
     1293: "Modify is_virtual.json failed",
-
     1294: "Enable failed",
     1295: "CAN1 board offline",
     1296: "CAN2 board offline",
@@ -71,7 +64,6 @@ _err_codes = {
     1314: "AtomOs.version parse failed",
     1315: "Power heartbeat abnormal",
     1316: "BMS heartbeat abnormal",
-
     8752: "Hardware overcurrent protection",
     8992: "Software overcurrent protection",
     9040: "Module overload protection",
@@ -80,7 +72,6 @@ _err_codes = {
     12816: "PN overvoltage protection",
     12832: "PN undervoltage protection",
     12928: "Servo and motor power mismatch fault",
-
     13184: "Driver output phase sequence error protection",
     17168: "Driver overheating protection",
     17169: "Temperature sensor damaged or not installed",
@@ -106,20 +97,17 @@ _err_codes = {
     29576: "PWM output buffer abnormal",
     29577: "Brake power abnormal",
     29584: "Joint position deviation large",
-
     30080: "Servo bus communication abnormal",
     30081: "XML configuration file not burned",
     30082: "Sync cycle configuration error",
     30083: "Master sync signal lost",
     30084: "Sync cycle error too large",
-
     33920: "Exceed maximum speed protection",
     33921: "Speed deviation too large protection",
     33922: "Motor stall protection",
     34321: "Position deviation too large protection",
     34322: "Position command limit exceeded protection",
     34323: "Full closed-loop position deviation too large",
-
     65282: "Angle identification failed",
     65344: "Parameter identification failed",
 }

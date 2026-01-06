@@ -29,7 +29,6 @@ def cb_cmd_vel(
     enable_gait_modes=None,
     # cmd_ranges=None,
     # cmd_keys=None,
-    cmd_orig_values=None,
     enable_extra_commands=None,
     extra_cmd_w_coef=0.8,
     num_vel_cmds=3,
@@ -42,36 +41,14 @@ def cb_cmd_vel(
     pyaw_cmd_init=None,
 ):
     from unicon.utils import coalesce, get_ctx
+    ctx = get_ctx()
     inp_min = -1.
     inp_max = 1.
     import numpy as np
     import time
-    _default_cmd_keys = [
-        'lin_vel_x',
-        'lin_vel_y',
-        'ang_vel_yaw',
-        # 'frequency',
-        'gait_frequency',
-        'phase',
-        'duration',
-        'foot_trajectory',
-        'body_height',
-        'body_roll',
-        'body_pitch',
-        'body_yaw',
-        'waist_yaw',
-        'waist_roll',
-        'waist_pitch',
-    ]
-    _default_cmd_orig_values = {
-        # 'body_height': 0.2,
-        'body_height': 0.,
-        'body_pitch': 0.,
-        'frequency': 1.2,
-        'gait_frequency': 1.2,
-    }
-    cmd_keys = _default_cmd_keys if cmd_keys is None else cmd_keys
-    cmd_def_vals = _default_cmd_orig_values if cmd_def_vals is None else cmd_def_vals
+    cmd_keys = coalesce(cmd_keys, ctx.get('env_command_keys'))
+    cmd_ranges = coalesce(cmd_ranges, ctx.get('env_command_ranges'))
+    cmd_def_vals = coalesce(cmd_def_vals, ctx.get('env_command_def_vals'))
     num_cmd = len(states_cmd)
     num_commands = len(cmd_keys)
     cmd_ranges = [[-1, 1] for _ in range(num_commands)] if cmd_ranges is None else cmd_ranges
@@ -97,7 +74,7 @@ def cb_cmd_vel(
     print('cmd_keys', list(enumerate(cmd_keys)))
     print('num_cmd', num_cmd)
     print('num_commands', num_commands)
-    input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
+    input_keys = coalesce(ctx.get('input_keys'), input_keys)
 
     idx_vx = input_keys.index('ABS_Y')
     idx_vy = input_keys.index('ABS_X')
@@ -312,10 +289,8 @@ def cb_cmd_wb(
     init_gait_mode=0,
     enable_gait_mode=True,
 ):
-    from unicon.utils import coalesce, get_ctx
-
-    def rising_edge(s0, s1, idx):
-        return s0[idx] == 0 and s1[idx] == 1
+    from unicon.utils import coalesce, get_ctx, is_edge
+    ctx = get_ctx()
 
     input_keys = coalesce(get_ctx().get('input_keys'), input_keys)
     num_cmds = len(states_cmd)
@@ -328,20 +303,9 @@ def cb_cmd_wb(
             'ABS_HAT0X',
             'ABS_HAT0Y',
         ]
-    if cmd_keys is None:
-        cmd_keys = [
-            'lin_vel_x',
-            'lin_vel_y',
-            'ang_vel_yaw',
-            'gait_frequency',
-            'phase',
-            'duration',
-            'foot_trajectory',
-            'body_height',
-            'body_roll',
-            'body_pitch',
-            'body_yaw',
-        ][:num_cmds]
+    cmd_keys = coalesce(cmd_keys, ctx.get('env_command_keys'))
+    cmd_ranges = coalesce(cmd_ranges, ctx.get('env_command_ranges'))
+    cmd_def_vals = coalesce(cmd_def_vals, ctx.get('env_command_def_vals'))
     num_commands = len(cmd_keys)
     if axis_cmd_keys is None:
         axis_cmd_keys = ['ang_vel_yaw', 'lin_vel_x', 'body_roll', 'body_pitch', 'body_yaw', 'body_height']
@@ -399,11 +363,11 @@ def cb_cmd_wb(
         cmd = np.clip(cmd, cmd_min, cmd_max)
         states_cmd[:len(cmd)] = cmd
 
-        if rising_edge(last_input, states_input, inp_reset):
+        if is_edge(last_input, states_input, inp_reset) > 0:
             input_states[:] = 0.
             print('input_states reset')
 
-        if rising_edge(last_input, states_input, inp_gait_next):
+        if is_edge(last_input, states_input, inp_gait_next) > 0:
             nonlocal gait_mode
             gait_mode = (gait_mode + 1) % num_gait_modes
             print('gait_mode', gait_mode)

@@ -8,6 +8,7 @@ import threading
 import subprocess
 import inspect
 import functools
+import traceback
 
 _default_time_fn = time.perf_counter
 _ctx = {}
@@ -16,6 +17,64 @@ _print_memo = {}
 _registry = {}
 ori_print = print
 _timer_memo = {}
+
+
+def pats2inds(pats, keys=None, key_map=None):
+    inds = []
+    mkeys = []
+    pat_inds = []
+    for i, key in enumerate(keys):
+        for j, pat in enumerate(pats):
+            h = pat[0]
+            k = pat[1:] if h in ['@', '~'] else pat
+            if h == '@' and key_map.get(k) == key:
+                break
+            if h == '~' and k in key:
+                break
+            if k == key:
+                break
+        else:
+            continue
+        inds.append(i)
+        pat_inds.append(j)
+        mkeys.append(key)
+    return inds, mkeys, pat_inds
+
+
+def topological_sort(graph):
+    visited = set()
+    stack = []
+
+    def dfs(node):
+        if node not in visited:
+            visited.add(node)
+            for neighbor in graph[node]:
+                dfs(neighbor)
+            stack.append(node)
+
+    for node in list(graph):
+        dfs(node)
+
+    return stack[::-1]
+
+
+def map2inds(a_keys, b_keys, map_a2b=None, map_b2a=None):
+    inds_x, inds_y = [], []
+    map_x2y = map_a2b
+    x_keys, y_keys = a_keys, b_keys
+    if map_a2b is None:
+        x_keys, y_keys = b_keys, a_keys
+        map_x2y = map_b2a
+    y_index = {k: i for i, k in enumerate(y_keys)}
+    for i, x in enumerate(x_keys):
+        y = map_x2y.get(x)
+        if y is None:
+            continue
+        j = y_index.get(y)
+        if j is not None:
+            inds_x.append(i)
+            inds_y.append(j)
+    return (inds_y, inds_x) if map_a2b is None else (inds_x, inds_y)
 
 
 def pkill(*args, opts='-ef'):
@@ -255,16 +314,41 @@ def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
     return res if capture_output else res.returncode
 
 
-def is_edge(x, idx=None, key=None, th=0):
+def get_edge_memo_key(x, idx):
+    prefix = id(x)
+    return f'{prefix}_{idx}'
+
+
+def is_edge(x, idx=None, key=None, th=0.1, lerp=0.5):
+    key = get_edge_memo_key(x, idx) if key is None else key
     if idx is not None:
         x = float(x[idx])
-    key = idx if key is None else key
     last_x = _edge_memo.get(key, 0)
     r = last_x <= th and x > th
     f = last_x >= th and x < th
     # print(_edge_memo, idx, key, r, last_x, x)
-    _edge_memo[key] = x
+    lerp_r = 1 - lerp
+    _edge_memo[key] = last_x * lerp + lerp_r * x
     return 1 if r else (-1 if f else 0)
+
+
+def get_edge_memo(x, idx=None, key=None, th=0.1, lerp=0.5, update=True):
+    key = get_edge_memo_key(x, idx) if key is None else key
+    if idx is not None:
+        x = float(x[idx])
+    last_x = _edge_memo.get(key, 0)
+    if update:
+        lerp_r = 1 - lerp
+        _edge_memo[key] = last_x * lerp + lerp_r * x
+    return last_x - th
+
+
+def is_rising_edge(*args, **kwds):
+    return is_edge(*args, **kwds) > 0
+
+
+def is_falling_edge(*args, **kwds):
+    return is_edge(*args, **kwds) < 0
 
 
 def set_ctx(ctx):
@@ -431,6 +515,8 @@ def load_rec(rec_path, rec_type=None, load_kwds=None, robot_def=None):
 
 
 def load_obj(obj):
+    if obj is None:
+        return obj
     import yaml
     yaml.add_multi_constructor('tag:', lambda *_: None, Loader=yaml.SafeLoader)
     if isinstance(obj, str):
@@ -556,8 +642,6 @@ def parse_urdf(
             kps.append(kp)
             kds.append(kd)
     num_dofs = len(dof_names)
-    print('urdf DOF_NAMES', num_dofs, dof_names)
-    print('urdf LINK_NAMES', len(link_names), link_names)
     locs = {}
     for k in ['q_min', 'q_max', 'tau_limit', 'qd_limit', 'damping', 'friction', 'armature', 'kps', 'kds']:
         val = locals().get(k)
@@ -596,9 +680,7 @@ def parse_robot_def(robot_def):
         'urdf': urdf_path,
         'mjcf': mjcf_path,
     }
-    rel_paths = {
-        k: v for k, v in asset_paths.items() if v is not None and not v.startswith('/')
-    }
+    rel_paths = {k: v for k, v in asset_paths.items() if v is not None and not v.startswith('/')}
     if len(rel_paths):
         asset_dir = os.environ.get('UNICON_ASSET_DIR')
         if asset_dir is None:
@@ -607,14 +689,12 @@ def parse_robot_def(robot_def):
                 asset_dir = res[0]
         if asset_dir is not None:
             print('asset_dir', asset_dir)
-            rel_paths = {
-                k: os.path.join(asset_dir, v) for k, v in rel_paths.items()
-            }
+            rel_paths = {k: os.path.join(asset_dir, v) for k, v in rel_paths.items()}
             asset_paths.update(rel_paths)
             rel_paths = {}
     if len(rel_paths):
         for k, v in rel_paths.copy().items():
-            res = find('~', path='*'+v)
+            res = find('~', path='*' + v)
             if res is not None:
                 v = res[0]
                 asset_paths[k] = v
@@ -622,7 +702,7 @@ def parse_robot_def(robot_def):
     if len(rel_paths):
         for k, v in rel_paths.copy().items():
             v = os.path.basename(v)
-            res = find('~', path='*'+v)
+            res = find('~', path='*' + v)
             if res is not None:
                 v = res[0]
                 asset_paths[k] = v
@@ -631,14 +711,12 @@ def parse_robot_def(robot_def):
     mjcf_path = asset_paths['mjcf']
     has_urdf_path = urdf_path is not None
     has_mjcf_path = mjcf_path is not None
+    urdf_def = None
     if has_urdf_path:
         try:
             urdf_def = parse_urdf(urdf_path)
             # urdf_def.update(robot_def)
-            obj_update(urdf_def, robot_def, verbose=False)
-            robot_def = urdf_def
         except Exception:
-            import traceback
             traceback.print_exc()
     if has_mjcf_path and not has_urdf_path:
         try:
@@ -650,13 +728,26 @@ def parse_robot_def(robot_def):
                 # urdf_path = convert_mjcf_to_urdf(mjcf_path, urdf_tmp_dir)[-1]
                 print('urdf_path', urdf_path)
                 urdf_def = parse_urdf(urdf_path)
-                urdf_def.update(robot_def)
-                robot_def = urdf_def
         except Exception:
-            import traceback
             traceback.print_exc()
+    if urdf_def is not None:
+        URDF_DOF_NAMES = urdf_def['DOF_NAMES']
+        URDF_LINK_NAMES = urdf_def['LINK_NAMES']
+        obj_update(urdf_def, robot_def, verbose=False)
+        robot_def = urdf_def
+        print('URDF_DOF_NAMES', len(URDF_DOF_NAMES), URDF_DOF_NAMES)
+        print('URDF_LINK_NAMES', len(URDF_LINK_NAMES), URDF_LINK_NAMES)
+        robot_def['URDF_DOF_NAMES'] = URDF_DOF_NAMES
+        robot_def['URDF_LINK_NAMES'] = URDF_LINK_NAMES
     robot_def['URDF'] = urdf_path
     robot_def['MJCF'] = mjcf_path
+    robot_pin = None
+    try:
+        from unicon.utils.pin import load_robot_pin
+        robot_pin = load_robot_pin(urdf_path=urdf_path, mjcf_path=mjcf_path)
+    except Exception:
+        traceback.print_exc()
+    robot_def['robot_pin'] = robot_pin
     dof_names = robot_def.get('DOF_NAMES')
     dof_names_std = robot_def.get('DOF_NAMES_STD')
     if isinstance(dof_names_std, list):
@@ -1269,7 +1360,6 @@ def get_sleep_cffi(t_spin=0.0004):
         return _utils.lib._sleep
 
 
-
 use_cffi_sleep = True
 use_cffi_sleep = False
 if use_cffi_sleep:
@@ -1277,7 +1367,6 @@ if use_cffi_sleep:
     try:
         sleep_cffi = get_sleep_cffi()
     except Exception:
-        import traceback
         traceback.print_exc()
 
 

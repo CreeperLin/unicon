@@ -50,20 +50,12 @@ def states_new(name, shape, dtype=np.float32):
 
 def states_news(specs):
     if isinstance(specs, dict):
-        spec_kwds = [
-            {'name': k, **v} if isinstance(v, dict) else {} for k, v in specs.items()
-        ]
-        spec_args = [
-            [] if isinstance(v, dict) else ([k] + (list(v) if isinstance(v, (tuple, list)) else [v]))
-            for k, v in specs.items()
-        ]
+        spec_kwds = [{'name': k, **v} if isinstance(v, dict) else {} for k, v in specs.items()]
+        spec_args = [[] if isinstance(v, dict) else ([k] + (list(v) if isinstance(v, (tuple, list)) else [v]))
+                     for k, v in specs.items()]
     else:
-        spec_kwds = [
-            v if isinstance(v, dict) else {} for v in specs
-        ]
-        spec_args = [
-            [] if isinstance(v, dict) else (v if isinstance(v, (tuple, list)) else [v]) for v in specs
-        ]
+        spec_kwds = [v if isinstance(v, dict) else {} for v in specs]
+        spec_args = [[] if isinstance(v, dict) else (v if isinstance(v, (tuple, list)) else [v]) for v in specs]
     for args, kwds in zip(spec_args, spec_kwds):
         states_new(*args, **kwds)
 

@@ -1,4 +1,3 @@
-
 _default_mmc = [100] * 15
 _default_mma = [60000] * 15
 _default_mms = [3000] * 15
@@ -63,11 +62,9 @@ def cb_n1_recv_send_close(
         sdk.TaskCommand = user_sdk.TaskCommand
         return consys, sdk
 
-
     def servo_off(consys):
         consys.robot_control_set_task_command(task_command=_sdk.TaskCommand.TASK_SERVO_OFF)
         time.sleep(1)
-
 
     def servo_on(consys, control_mode=None, q_send=None):
         ips = r.actuator_group.ips
@@ -94,7 +91,6 @@ def cb_n1_recv_send_close(
         servo_off(consys)
         consys.robot_control_set_task_command(task_command=_sdk.TaskCommand.TASK_SERVO_ON)
         time.sleep(1)
-
 
     from unicon.utils import get_ctx
     robot_def = get_ctx()['robot_def']
@@ -135,7 +131,8 @@ def cb_n1_recv_send_close(
     if config is None:
         import os
         default_config_path = os.path.join(
-            os.environ['HOME'], 'fourier-grx/config/grmini1/config_GRMini1_T2_debug.yaml'
+            os.environ['HOME'],
+            'fourier-grx/config/grmini1/config_GRMini1_T2_debug.yaml',
         )
         config = default_config_path
     if consys is None:

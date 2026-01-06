@@ -55,7 +55,7 @@ def cb_input_ev(
         dev_root = dev_path
         devs = filter(lambda x: 'event' in x, os.listdir(dev_root))
         device = os.path.join(dev_root, sorted(devs, key=lambda x: int(x[5:]))[-1])
-    expect(device is not None, 'ev device not found')
+    expect(device is not None, 'no controller event found')
 
     import evdev
     import evdev.ecodes as ecodes

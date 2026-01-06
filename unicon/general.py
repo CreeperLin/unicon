@@ -101,7 +101,7 @@ def cb_prod(outer, inner):
     return cb
 
 
-def cb_print(keys=None, intvs=None, **states):
+def cb_print(keys=None, intvs=None, max_numel=128, **states):
     from unicon.utils import pp_arr, get_ctx
     if not len(states):
         from unicon.states import states_get, states_get_specs
@@ -115,8 +115,10 @@ def cb_print(keys=None, intvs=None, **states):
     dt = get_ctx().get('dt')
     if dt is not None:
         intvs = {k: (max(v // dt, 1) if isinstance(v, float) else v) for k, v in intvs.items()}
-    pts = intvs.copy()
+    # pts = intvs.copy()
+    pts = {k: 1 for k in intvs.keys()}
     steps = -1
+    states = {k: v for k, v in states.items() if v.size < max_numel}
     print('cb_print', list(states.keys()))
 
     def cb():
@@ -542,7 +544,7 @@ def cb_loop_timed(
     from unicon.utils import latency
     sleep_fn = getattr(utils, sleep_fn) if isinstance(sleep_fn, str) else sleep_fn
     time_fn = time.perf_counter if time_fn is None else time_fn
-    
+
     if int(dt_ofs) == 1:
 
         def test_fn():
