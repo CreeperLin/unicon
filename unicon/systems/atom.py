@@ -142,6 +142,8 @@ def cb_atom_recv_send_close(
     use_hands=None,
     kill_algs=True,
     keepalive=True,
+    keepalive_intv=0.005,
+    check_enabled=True,
 ):
     import numpy as np
     import time
@@ -528,15 +530,15 @@ def cb_atom_recv_send_close(
     locs = {'running': True}
 
     def keepalive_loop():
-        intv = 0.02
         while locs['running']:
-            time.sleep(intv)
+            time.sleep(keepalive_intv)
             msg = main_state_reader.take_next()
             if msg is None:
                 continue
             if check_main_msg_enabled(msg):
                 os.system('/dobot/debug/bin/enableMotors 1')
-                print("\nkeepalive: motors down, trying toggle")
+                print("\nkeepalive: motors down, trying toggle", time.time())
+                time.sleep(1)
             if alg_killed:
                 continue
             fsm_msg = fsm_reader.take_next()
@@ -567,7 +569,7 @@ def cb_atom_recv_send_close(
                 print("check_main_msg_errs failed")
                 # os.system('/dobot/debug/bin/enableMotors 1')
                 # return True
-            if not keepalive and check_main_msg_enabled(msg):
+            if not keepalive and check_enabled and check_main_msg_enabled(msg):
                 print("check_main_msg_enabled failed")
                 os.system('/dobot/debug/bin/enableMotors 1')
                 # return True

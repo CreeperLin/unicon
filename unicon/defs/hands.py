@@ -75,3 +75,130 @@ rohand_a001 = dict(
         2.8,
     ],
 )
+
+
+dex3 = dict(
+    NAME='dex3',
+    DOF_NAMES=[
+        'left_hand_thumb_0_joint',
+        'left_hand_thumb_1_joint',
+        'left_hand_thumb_2_joint',
+        'left_hand_middle_0_joint',
+        'left_hand_middle_1_joint',
+        'left_hand_index_0_joint',
+        'left_hand_index_1_joint',
+        'right_hand_thumb_0_joint',
+        'right_hand_thumb_1_joint',
+        'right_hand_thumb_2_joint',
+        'right_hand_middle_0_joint',
+        'right_hand_middle_1_joint',
+        'right_hand_index_0_joint',
+        'right_hand_index_1_joint',
+    ],
+    DOF_NAMES_STD={
+        'right_hand_thumb_0_joint': 'right_thumb_cmc_abd',
+        'right_hand_thumb_1_joint': 'right_thumb_mcp',
+        'right_hand_thumb_2_joint': 'right_thumb_pip',
+        'right_hand_middle_0_joint': 'right_middle_mcp',
+        'right_hand_middle_1_joint': 'right_middle_pip',
+        'right_hand_index_0_joint': 'right_index_mcp',
+        'right_hand_index_1_joint': 'right_index_pip',
+        'left_hand_thumb_0_joint': 'left_thumb_cmc_abd',
+        'left_hand_thumb_1_joint': 'left_thumb_mcp',
+        'left_hand_thumb_2_joint': 'left_thumb_pip',
+        'left_hand_middle_0_joint': 'left_middle_mcp',
+        'left_hand_middle_1_joint': 'left_middle_pip',
+        'left_hand_index_0_joint': 'left_index_mcp',
+        'left_hand_index_1_joint': 'left_index_pip',
+    },
+    Q_CTRL_MIN=[
+        -1.05, -0.724, 0, -1.57, -1.75, -1.57, -1.75,
+        -1.05, -1.05, -1.75, 0, 0, 0, 0,
+    ],
+    Q_CTRL_MAX=[
+        1.05, 1.05, 1.75, 0, 0, 0, 0,
+        1.05, 0.724, 0, 1.57, 1.75, 1.57, 1.75,
+    ],
+    Q_RESET=[0.] * 14,
+)
+
+
+rh56dfx_ut = dict(
+    NAME='rh56dfx_ut',
+    DOF_NAMES=[
+        'left-pinky',
+        'left-ring',
+        'left-middle',
+        'left-index',
+        'left-thumb-bend',
+        'left-thumb-rotation',
+        'right-pinky',
+        'right-ring',
+        'right-middle',
+        'right-index',
+        'right-thumb-bend',
+        'right-thumb-rotation',
+    ],
+    DOF_NAMES_STD={
+        'left-pinky': 'left_pinky_mcp',
+        'left-ring': 'left_ring_mcp',
+        'left-middle': 'left_middle_mcp',
+        'left-index': 'left_index_mcp',
+        'left-thumb-bend': 'left_thumb_mcp',
+        'left-thumb-rotation': 'left_thumb_cmc_abd',
+        'right-pinky': 'right_pinky_mcp',
+        'right-ring': 'right_ring_mcp',
+        'right-middle': 'right_middle_mcp',
+        'right-index': 'right_index_mcp',
+        'right-thumb-bend': 'right_thumb_mcp',
+        'right-thumb-rotation': 'right_thumb_cmc_abd',
+    },
+    Q_CTRL_MIN=[
+        -1.05, -0.724, 0, -1.57, -1.75, -1.57, -1.75,
+        -1.05, -1.05, -1.75, 0, 0, 0, 0,
+    ],
+    Q_CTRL_MAX=[
+        1.05, 1.05, 1.75, 0, 0, 0, 0,
+        1.05, 0.724, 0, 1.57, 1.75, 1.57, 1.75,
+    ],
+    Q_RESET=[0.] * 14,
+)
+
+
+rh56dftp_ut = dict(
+    NAME='rh56dftp_ut',
+    DOF_NAMES=[
+        'left-pinky',
+        'left-ring',
+        'left-middle',
+        'left-index',
+        'left-thumb-bend',
+        'left-thumb-rotation',
+        'right-pinky',
+        'right-ring',
+        'right-middle',
+        'right-index',
+        'right-thumb-bend',
+        'right-thumb-rotation',
+    ],
+    DOF_NAMES_STD={
+        'left-pinky': 'left_pinky_mcp',
+        'left-ring': 'left_ring_mcp',
+        'left-middle': 'left_middle_mcp',
+        'left-index': 'left_index_mcp',
+        'left-thumb-bend': 'left_thumb_mcp',
+        'left-thumb-rotation': 'left_thumb_cmc_abd',
+        'right-pinky': 'right_pinky_mcp',
+        'right-ring': 'right_ring_mcp',
+        'right-middle': 'right_middle_mcp',
+        'right-index': 'right_index_mcp',
+        'right-thumb-bend': 'right_thumb_mcp',
+        'right-thumb-rotation': 'right_thumb_cmc_abd',
+    },
+    # Q_CTRL_MIN=[
+    # ],
+    # Q_CTRL_MAX=[
+    # ],
+    Q_RESET=[0.] * 12,
+)
+

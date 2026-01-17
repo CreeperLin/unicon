@@ -79,7 +79,7 @@ def get_args():
     parser.add_argument('-pr', '--pre_recv', type=int, default=0)
     parser.add_argument('-ps', '--pre_send', type=int, default=0)
     parser.add_argument('-mkln', '--mkl_n_thread', type=int, default=2)
-    parser.add_argument('-ff', '--fast', action='store_true')
+    parser.add_argument('-ff', '--fast_fwd', action='store_true')
     parser.add_argument('-sqm', '--safety_q_margin', type=float, default=0.)
     parser.add_argument('-iis', '--inner_input_stop', action='store_true')
     parser.add_argument('-nois', '--no_outer_input_stop', action='store_true')
@@ -102,6 +102,7 @@ def get_args():
     parser.add_argument('-rcps', '--rec_post_send', action='store_true')
     parser.add_argument('-i', '--inputs', default=[], action='append')
     parser.add_argument('-o', '--outputs', default=[], action='append')
+    parser.add_argument('-io', '--inouts', default=[], action='append')
     parser.add_argument('-uspd', '--use_env_pd', action='store_true')
     parser.add_argument('-dnstd', '--dof_names_std', action='store_true')
     parser.add_argument('-dnr', '--dof_names_remap', default=None)
@@ -122,8 +123,9 @@ def get_args():
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-rdu', '--robot_def_update', default=None)
     parser.add_argument('-ht', '--hand_type', default='none')
-    parser.add_argument('-xcn', '--x_ctrl_names', default=None)
+    parser.add_argument('-xcn', '--x_ctrl_eef_names', default=None)
     parser.add_argument('-xcdn', '--x_ctrl_dof_names', default=None)
+    parser.add_argument('-simgs', '--states_imgs', default=None)
     args, _ = parser.parse_known_args()
     return args
 
@@ -148,11 +150,11 @@ def run(args=None):
     from unicon.general import cb_chain, cb_noop, cb_print, cb_prod, cb_zip, cb_if, cb_loop_timed,\
         cb_timeout, cb_fixed_lat, cb_wait_input, cb_replay
     from unicon.utils import set_nice2, set_cpu_affinity2, list2slice, pp_arr, set_seed, \
-        import_obj, parse_robot_def, load_obj, match_keys, obj_update, get_ctx
+        import_obj, parse_robot_def, load_obj, match_keys, obj_update, get_ctx, validate_sudo, expect
     from unicon.ctrl import cb_ctrl_q_from_target_lerp
 
     if args['sudo']:
-        os.system('sudo -v')
+        validate_sudo(True)
 
     nice = args['nice']
     if nice is not None:
@@ -209,13 +211,32 @@ def run(args=None):
 
     q_reset = np.zeros(NUM_DOFS) if Q_RESET is None else Q_RESET
 
+    HAND_NUM_DOFS = robot_def.get('HAND_NUM_DOFS', 0)
     hand_type = args['hand_type']
     if hand_type != 'none':
         hand_def = import_obj(hand_type, default_mod_prefix='unicon.defs', prefer_mod=True)
         hand_def = parse_robot_def(hand_def)
+        HAND_NUM_DOFS = hand_def['NUM_DOFS']
+        hand_q_min = hand_def.get('Q_CTRL_MIN')
+        hand_q_max = hand_def.get('Q_CTRL_MAX')
+        hand_q_reset = hand_def.get('Q_RESET')
+        if hand_q_reset is None:
+            hand_q_reset = np.zeros(HAND_NUM_DOFS, dtype=np.float32)
+        hand_q_opened = hand_def.get('Q_OPENED', hand_q_reset)
+        hand_q_closed = hand_def.get('Q_CLOSED')
+        if hand_q_closed is None and hand_q_min is not None and hand_q_max is not None:
+            hand_q_closed = hand_q_max - (hand_q_opened - hand_q_min)
+        if hand_q_closed is None and hand_q_reset is not None:
+            hand_q_closed = hand_q_reset * 2 - hand_q_opened
+        if hand_q_min is not None and hand_q_max is not None:
+            hand_q_reset = np.clip(hand_q_reset, hand_q_min, hand_q_max)
+            hand_q_opened = np.clip(hand_q_opened, hand_q_min, hand_q_max)
+            hand_q_closed = np.clip(hand_q_closed, hand_q_min, hand_q_max)
+        hand_def['Q_RESET'] = hand_q_reset
+        hand_def['Q_OPENED'] = hand_q_opened
+        hand_def['Q_CLOSED'] = hand_q_closed
         robot_def.update({f'HAND_{k}': v for k, v in hand_def.items()})
         robot_def['hand_def'] = hand_def
-    HAND_NUM_DOFS = robot_def.get('HAND_NUM_DOFS', 0)
 
     dt = args['dt']
     ctrl_dt = args['ctrl_dt']
@@ -314,10 +335,11 @@ def run(args=None):
         inds, vals = match_keys(default_joint_angles, DOF_NAMES)
         q_reset[inds] = vals
 
+    fast_fwd = args['fast_fwd']
     ctrl_dt = dt if ctrl_dt is None else ctrl_dt
     dt = ctrl_dt if dt is None else dt
     print('dt', dt, 'ctrl_dt', ctrl_dt)
-    assert ctrl_dt is not None and dt is not None
+    expect(fast_fwd or (ctrl_dt is not None and dt is not None))
     ctx.update({
         'dt': dt,
         'ctrl_dt': ctrl_dt,
@@ -354,14 +376,14 @@ def run(args=None):
     x_extras2 = args['states_x_extras2']
     from unicon.utils import pats2inds
     NUM_LINKS = 0 if LINK_NAMES is None else len(LINK_NAMES)
-    x_ctrl_names = load_obj(args['x_ctrl_names'])
-    x_ctrl_names = [] if x_ctrl_names is None else x_ctrl_names
-    # x_ctrl_names = [n for n in x_ctrl_names if n in LINK_NAMES]
-    x_ctrl_inds, x_ctrl_names, _ = pats2inds(x_ctrl_names, LINK_NAMES, None)
-    ctx['x_ctrl_names'] = x_ctrl_names
-    ctx['x_ctrl_inds'] = x_ctrl_inds
-    num_x_ctrl = len(x_ctrl_names)
-    print('x_ctrl_names', num_x_ctrl, x_ctrl_names, x_ctrl_inds)
+    x_ctrl_eef_names = load_obj(args['x_ctrl_eef_names'])
+    x_ctrl_eef_names = [] if x_ctrl_eef_names is None else x_ctrl_eef_names
+    # x_ctrl_eef_names = [n for n in x_ctrl_eef_names if n in LINK_NAMES]
+    x_ctrl_eef_inds, x_ctrl_eef_names, _ = pats2inds(x_ctrl_eef_names, LINK_NAMES, None)
+    ctx['x_ctrl_eef_names'] = x_ctrl_eef_names
+    ctx['x_ctrl_eef_inds'] = x_ctrl_eef_inds
+    num_x_ctrl = len(x_ctrl_eef_names)
+    print('x_ctrl_eef_names', num_x_ctrl, x_ctrl_eef_names, x_ctrl_eef_inds)
 
     x_ctrl_dof_names = load_obj(args['x_ctrl_dof_names'])
     # x_ctrl_dof_names = [] if x_ctrl_dof_names is None else x_ctrl_dof_names
@@ -391,6 +413,27 @@ def run(args=None):
             # 'x_ctrl': [(num_x_ctrl, 4, 4)],
             'x_err': [(NUM_LINKS, 6)],
         })
+
+    imgs = args['states_imgs']
+    imgs = load_obj(imgs) if imgs is not None else []
+    imgs = imgs if isinstance(imgs, (tuple, list)) else [imgs]
+    img_defaults = {
+        'dtype': 'B',
+    }
+    for img in imgs:
+        if isinstance(img, str):
+            img = img.split(',')
+        if isinstance(img, (list, tuple)):
+            key = img[0]
+            res = img[1]
+            dtype = img[2] if len(img) > 2 else img_defaults['dtype']
+        elif isinstance(img, dict):
+            _img = img_defaults.copy()
+            _img.update(img)
+            key, res, dtype = [_img.get(k) for k in ['key', 'res', 'dtype']] 
+        res = list(map(int, res.split('x'))) if isinstance(res, str) else res
+        specs[key] = [res, dtype]
+
     states_custom_specs = args['states_custom_specs']
     if states_custom_specs is not None:
         states_custom_specs = load_obj(states_custom_specs)
@@ -407,6 +450,7 @@ def run(args=None):
     num_commands = env_num_commands if num_commands is None else num_commands
     if env_num_commands is not None and num_commands < 0:
         num_commands = env_num_commands - num_commands
+    num_commands = 0 if num_commands is None else num_commands
     if num_commands > 0:
         states_new('cmd', num_commands)
     use_shm = False
@@ -532,19 +576,31 @@ def run(args=None):
     print('q_boot', q_boot.tolist())
 
     if states_x_ctrl is not None or states_x is not None:
-        from unicon.utils.pin import pin_fk
+        use_algo_fk = False
         robot_pin = robot_def.get('robot_pin')
-        if robot_pin is not None:
+        if use_algo_fk or robot_pin is None:
+            from unicon.algo.fk import cb_fk
+            _states_x = np.zeros((NUM_LINKS, 4, 4), dtype=np.float32)
+            _cb = cb_fk(states_q=q_reset, states_x=_states_x)
+            _cb()
+            x_reset = _states_x
+        elif robot_pin is not None:
+            from unicon.utils.pin import pin_fk
             URDF_DOF_NAMES = robot_def.get('URDF_DOF_NAMES', DOF_NAMES)
             print('URDF_DOF_NAMES', URDF_DOF_NAMES)
             q_reset_urdf = np.zeros(len(URDF_DOF_NAMES), dtype=np.float32)
-            inds = [DOF_NAMES.index(u) for u in URDF_DOF_NAMES if u in DOF_NAMES]
-            q_reset_urdf[:] = q_reset[inds]
-            x_reset = pin_fk(q_reset_urdf, robot_pin=robot_pin, link_names=LINK_NAMES)
+            urdf_inds, _, dof_inds = pats2inds(DOF_NAMES, URDF_DOF_NAMES)
+            q_reset_urdf[urdf_inds] = q_reset[dof_inds]
+            print('q_reset_urdf', pp_arr(q_reset_urdf))
+            x_reset = pin_fk(q_reset_urdf, robot_pin=robot_pin, dof_names=URDF_DOF_NAMES, link_names=LINK_NAMES)
         else:
             x_reset = np.stack([np.eye(4, dtype=np.float32) for _ in range(len(states_x_ctrl))], axis=0)
         print('x_reset', x_reset.shape)
-        for ei in x_ctrl_inds:
+        if verbose is not None:
+            for i in range(NUM_LINKS):
+                print(i, LINK_NAMES[i])
+                print(np.round(x_reset[i].astype(np.float32), 3))
+        for ei in x_ctrl_eef_inds:
             print(ei, LINK_NAMES[ei])
             print(np.round(x_reset[ei].astype(np.float32), 3))
         ctx['x_reset'] = x_reset
@@ -608,7 +664,7 @@ def run(args=None):
             print('rec_pt', rec_pt)
             loaded_rec = {k: (v[rec_pt:] if isinstance(v, np.ndarray) else v) for k, v in loaded_rec.items()}
 
-    cb_close_list = []
+    cb_close_seq = []
 
     num_steps = args['num_steps']
     seq = []
@@ -1307,7 +1363,7 @@ def run(args=None):
         print('importing system', system_type)
         sys_cls = import_obj(f'{system_type}:cb_{system_type}_recv_send_close', default_mod_prefix='unicon.systems')
         cb_recv, cb_send, cb_close = autowired(sys_cls, states=states_sys)(**sys_kwds,)
-        cb_close_list.append(cb_close)
+        cb_close_seq.append(cb_close)
 
         dry_run = args['dry']
         if dry_run:
@@ -1334,7 +1390,7 @@ def run(args=None):
                 mod.save(save_path, data)
         if not reuse:
             states_destroy(force=True)
-        for cb in cb_close_list:
+        for cb in cb_close_seq:
             if cb is not None:
                 cb()
         exit(0)
@@ -1533,22 +1589,30 @@ def run(args=None):
         pos = -1 if fixed_wait >= 0 else len(seq)
         seq.insert(pos, cb1)
 
-    if input_dev_type is not None:
+    if num_inputs and input_dev_type is not None:
         fallback_input_types = ['term']
+        cb_input_dev = None
         for t in [input_dev_type] + fallback_input_types:
             input_dev_kwds = load_obj(t)
             input_dev_kwds = {'type': input_dev_kwds} if isinstance(input_dev_kwds, str) else input_dev_kwds
             input_dev_type = input_dev_kwds.pop('type')
             print('input_dev_type', input_dev_type)
-            cb_input_dev_cls = import_obj(input_dev_type,
-                                          default_name_prefix='cb_input',
-                                          default_mod_prefix='unicon.inputs')
-            cb_input_dev = autowired(cb_input_dev_cls)(**input_dev_kwds)
+            cb_input_dev_cls = import_obj(
+                input_dev_type,
+                default_name_prefix='cb_input',
+                default_mod_prefix='unicon.inputs',
+            )
+            try:
+                cb_input_dev = autowired(cb_input_dev_cls)(**input_dev_kwds)
+            except Exception as e:
+                print(e)
+                continue
             if cb_input_dev is not None:
                 break
-        seq.extend([
-            cb_input_dev,
-        ])
+        if cb_input_dev is not None:
+            seq.extend([
+                cb_input_dev,
+            ])
 
     cmd_states = dict()
     cmds = args['cmd']
@@ -1579,6 +1643,7 @@ def run(args=None):
     print('seq before io', seq)
     inputs = args['inputs']
     outputs = args['outputs']
+    inouts = args['inouts']
     n_cmd_cbs = len(cmds)
     def_insert_pos = -n_cmd_cbs if n_cmd_cbs else None
     def_insert_pos = None
@@ -1602,6 +1667,19 @@ def run(args=None):
         cb_input_cls = import_obj(input_type, default_name_prefix='cb_recv', default_mod_prefix='unicon.io')
         cb = autowired(cb_input_cls)(**input_kwds)
         seq.insert(insert_pos, cb)
+    for specs in inouts:
+        specs = load_obj(specs)
+        specs = {'type': specs} if isinstance(specs, str) else specs
+        cb_type = specs.pop('type')
+        insert_pos = specs.pop('_pos', def_insert_pos)
+        insert_pos = len(seq) if insert_pos is None else insert_pos
+        print('io_type', cb_type, insert_pos)
+        cb_io_cls = import_obj(cb_type)
+        cb = autowired(cb_io_cls)(**specs)
+        cb_recv, cb_send, cb_close = cb
+        seq.insert(insert_pos, cb_send)
+        seq.insert(insert_pos, cb_recv)
+        cb_close_seq.append(cb_close)
 
     if rec_post_send and rec_output is not None:
         seq.append(_cb_rec)
@@ -1668,7 +1746,7 @@ def run(args=None):
     if states_quat is not None:
         states_quat[:] = [0, 0, 0, 1.]
     if HAND_NUM_DOFS:
-        hand_q_ctrl_init = hand_def.get('Q_RESET', hand_def.get('Q_CTRL_MAX'))
+        hand_q_ctrl_init = hand_def['Q_RESET']
         print('hand_q_ctrl_init', hand_q_ctrl_init)
         if hand_q_ctrl_init is not None:
             states_hand_q_ctrl[:] = hand_q_ctrl_init
@@ -1681,9 +1759,16 @@ def run(args=None):
     if loop_dt_ofs is not None:
         loop_kwds['dt_ofs'] = loop_dt_ofs
 
+    sync_time_phase = True
+    if sync_time_phase:
+        from unicon.general import cb_wait_datetime
+        cb_phase = cb_wait_datetime(date='.000001', delta='@1')
+        while not cb_phase(): pass
+        # cb = cb_chain(cb_timephase, cb)
+
     loop_dt = args['loop_dt']
     loop_dt = dt if loop_dt is None else loop_dt
-    if not args['fast']:
+    if not fast_fwd:
         cb = cb_loop_timed(cb, dt=loop_dt, **loop_kwds)
     try:
         while True:

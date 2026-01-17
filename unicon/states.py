@@ -12,14 +12,18 @@ _shm_reused = False
 _tmp_dir = os.environ.get('TMP', '/tmp')
 
 _dtype2size = {
-    np.float32: 4,
-    np.float64: 8,
-    np.int32: 4,
+    'f': 4,
+    'd': 8,
+    'i': 4,
+    'B': 1,
+    'H': 2,
 }
 _dtype2str = {
     np.float32: 'f',
     np.float64: 'd',
     np.int32: 'i',
+    np.uint8: 'B',
+    np.uint16: 'H',
 }
 _str2dtype = {v: k for k, v in _dtype2str.items()}
 
@@ -40,10 +44,11 @@ def states_new(name, shape, dtype=np.float32):
     numel = 1
     for x in shape:
         numel *= x
+    dtype = dtype if isinstance(dtype, str) else _dtype2str[dtype]
     size = numel * _dtype2size[dtype]
     st = _states_size
     ed = _states_size + size
-    _states_specs[name] = (st, ed, numel, shape, _dtype2str[dtype])
+    _states_specs[name] = (st, ed, numel, shape, dtype)
     _states_size += size
     return st
 
@@ -178,10 +183,13 @@ def states_set(name, v):
     s[:] = v
 
 
-def autowired(func, states=None):
+def autowired(func, *args, states=None, **kwds):
     sig = inspect.signature(func)
     skwds = {}
     states_prefix = 'states_'
+    if len(kwds):
+        states = {} if states is None else states
+        states.update({k: v for k, v in kwds.items() if k.startswith(states_prefix)})
     for k, v in sig.parameters.items():
         if not k.startswith(states_prefix):
             continue
@@ -202,8 +210,11 @@ def autowired(func, states=None):
         else:
             skwds.update({states_prefix + k: states_get(k) for k in _states_specs})
 
-    def wrapped(*args, **kwds):
+    def wrapped(*_args, **_kwds):
+        return func(*_args, **_kwds, **skwds)
 
+    if len(args) or len(kwds):
+        kwds = {k: v for k, v in kwds.items() if not k.startswith(states_prefix)}
         return func(*args, **kwds, **skwds)
 
     return wrapped

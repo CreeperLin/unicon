@@ -109,6 +109,7 @@ def cb_recv_pyzmq(
     ord_br = ord('{')
     recv_key_map = {} if recv_key_map is None else recv_key_map
     n_recv = 0
+    default_tp = b''
 
     class cb:
 
@@ -131,17 +132,20 @@ def cb_recv_pyzmq(
                     return
                 rem -= 1
                 msg = last_msg
-            idx = msg.index(ord_br)
-            tp = msg[:idx]
+            n_recv += 1
+            tp = default_tp
+            if serializer == 'json':
+                idx = msg.index(ord_br)
+                tp = msg[:idx]
+                msg = msg[idx:]
             ks = topic.get(tp)
             if ks is None:
                 return
-            msg = msg[idx:]
             if not len(msg):
                 return
             data = load_fn(msg)
             if verbose:
-                print('recv', n_recv, data)
+                print('recv', n_recv, tp, ks, len(msg), data)
             for k in ks:
                 v = data.get(k)
                 if v is None:
@@ -159,7 +163,6 @@ def cb_recv_pyzmq(
                     s[:v_len] = v
                 elif mode == '+':
                     s[:v_len] = s[:v_len] + v
-            n_recv += 1
 
         def __del__(_):
             print('cb_recv_pyzmq destroy', addr)

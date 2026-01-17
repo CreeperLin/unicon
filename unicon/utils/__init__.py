@@ -19,19 +19,28 @@ ori_print = print
 _timer_memo = {}
 
 
-def pats2inds(pats, keys=None, key_map=None):
+def validate_sudo(interactive=False):
+    c = 'sudo -v' if interactive else 'sudo -nv'
+    return cmd(c)
+
+
+def pats2inds(pats, keys, key_map=None, case=False):
     inds = []
     mkeys = []
     pat_inds = []
+    keys = [] if keys is None else keys
+    pats = [] if pats is None else pats
     for i, key in enumerate(keys):
+        mk = key if case else key.lower()
         for j, pat in enumerate(pats):
             h = pat[0]
             k = pat[1:] if h in ['@', '~'] else pat
+            pk = k if case else k.lower()
             if h == '@' and key_map.get(k) == key:
                 break
-            if h == '~' and k in key:
+            if h == '~' and pk in mk:
                 break
-            if k == key:
+            if pk == mk:
                 break
         else:
             continue
@@ -80,7 +89,7 @@ def map2inds(a_keys, b_keys, map_a2b=None, map_b2a=None):
 def pkill(*args, opts='-ef'):
     pats = '|'.join(args)
     _cmd = f'sudo pkill {opts} "{pats}"'
-    os.system(_cmd)
+    return os.system(_cmd)
 
 
 def find_import_ext(name, ext_dir=None):
@@ -288,11 +297,11 @@ def expect(cond, *args):
         raise (exc if isinstance(exc, Exception) else RuntimeError(*args))
 
 
-def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
+def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, setsid=False, verbose=False, **kwds):
     run_args = sum([(list(x) if isinstance(x, (list, tuple)) else str(x).split()) for x in args], [])
     if timeout is not None:
         run_args = ['timeout', str(int(timeout))] + run_args
-    run_args = filter(len, map(str, run_args))
+    run_args = list(filter(len, map(str, run_args)))
     stdargs = {}
     capture_output = capture_output if capture_output is None else int(capture_output)
     if capture_output == 0:
@@ -310,8 +319,16 @@ def cmd(*args, capture_output=False, encoding='utf-8', timeout=None, **kwds):
             'stdout': subprocess.PIPE,
             'stderr': subprocess.STDOUT,
         }
-    res = subprocess.run(run_args, shell=False, encoding=encoding, **stdargs, **kwds)
-    return res if capture_output else res.returncode
+    if verbose:
+        print('cmd', run_args)
+    if setsid:
+        kwds['preexec_fn'] = os.setsid
+    try:
+        res = subprocess.run(run_args, shell=False, encoding=encoding, **stdargs, **kwds)
+        ret = res if capture_output else res.returncode
+    except KeyboardInterrupt:
+        ret = 2
+    return ret
 
 
 def get_edge_memo_key(x, idx):
@@ -743,8 +760,12 @@ def parse_robot_def(robot_def):
     robot_def['MJCF'] = mjcf_path
     robot_pin = None
     try:
-        from unicon.utils.pin import load_robot_pin
+        expect(urdf_path is not None or mjcf_path is not None)
+        from unicon.utils.pin import load_robot_pin, get_joint_names
         robot_pin = load_robot_pin(urdf_path=urdf_path, mjcf_path=mjcf_path)
+        PIN_DOF_NAMES = get_joint_names(robot_pin)
+        print('PIN_DOF_NAMES', len(PIN_DOF_NAMES), PIN_DOF_NAMES)
+        robot_def['PIN_DOF_NAMES'] = PIN_DOF_NAMES
     except Exception:
         traceback.print_exc()
     robot_def['robot_pin'] = robot_pin
@@ -1277,11 +1298,11 @@ def set_cpu_affinity(cpu_affinity):
 
 
 def set_nice2(nice):
-    cmd('sudo renice -n', [nice], '-p', os.getpid())
+    return cmd('sudo renice -n', [nice], '-p', os.getpid())
 
 
 def set_cpu_affinity2(cpu_affinity):
-    cmd('sudo taskset -cp', [cpu_affinity], os.getpid())
+    return cmd('sudo taskset -cp', [cpu_affinity], os.getpid())
 
 
 def latency(func, num_runs=2**16, time_fn=_default_time_fn):

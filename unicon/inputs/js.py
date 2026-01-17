@@ -12,13 +12,13 @@ def cb_input_js(
     z2r=True,
     z2t=False,
     remap_trigger=True,
-    wait_no_dev=False,
-    try_chmod=True,
+    wait_dev=False,
+    retry_sudo=False,
     ecodes_abs_updates=None,
     ecodes_btn_updates=None,
     input_key_updates=None,
 ):
-    from unicon.utils import cmd, coalesce, get_ctx, import_obj
+    from unicon.utils import cmd, coalesce, get_ctx, import_obj, expect, validate_sudo
     input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
     input_key_updates = {} if input_key_updates is None else input_key_updates
     input_keys = [input_key_updates.get(k, k) for k in input_keys]
@@ -184,13 +184,13 @@ def cb_input_js(
         print(f'{dev_path} not exist')
         return None
 
-    def init_js(path):
-        if cmd('test -r', [path]):
-            if try_chmod:
-                cmd('sudo chmod 666', [path])
-            else:
-                print(f'no read permission on {path}')
-                return None
+    def init_js(path, _sudo=False):
+        if not os.access(path, os.R_OK):
+            validate_sudo(_sudo)
+            cmd('sudo -n chmod +r', [path])
+        if not os.access(path, os.R_OK):
+            print(f'no read permission on {path}')
+            return None
         print('Opening %s...' % path)
         jsdev = open(path, 'rb')
         # Get the device name.
@@ -230,23 +230,23 @@ def cb_input_js(
             os.set_blocking(jsdev.fileno(), False)
         return jsdev
 
-    def try_jsdevs():
+    def try_jsdevs(_sudo):
         if device is None:
-            paths = list(filter(lambda x: 'js' in x, map(lambda x: os.path.join(dev_path, x), os.listdir(dev_path))))
+            paths = list(map(
+                lambda x: os.path.join(dev_path, x),
+                filter(lambda x: x.startswith('js'), os.listdir(dev_path)),
+            ))
         else:
             paths = [device]
         for path in paths:
             if not os.path.exists(path):
                 continue
-            jsdev = init_js(path)
+            jsdev = init_js(path, _sudo)
             if jsdev is not None:
                 return jsdev
 
-    jsdev = try_jsdevs()
-    if jsdev is None:
-        print('no js device')
-        if not wait_no_dev:
-            return None
+    jsdev = try_jsdevs(True)
+    expect(jsdev is not None or wait_dev, 'no js device')
 
     n_fails = 0
     retry_intv = 100
@@ -262,7 +262,7 @@ def cb_input_js(
                 return
             e2 = None
             try:
-                jsdev = try_jsdevs()
+                jsdev = try_jsdevs(retry_sudo)
             except Exception as e2:
                 jsdev = None
             if jsdev is None:
@@ -280,6 +280,7 @@ def cb_input_js(
                 if n_fails < 50:
                     print('jsdev error', n_fails, e)
                 else:
+                    states.clear()
                     jsdev = None
                 return
             n_fails = 0

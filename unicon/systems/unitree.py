@@ -8,7 +8,6 @@ def cb_unitree_recv_send_close(
     states_input=None,
     states_q_tau=None,
     states_q_temp=None,
-    states_sys=None,
     kp=None,
     kd=None,
     input_keys=None,
@@ -226,16 +225,6 @@ def cb_unitree_recv_send_close(
                 temp = s.temperature
                 temp = temp[1] if isinstance(temp, list) else temp
                 states_q_temp[i] = temp
-        if states_sys is not None:
-            states_sys[:] = [
-                state.bit_flag,
-                state.adc_reel,
-                state.temperature_ntc1,
-                state.temperature_ntc2,
-                state.power_v,
-                state.power_a,
-            ]
-            print('states_sys', states_sys)
         errs = detect_err_fn(low_state=state)
         if len(errs):
             print('errs', errs)

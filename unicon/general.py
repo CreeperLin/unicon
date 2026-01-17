@@ -1,4 +1,4 @@
-def cb_chain(*cbs, next_on=[True], verbose=True):
+def cb_chain(*cbs, next_on=[True], verbose=True, block_ret=True):
     it = iter(cbs)
     cur_cb = None
 
@@ -15,7 +15,7 @@ def cb_chain(*cbs, next_on=[True], verbose=True):
             if ret in next_on:
                 cur_cb = None
                 continue
-            return ret
+            return None if block_ret else ret
 
     cb._cbs = cbs
     return cb
@@ -545,7 +545,8 @@ def cb_loop_timed(
     sleep_fn = getattr(utils, sleep_fn) if isinstance(sleep_fn, str) else sleep_fn
     time_fn = time.perf_counter if time_fn is None else time_fn
 
-    if int(dt_ofs) == 1:
+    dt_ofs = 0
+    if dt > 0 and int(dt_ofs) == 1:
 
         def test_fn():
             t0 = time_fn()
@@ -558,24 +559,28 @@ def cb_loop_timed(
     print('dt_ofs', dt_ofs)
 
     def cb():
-        frameno = -1
+        steps = -1
         timeouts = 0
         t_idles = 0
+        tmo_last = 0
+        tmo_conseq = 0
         if stats:
             t_ss = 0
             tis = []
         t_start = t0 = time_fn()
         while True:
-            frameno += 1
-            if num_steps is not None and frameno >= num_steps:
+            steps += 1
+            if num_steps is not None and steps >= num_steps:
                 break
             t_s = t0 + dt - time_fn()
             if t_s > 0:
                 sleep_fn(t0, dt + dt_ofs)
-            else:
+            elif dt > 0:
                 timeouts += 1
-                if timeouts < 64:
-                    print('### loop timeout:', frameno, t_s)
+                tmo_conseq = tmo_conseq + 1 if tmo_last + 1 == steps else 1
+                tmo_last = steps
+                if tmo_conseq < 64:
+                    print('### loop timeout:', steps, t_s, tmo_conseq)
             if stats:
                 t1 = time_fn()
             ret = _cb()
@@ -590,16 +595,118 @@ def cb_loop_timed(
                 t0 = time_fn()
         t_stop = time_fn()
         dura = t_stop - t_start
-        print(f'{frameno} steps in {dura}s')
-        if frameno > 0:
-            avg = dura / frameno
-            print(f'avg/timeout/idle: {avg}, {timeouts}, {t_idles / frameno}')
+        print(f'{steps} steps in {dura}s')
+        if steps > 0:
+            avg = dura / steps
+            print(f'avg/timeout/idle: {avg}, {timeouts}, {t_idles / steps}')
             if stats:
                 tis = np.array(tis)[1:]
                 print('t_idle min/max/avg/std', np.min(tis), np.max(tis), np.mean(tis), np.std(tis))
-                t_ss_avg = t_ss / frameno
+                t_ss_avg = t_ss / steps
                 print('t_ss avg/err', t_ss_avg, t_ss_avg - dt)
         return True
 
     cb._cbs = [_cb]
+    return cb
+
+
+def cb_wait_datetime(
+    date=None,
+    delta=None,
+    now=None,
+    fmt=None,
+    verbose=True,
+    use_monotonic=False,
+):
+    import time
+    from datetime import datetime, timedelta
+    from unicon.utils import expect
+
+    def parse_tddt(d, _fmt, _now, is_delta=False):
+        if d is None:
+            return None
+        if isinstance(d, str):
+            if d.startswith('+'):
+                is_delta = True
+                d = d[1:]
+            if d.startswith('D'):
+                d = d[1:]
+            if d.startswith('@'):
+                d = d[1:]
+                try:
+                    d = float(d)
+                except Exception:
+                    pass
+        if isinstance(d, str):
+            mapping = {
+                '%Y': 'year',
+                '%m': 'month',
+                '%d': 'day',
+                '%H': 'hour',
+                '%M': 'minute',
+                '%S': 'second',
+                '%f': 'microsecond',
+                '%z': 'tzinfo',
+            }
+            kwds = {}
+            if _fmt is None:
+                _fmt = []
+                hyps = d.count('-')
+                _fmt.append('-'.join(['%Y', '%m', '%d'][-(hyps+1):] if hyps else []))
+                dcol = '::' in d
+                d = d.replace('::', '')
+                cols = False if dcol else d.count(':')
+                _fmt.append(':'.join(['%H', '%M', '%S'][-(cols+1):] if (cols or cols is False) else []))
+                _fmt = ' '.join(filter(len, _fmt))
+                if '.' in date:
+                    _fmt = _fmt + '.%f'
+                print('_fmt', _fmt, d)
+            parsed = datetime.strptime(d, _fmt)
+            for key, attr in mapping.items():
+                if key in _fmt:
+                    kwds[attr] = getattr(parsed, attr)
+            d = kwds
+        if isinstance(d, (int, float)):
+            if is_delta:
+                return timedelta(seconds=d)
+            else:
+                return datetime.fromtimestamp(d)
+        if isinstance(d, dict):
+            is_delta = d.pop('_delta', is_delta)
+            if is_delta:
+                return timedelta(**d)
+            else:
+                return _now.replace(**d)
+
+    expect(not use_monotonic or now is None)
+    mt0 = time.monotonic()
+    now = datetime.now() if now is None else now
+    date = parse_tddt(date, fmt, now)
+    delta = parse_tddt(delta, fmt, None, is_delta=True)
+    target = now
+    if isinstance(date, datetime):
+        target = date
+    if isinstance(date, timedelta):
+        target = target + date
+    if delta is not None:
+        target = target + delta
+    dt = (target - now).total_seconds()
+    target = (mt0 + dt) if use_monotonic else target
+    print('cb_wait_datetime', [now, date, delta, target], dt)
+    expect(dt >= 0, 'cb_wait_datetime passed')
+
+    def cb():
+        nonlocal dt
+        now2 = time.monotonic() if use_monotonic else datetime.now()
+        passed = now2 >= target
+        if passed:
+            print('cb_wait_datetime passed', now2)
+            return True
+        if verbose:
+            dt2 = (target - now2)
+            dt2 = dt2 if use_monotonic else dt2.total_seconds()
+            if dt - dt2 > 10 and int(dt2) % 10 == 0:
+                print('cb_wait_datetime', dt2)
+                dt = dt2
+
     return cb

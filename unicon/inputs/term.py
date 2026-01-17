@@ -89,7 +89,8 @@ def cb_input_term(
             try:
                 c = sys.stdin.read(1)
                 if c == '\x1b':
-                    c = sys.stdin.read(2)[-1]
+                    c = sys.stdin.read(2)
+                    c = c[-1] if len(c) else 0
             except IOError:
                 pass
             v = None if not c else mapping.get(c)

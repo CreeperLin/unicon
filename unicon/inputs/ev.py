@@ -2,7 +2,8 @@ def cb_input_ev(
     states_input,
     verbose=False,
     # verbose=True,
-    device=None,
+    retry_sudo=False,
+    device_path=None,
     input_keys=None,
     blocking=False,
     remap_trigger=True,
@@ -11,13 +12,18 @@ def cb_input_ev(
     z2r=False,
     z2t=True,
     use_nesw=True,
-    chmod=True,
     ecodes_abs_updates=None,
     ecodes_btn_updates=None,
     input_key_updates=None,
-    choose_last=False,
+    includes=(
+        'joystick', 'controller', 'wireless',
+    ),
+    excludes=(
+        'touchpad', 'motion sensor', 'hdmi', 'pch', 'button', 'video bus', 'hotkey', 'hid events',
+    ),
+    wait_dev=True,
 ):
-    from unicon.utils import cmd, coalesce, get_ctx, import_obj, expect
+    from unicon.utils import cmd, coalesce, get_ctx, import_obj, expect, validate_sudo
     import os
     import fcntl
     input_keys = coalesce(get_ctx().get('input_keys'), input_keys, import_obj('unicon.inputs:DEFAULT_INPUT_KEYS'))
@@ -28,34 +34,42 @@ def cb_input_ev(
     if not os.path.exists(dev_path):
         print(f'{dev_path} not exist')
         return None
-    if device is None:
+
+    excluded_devs = set()
+
+    def find_device(_sudo):
         devices = []
+        has_sudo = not validate_sudo(interactive=_sudo)
         for dev in os.listdir(dev_path):
-            if dev.startswith('event'):
-                path = os.path.join(dev_path, dev)
-                if chmod and cmd('test -r', [path]):
-                    cmd('sudo chmod +r', [path])
-                try:
-                    with open(path, 'rb') as f:
-                        # EVIOCGNAME ioctl to get device name
-                        buf = bytearray(256)
-                        fcntl.ioctl(f, 0x82004506, buf)  # EVIOCGNAME(len)
-                        name = buf.split(b'\0', 1)[0].decode()
-                        devices.append((path, name))
-                except Exception as e:
-                    print(path, e)
-        print('devices', devices)
-        anti_pats = ['touchpad', 'sensor', 'hdmi', 'pch', 'button', 'video bus', 'hotkey', 'hid events']
-        devices = list(filter(lambda x: all(p not in x[1].lower() for p in anti_pats), devices))
-        pats = ['joystick', 'controller', 'wireless']
-        devices = list(filter(lambda x: any(p in x[1].lower() for p in pats), devices))
-        if len(devices):
-            device = devices[0][0]
-    if device is None and choose_last:
-        dev_root = dev_path
-        devs = filter(lambda x: 'event' in x, os.listdir(dev_root))
-        device = os.path.join(dev_root, sorted(devs, key=lambda x: int(x[5:]))[-1])
-    expect(device is not None, 'no controller event found')
+            if not dev.startswith('event'):
+                continue
+            if dev in excluded_devs:
+                continue
+            path = os.path.join(dev_path, dev)
+            if not os.access(path, os.R_OK) and has_sudo:
+                cmd('sudo chmod +r', [path], verbose=True)
+            try:
+                with open(path, 'rb') as f:
+                    # EVIOCGNAME ioctl to get device name
+                    buf = bytearray(256)
+                    fcntl.ioctl(f, 0x82004506, buf)  # EVIOCGNAME(len)
+                    name = buf.split(b'\0', 1)[0].decode()
+            except Exception as e:
+                print(path, e)
+                continue
+            print(path, name)
+            name = name.lower()
+            if any(p in name for p in excludes) or all(p not in name for p in includes):
+                excluded_devs.add(dev)
+                continue
+            devices.append(path)
+        if not len(devices):
+            return None
+        print('evdev find_device', devices)
+        return devices[0]
+
+    device_path = find_device(_sudo=True) if device_path is None else device_path
+    expect(device_path is not None or wait_dev, 'no evdev found')
 
     import evdev
     import evdev.ecodes as ecodes
@@ -102,14 +116,9 @@ def cb_input_ev(
     print('ecodes_btn', [ecodes_btn.get(getattr(ecodes, k)) for k in input_keys if k.startswith('BTN')])
     print('ecodes_abs', [ecodes_abs.get(getattr(ecodes, k)) for k in input_keys if k.startswith('ABS')])
 
-    print('opening event device', device)
-
-    if chmod and cmd('test -r', [device]):
-        cmd('sudo chmod +r', [device])
-    if cmd('test -r', [device]):
-        raise RuntimeError(f'no read permission on {device}')
-
-    dev = evdev.InputDevice(device)
+    dev = None
+    if device_path is not None:
+        dev = evdev.InputDevice(device_path)
 
     def read_nonblocking():
         nonlocal dev
@@ -118,6 +127,8 @@ def cb_input_ev(
                 ev = dev.read_one()
             except Exception as e:
                 print('evdev read error', e)
+                input_states.clear()
+                states.clear()
                 dev = None
                 return
             if ev is None:
@@ -129,21 +140,34 @@ def cb_input_ev(
     retry_pt = 0
 
     def cb():
-        nonlocal abs_type, dev, retry_pt, n_fails
+        nonlocal abs_type, device_path, dev, retry_pt, n_fails
         for i, k in enumerate(input_keys):
             states_input[i] = states.get(k, 0)
+        if device_path is None:
+            if retry_pt:
+                retry_pt -= 1
+                return
+            device_path = find_device(_sudo=retry_sudo)
+            retry_pt = 0
+        if device_path is None:
+            print('evdev no device')
+            retry_pt = retry_intv
+            return
         if dev is None:
             if retry_pt:
                 retry_pt -= 1
                 return
             try:
-                dev = evdev.InputDevice(device)
-                print('evdev reopened', device)
+                print('opening event device', device_path)
+                if not os.access(device_path, os.R_OK) and not validate_sudo(retry_sudo):
+                    cmd('sudo chmod +r', [device_path], verbose=True)
+                dev = evdev.InputDevice(device_path)
+                print('evdev reopened', device_path)
                 n_fails = 0
             except Exception as e:
                 n_fails += 1
                 retry_pt = retry_intv
-                print('evdev reopen error', n_fails, e, device)
+                print('evdev reopen error', n_fails, e, device_path)
                 return
         gen = dev.read_loop if blocking else read_nonblocking
         for event in gen():
