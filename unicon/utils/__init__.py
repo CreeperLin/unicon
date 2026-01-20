@@ -30,15 +30,38 @@ def pats2inds(pats, keys, key_map=None, case=False):
     pat_inds = []
     keys = [] if keys is None else keys
     pats = [] if pats is None else pats
-    for i, key in enumerate(keys):
-        mk = key if case else key.lower()
-        for j, pat in enumerate(pats):
-            h = pat[0]
-            k = pat[1:] if h in ['@', '~'] else pat
-            pk = k if case else k.lower()
-            if h == '@' and key_map.get(k) == key:
+    pats_parsed = []
+    for pat in pats:
+        if isinstance(pat, dict):
+            pats_parsed.append(pat)
+            continue
+        is_mapped = False
+        is_substr = False
+        p = pat
+        while len(p):
+            h = p[0]
+            if h == '@':
+                is_mapped = True
+            elif h == '~':
+                is_substr = True
+            else:
                 break
-            if h == '~' and pk in mk:
+            p = p[1:]
+        p = p if case else p.lower()
+        pp = {
+            'key': p,
+            'mapped': is_mapped,
+            'substr': is_substr,
+        }
+        pats_parsed.append(pp)
+    for i, key in enumerate(keys):
+        for j, pat in enumerate(pats_parsed):
+            pk = pat['key']
+            is_mapped = pat['mapped']
+            is_substr = pat['substr']
+            mk = key_map.get(key) if is_mapped else key
+            mk = mk if case else mk.lower()
+            if is_substr and pk in mk:
                 break
             if pk == mk:
                 break
