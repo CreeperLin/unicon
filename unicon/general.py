@@ -652,11 +652,11 @@ def cb_wait_datetime(
             if _fmt is None:
                 _fmt = []
                 hyps = d.count('-')
-                _fmt.append('-'.join(['%Y', '%m', '%d'][-(hyps+1):] if hyps else []))
+                _fmt.append('-'.join(['%Y', '%m', '%d'][-(hyps + 1):] if hyps else []))
                 dcol = '::' in d
                 d = d.replace('::', '')
                 cols = False if dcol else d.count(':')
-                _fmt.append(':'.join(['%H', '%M', '%S'][-(cols+1):] if (cols or cols is False) else []))
+                _fmt.append(':'.join(['%H', '%M', '%S'][-(cols + 1):] if (cols or cols is False) else []))
                 _fmt = ' '.join(filter(len, _fmt))
                 if '.' in date:
                     _fmt = _fmt + '.%f'

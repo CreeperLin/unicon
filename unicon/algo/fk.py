@@ -184,6 +184,7 @@ def cb_fk_pin(
     print('jac_inds_pin', jac_inds_pin)
 
     ref_frame = pin.ReferenceFrame.LOCAL
+
     # ref_frame = pin.ReferenceFrame.WORLD
 
     def cb():
@@ -194,9 +195,7 @@ def cb_fk_pin(
         if not len(jac_inds):
             return
         pin.computeJointJacobians(model, data, states_q)
-        js = [
-            pin.getFrameJacobian(model, data, i, ref_frame) for i in jac_inds_pin
-        ]
+        js = [pin.getFrameJacobian(model, data, i, ref_frame) for i in jac_inds_pin]
         states_J[jac_inds] = js
 
     return cb

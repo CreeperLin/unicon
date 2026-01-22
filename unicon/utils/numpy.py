@@ -119,8 +119,11 @@ def quat2mat1(quat, w_first=False):
     yY = y * Y
     yZ = y * Z
     zZ = z * Z
-    mat = np.array(
-        [[1.0 - (yY + zZ), xY - wZ, xZ + wY], [xY + wZ, 1.0 - (xX + zZ), yZ - wX], [xZ - wY, yZ + wX, 1.0 - (xX + yY)]])
+    mat = np.array([
+        [1.0 - (yY + zZ), xY - wZ, xZ + wY],
+        [xY + wZ, 1.0 - (xX + zZ), yZ - wX],
+        [xZ - wY, yZ + wX, 1.0 - (xX + yY)],
+    ])
     return np.transpose(mat, (2, 0, 1)).reshape(*shape, 3, 3)
 
 
@@ -185,11 +188,11 @@ def rpy2mat(rpy):
     sin = np.sin(rpy)
     cr, cp, cy = cos
     sr, sp, sy = sin
-    mat = np.array(
-        [
-            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
-            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr], [-sp, cp * sr, cp * cr]
-        ])
+    mat = np.array([
+        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+        [-sp, cp * sr, cp * cr],
+    ])
     if len(rpy.shape) > 1:
         return np.transpose(mat, (2, 0, 1)).reshape(*shape, 3, 3)
     return mat
@@ -307,23 +310,15 @@ def quat_slerp(q0, q1, t):
     ratioA = np.sin((1.0 - t) * half_theta) / sin_half_theta
     ratioB = np.sin(t * half_theta) / sin_half_theta
 
-    new_q_x = ratioA * q0[..., qx:qx+1] + ratioB * q1[..., qx:qx+1]
-    new_q_y = ratioA * q0[..., qy:qy+1] + ratioB * q1[..., qy:qy+1]
-    new_q_z = ratioA * q0[..., qz:qz+1] + ratioB * q1[..., qz:qz+1]
-    new_q_w = ratioA * q0[..., qw:qw+1] + ratioB * q1[..., qw:qw+1]
+    new_q_x = ratioA * q0[..., qx:qx + 1] + ratioB * q1[..., qx:qx + 1]
+    new_q_y = ratioA * q0[..., qy:qy + 1] + ratioB * q1[..., qy:qy + 1]
+    new_q_z = ratioA * q0[..., qz:qz + 1] + ratioB * q1[..., qz:qz + 1]
+    new_q_w = ratioA * q0[..., qw:qw + 1] + ratioB * q1[..., qw:qw + 1]
 
     new_q = np.concatenate([new_q_x, new_q_y, new_q_z, new_q_w], axis=-1)
 
-    new_q = np.where(
-        np.abs(sin_half_theta) < 1e-3,
-        0.5 * q0 + 0.5 * q1,
-        new_q
-    )
-    new_q = np.where(
-        np.abs(cos_half_theta) >= 1.0,
-        q0,
-        new_q
-    )
+    new_q = np.where(np.abs(sin_half_theta) < 1e-3, 0.5 * q0 + 0.5 * q1, new_q)
+    new_q = np.where(np.abs(cos_half_theta) >= 1.0, q0, new_q)
 
     return new_q
 

@@ -16,10 +16,19 @@ def cb_input_ev(
     ecodes_btn_updates=None,
     input_key_updates=None,
     includes=(
-        'joystick', 'controller', 'wireless',
+        'joystick',
+        'controller',
+        'wireless',
     ),
     excludes=(
-        'touchpad', 'motion sensor', 'hdmi', 'pch', 'button', 'video bus', 'hotkey', 'hid events',
+        'touchpad',
+        'motion sensor',
+        'hdmi',
+        'pch',
+        'button',
+        'video bus',
+        'hotkey',
+        'hid events',
     ),
     wait_dev=True,
 ):

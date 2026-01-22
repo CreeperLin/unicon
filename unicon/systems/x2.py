@@ -1,3 +1,4 @@
+# yapf: disable
 def cb_x2_recv_send_close(
     states_q_ctrl,
     states_rpy,
@@ -20,6 +21,7 @@ def cb_x2_recv_send_close(
     compute_rpy=True,
     kill_apps=True,
 ):
+# yapf: enable
     import os
     import time
     from unicon.utils import get_ctx, find, list2slice, expect, ssh

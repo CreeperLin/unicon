@@ -66,9 +66,7 @@ def cb_ik_cpin(
     if reduce and len(x_ctrl_dof_inds) != njoints:
         fixed_dof_names = [n for n in pin_dof_names if n not in x_ctrl_dof_names]
         print('fixed_dof_names', fixed_dof_names)
-        reduced_robot = robot.buildReducedRobot(
-            list_of_joints_to_lock=fixed_dof_names,
-        )
+        reduced_robot = robot.buildReducedRobot(list_of_joints_to_lock=fixed_dof_names,)
         robot = reduced_robot
         pin_dof_names = [n for n in pin_dof_names if n not in fixed_dof_names]
     print('pin_dof_names', pin_dof_names)
@@ -103,6 +101,7 @@ def cb_ik_cpin(
     # c_q_last = casadi.SX.sym("q_last", robot.model.nq)
     cpin.framesForwardKinematics(cmodel, cdata, cq)
 
+    # yapf: disable
     # Define error functions
     translational_error = casadi.Function(
         "translational_error",
@@ -130,12 +129,8 @@ def cb_ik_cpin(
     param_tf_r = opti.parameter(4, 4)
 
     # Cost function
-    translational_cost = casadi.sumsqr(
-        translational_error(var_q, param_tf_l, param_tf_r)
-    )
-    rotation_cost = casadi.sumsqr(
-        rotational_error(var_q, param_tf_l, param_tf_r)
-    )
+    translational_cost = casadi.sumsqr(translational_error(var_q, param_tf_l, param_tf_r))
+    rotation_cost = casadi.sumsqr(rotational_error(var_q, param_tf_l, param_tf_r))
     regularization_cost = casadi.sumsqr(var_q)
     smooth_cost = casadi.sumsqr(var_q - param_q_last)
 
@@ -153,6 +148,8 @@ def cb_ik_cpin(
         weight_regularization * regularization_cost +
         weight_smoothness * smooth_cost
     )
+
+    # yapf: enable
 
     opts_normal = {
         'expand': True,
@@ -180,7 +177,6 @@ def cb_ik_cpin(
         'ipopt.tol': 1e9,
         'ipopt.acceptable_tol': 1e9,
         'ipopt.acceptable_iter': 0,
-
         'ipopt.warm_start_init_point': 'yes',
         'ipopt.warm_start_bound_push': 1e-6,
         'ipopt.warm_start_mult_bound_push': 1e-6,

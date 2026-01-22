@@ -232,10 +232,10 @@ def cb_input_js(
 
     def try_jsdevs(_sudo):
         if device is None:
-            paths = list(map(
+            paths = map(
                 lambda x: os.path.join(dev_path, x),
                 filter(lambda x: x.startswith('js'), os.listdir(dev_path)),
-            ))
+            )
         else:
             paths = [device]
         for path in paths:

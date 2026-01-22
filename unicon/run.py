@@ -430,7 +430,7 @@ def run(args=None):
         elif isinstance(img, dict):
             _img = img_defaults.copy()
             _img.update(img)
-            key, res, dtype = [_img.get(k) for k in ['key', 'res', 'dtype']] 
+            key, res, dtype = [_img.get(k) for k in ['key', 'res', 'dtype']]
         res = list(map(int, res.split('x'))) if isinstance(res, str) else res
         specs[key] = [res, dtype]
 
@@ -1763,7 +1763,8 @@ def run(args=None):
     if sync_time_phase:
         from unicon.general import cb_wait_datetime
         cb_phase = cb_wait_datetime(date='.000001', delta='@1')
-        while not cb_phase(): pass
+        while not cb_phase():
+            pass
         # cb = cb_chain(cb_timephase, cb)
 
     loop_dt = args['loop_dt']

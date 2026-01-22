@@ -1,3 +1,5 @@
+# yapf: disable
+
 inspire = dict(
     NAME='inspire',
     DOF_NAMES=[
@@ -76,7 +78,6 @@ rohand_a001 = dict(
     ],
 )
 
-
 dex3 = dict(
     NAME='dex3',
     DOF_NAMES=[
@@ -122,7 +123,6 @@ dex3 = dict(
     Q_RESET=[0.] * 14,
 )
 
-
 rh56dfx_ut = dict(
     NAME='rh56dfx_ut',
     DOF_NAMES=[
@@ -153,17 +153,8 @@ rh56dfx_ut = dict(
         'right-thumb-bend': 'right_thumb_mcp',
         'right-thumb-rotation': 'right_thumb_cmc_abd',
     },
-    Q_CTRL_MIN=[
-        -1.05, -0.724, 0, -1.57, -1.75, -1.57, -1.75,
-        -1.05, -1.05, -1.75, 0, 0, 0, 0,
-    ],
-    Q_CTRL_MAX=[
-        1.05, 1.05, 1.75, 0, 0, 0, 0,
-        1.05, 0.724, 0, 1.57, 1.75, 1.57, 1.75,
-    ],
-    Q_RESET=[0.] * 14,
+    Q_RESET=[0.] * 12,
 )
-
 
 rh56dftp_ut = dict(
     NAME='rh56dftp_ut',
@@ -195,10 +186,5 @@ rh56dftp_ut = dict(
         'right-thumb-bend': 'right_thumb_mcp',
         'right-thumb-rotation': 'right_thumb_cmc_abd',
     },
-    # Q_CTRL_MIN=[
-    # ],
-    # Q_CTRL_MAX=[
-    # ],
     Q_RESET=[0.] * 12,
 )
-
