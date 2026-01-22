@@ -1,0 +1,16 @@
+# THIRD_PARTY_LICENSES
+
+This project incorporates code from the following third‑party repositories.
+Each license is included in the respective repository. Please refer to those repos for the full text.
+
+---
+
+- https://github.com/clemense/yourdfpy
+- https://github.com/FFTAI/fourier_actuator_sdk
+- https://github.com/BoosterRobotics/booster_gym
+- https://github.com/vuer-ai/webrtc-teleop-demo
+- https://github.com/unitreerobotics/xr_teleoperate
+- https://github.com/zhourui9813/Quest3-Teleop-in-Isaac-Gym
+- https://github.com/jinseokbae/hybrid_latent_prior
+
+---
