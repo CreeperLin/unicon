@@ -291,12 +291,14 @@ def quat_slerp(q0, q1, t):
     # from AMP
     qx, qy, qz, qw = 0, 1, 2, 3
 
+    # yapf: disable
     cos_half_theta = (
         q0[..., qw] * q1[..., qw] +
         q0[..., qx] * q1[..., qx] +
         q0[..., qy] * q1[..., qy] +
         q0[..., qz] * q1[..., qz]
     )
+    # yapf: enable
 
     neg_mask = cos_half_theta < 0
     q1 = np.where(neg_mask[..., None], -q1, q1)
@@ -321,6 +323,32 @@ def quat_slerp(q0, q1, t):
     new_q = np.where(np.abs(cos_half_theta) >= 1.0, q0, new_q)
 
     return new_q
+
+
+def quat_slerp2(x, y, a):
+    # https://github.com/jinseokbae/hybrid_latent_prior
+    len = np.sum(x * y, axis=-1)
+
+    neg = len < 0.0
+    len[neg] = -len[neg]
+    y[neg] = -y[neg]
+
+    a = np.zeros_like(x[..., 0]) + a
+    amount0 = np.zeros(a.shape)
+    amount1 = np.zeros(a.shape)
+
+    linear = (1.0 - len) < 0.01
+    omegas = np.arccos(len[~linear])
+    sinoms = np.sin(omegas)
+
+    amount0[linear] = 1.0 - a[linear]
+    amount0[~linear] = np.sin((1.0 - a[~linear]) * omegas) / sinoms
+
+    amount1[linear] = a[linear]
+    amount1[~linear] = np.sin(a[~linear] * omegas) / sinoms
+    res = amount0[..., np.newaxis] * x + amount1[..., np.newaxis] * y
+
+    return res
 
 
 def mat_slerp(mat1, mat2, t):
