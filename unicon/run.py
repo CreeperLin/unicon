@@ -422,7 +422,7 @@ def run(args=None):
     }
     for img in imgs:
         if isinstance(img, str):
-            img = img.split(',')
+            img = img.split(';')
         if isinstance(img, (list, tuple)):
             key = img[0]
             res = img[1]

@@ -123,41 +123,9 @@ dex3 = dict(
     Q_RESET=[0.] * 14,
 )
 
-rh56dfx_ut = dict(
-    NAME='rh56dfx_ut',
-    DOF_NAMES=[
-        'left-pinky',
-        'left-ring',
-        'left-middle',
-        'left-index',
-        'left-thumb-bend',
-        'left-thumb-rotation',
-        'right-pinky',
-        'right-ring',
-        'right-middle',
-        'right-index',
-        'right-thumb-bend',
-        'right-thumb-rotation',
-    ],
-    DOF_NAMES_STD={
-        'left-pinky': 'left_pinky_mcp',
-        'left-ring': 'left_ring_mcp',
-        'left-middle': 'left_middle_mcp',
-        'left-index': 'left_index_mcp',
-        'left-thumb-bend': 'left_thumb_mcp',
-        'left-thumb-rotation': 'left_thumb_cmc_abd',
-        'right-pinky': 'right_pinky_mcp',
-        'right-ring': 'right_ring_mcp',
-        'right-middle': 'right_middle_mcp',
-        'right-index': 'right_index_mcp',
-        'right-thumb-bend': 'right_thumb_mcp',
-        'right-thumb-rotation': 'right_thumb_cmc_abd',
-    },
-    Q_RESET=[0.] * 12,
-)
 
-rh56dftp_ut = dict(
-    NAME='rh56dftp_ut',
+rh56 = dict(
+    NAME='rh56',
     DOF_NAMES=[
         'left-pinky',
         'left-ring',
@@ -186,5 +154,7 @@ rh56dftp_ut = dict(
         'right-thumb-bend': 'right_thumb_mcp',
         'right-thumb-rotation': 'right_thumb_cmc_abd',
     },
-    Q_RESET=[0.] * 12,
+    Q_CTRL_MIN=[0.] * 12,
+    Q_CTRL_MAX=[1000.] * 12,
+    Q_RESET=[1000.] * 12,
 )
