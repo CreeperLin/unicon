@@ -122,7 +122,7 @@ def get_args():
     parser.add_argument('-nqb', '--no_q_boot', action='store_true')
     parser.add_argument('-rdu', '--robot_def_update', default=None)
     parser.add_argument('-ht', '--hand_type', default='none')
-    parser.add_argument('-xcn', '--x_ctrl_names', default=None)
+    parser.add_argument('-xcn', '--x_ctrl_eef_names', default=None)
     parser.add_argument('-xcdn', '--x_ctrl_dof_names', default=None)
     args, _ = parser.parse_known_args()
     return args
@@ -354,14 +354,14 @@ def run(args=None):
     x_extras2 = args['states_x_extras2']
     from unicon.utils import pats2inds
     NUM_LINKS = 0 if LINK_NAMES is None else len(LINK_NAMES)
-    x_ctrl_names = load_obj(args['x_ctrl_names'])
-    x_ctrl_names = [] if x_ctrl_names is None else x_ctrl_names
-    # x_ctrl_names = [n for n in x_ctrl_names if n in LINK_NAMES]
-    x_ctrl_inds, x_ctrl_names, _ = pats2inds(x_ctrl_names, LINK_NAMES, None)
-    ctx['x_ctrl_names'] = x_ctrl_names
-    ctx['x_ctrl_inds'] = x_ctrl_inds
-    num_x_ctrl = len(x_ctrl_names)
-    print('x_ctrl_names', num_x_ctrl, x_ctrl_names, x_ctrl_inds)
+    x_ctrl_eef_names = load_obj(args['x_ctrl_eef_names'])
+    x_ctrl_eef_names = [] if x_ctrl_eef_names is None else x_ctrl_eef_names
+    # x_ctrl_eef_names = [n for n in x_ctrl_eef_names if n in LINK_NAMES]
+    x_ctrl_eef_inds, x_ctrl_eef_names, _ = pats2inds(x_ctrl_eef_names, LINK_NAMES, None)
+    ctx['x_ctrl_eef_names'] = x_ctrl_eef_names
+    ctx['x_ctrl_eef_inds'] = x_ctrl_eef_inds
+    num_x_ctrl = len(x_ctrl_eef_names)
+    print('x_ctrl_eef_names', num_x_ctrl, x_ctrl_eef_names, x_ctrl_eef_inds)
 
     x_ctrl_dof_names = load_obj(args['x_ctrl_dof_names'])
     # x_ctrl_dof_names = [] if x_ctrl_dof_names is None else x_ctrl_dof_names
@@ -544,7 +544,7 @@ def run(args=None):
         else:
             x_reset = np.stack([np.eye(4, dtype=np.float32) for _ in range(len(states_x_ctrl))], axis=0)
         print('x_reset', x_reset.shape)
-        for ei in x_ctrl_inds:
+        for ei in x_ctrl_eef_inds:
             print(ei, LINK_NAMES[ei])
             print(np.round(x_reset[ei].astype(np.float32), 3))
         ctx['x_reset'] = x_reset
@@ -1079,10 +1079,7 @@ def run(args=None):
     if env_cfg is not None and use_env_pd:
         nxs = []
         for x in [env_kps, env_kds, env_torque_limits]:
-            if x is None:
-                nx = None
-            else:
-                nx = {dof_names_map.get(k, k): v for k, v in x.items()}
+            nx = {} if x is None else {dof_names_map.get(k, k): v for k, v in x.items()}
             nxs.append(nx)
         env_kps, env_kds, env_torque_limits = nxs
         print('env_kps', env_kps)

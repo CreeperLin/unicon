@@ -19,19 +19,23 @@ ori_print = print
 _timer_memo = {}
 
 
-def pats2inds(pats, keys=None, key_map=None):
+def pats2inds(pats, keys, key_map=None, case=False):
     inds = []
     mkeys = []
     pat_inds = []
+    keys = [] if keys is None else keys
+    pats = [] if pats is None else pats
     for i, key in enumerate(keys):
+        mk = key if case else key.lower()
         for j, pat in enumerate(pats):
             h = pat[0]
             k = pat[1:] if h in ['@', '~'] else pat
+            pk = k if case else k.lower()
             if h == '@' and key_map.get(k) == key:
                 break
-            if h == '~' and k in key:
+            if h == '~' and pk in mk:
                 break
-            if k == key:
+            if pk == mk:
                 break
         else:
             continue
