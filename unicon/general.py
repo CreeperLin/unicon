@@ -1,4 +1,4 @@
-def cb_chain(*cbs, next_on=[True], verbose=True, block_ret=True):
+def cb_chain(*cbs, next_on=[True], verbose=True, prop_ret=False):
     it = iter(cbs)
     cur_cb = None
 
@@ -15,7 +15,7 @@ def cb_chain(*cbs, next_on=[True], verbose=True, block_ret=True):
             if ret in next_on:
                 cur_cb = None
                 continue
-            return None if block_ret else ret
+            return ret if prop_ret else None
 
     cb._cbs = cbs
     return cb

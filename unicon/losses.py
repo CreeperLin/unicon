@@ -1,7 +1,8 @@
 import torch
 import torch.nn.functional as F
+import os
 
-DEBUG = False
+UNICON_DEBUG = os.environ.get('UNICON_DEBUG', '0') == '1'
 
 
 def chamfer_loss2(pred, true, alpha=0.5, compute_mode='donot_use_mm_for_euclid_dist'):
@@ -20,7 +21,7 @@ def chamfer_loss2(pred, true, alpha=0.5, compute_mode='donot_use_mm_for_euclid_d
     # B M
     min_distances1, argmin1 = torch.min(dist, dim=-1)
     min_distances2, argmin2 = torch.min(dist, dim=-2)
-    if DEBUG:
+    if UNICON_DEBUG:
         # print('DEBUG')
         chamfer_loss.argmins = [argmin1.clone(), argmin2.clone()]
     loss = (1 - alpha) * torch.mean(min_distances1, dim=-1) + alpha * torch.mean(min_distances2, dim=-1)
@@ -40,7 +41,7 @@ def chamfer_loss(pred, true, alpha=0.5):
     # B M
     min_distances1, argmin1 = torch.min(dist, dim=-1)
     min_distances2, argmin2 = torch.min(dist, dim=-2)
-    if DEBUG:
+    if UNICON_DEBUG:
         # print('DEBUG')
         chamfer_loss.argmins = [argmin1.clone(), argmin2.clone()]
     loss = (1 - alpha) * torch.mean(min_distances1, dim=-1) + alpha * torch.mean(min_distances2, dim=-1)
@@ -93,12 +94,14 @@ def unfolded_mse_loss(pred, true, step=1, sym=True, alpha=0.5):
     loss2 = torch._C._nn.mse_loss(pred_w, true_u, F._Reduction.get_enum('none'))
     loss2 = loss2.mean(dim=(-1, -2))
     # loss2 = loss2.mean(dim=-1).sum(dim=-1)
-    if DEBUG:
-        # print('DEBUG')
-        unfolded_mse_loss.losses = [loss1, loss2]
     # print(loss2)
     # unfolded_mse_loss.loss1 = loss1
     min_loss2, argmin2 = torch.min(loss2, dim=-1)
+
+    if UNICON_DEBUG:
+        # print('DEBUG')
+        unfolded_mse_loss.losses = [loss1, loss2]
+        unfolded_mse_loss.argmins = [argmin1, argmin2]
     # print(min_loss2, argmin2)
     return alpha * min_loss1 + (1 - alpha) * min_loss2
     # return torch.where(min_loss1 < min_loss2, min_loss1, min_loss2)
@@ -112,7 +115,9 @@ def plot_unfolded_mse_loss(title=None):
             print('umse', k, loss.shape)
             loss = loss.cpu().numpy()
             x = range(loss.shape[-1])
-            fig = plt.figure()
+            L = loss.shape[-1] * 2
+            # fig = plt.figure()
+            fig = plt.figure(dpi=640)
             for i in range(len(loss)):
                 plt.plot(x, loss[i])
             if title is not None:
@@ -120,11 +125,40 @@ def plot_unfolded_mse_loss(title=None):
             fig.tight_layout()
             # plt.plot(loss1)
             plt.savefig(f'loss_{k}.png')
+    argmins = getattr(unfolded_mse_loss, 'argmins', None)
+    if argmins is not None:
+        print('argmins', argmins[0].shape, argmins[1].shape)
+        # argmins torch.Size([64]) torch.Size([64])
+        from matplotlib import pyplot as plt
+        argmin1, argmin2 = argmins
+        argmin1 = argmin1.cpu()
+        argmin2 = argmin2.cpu()
+        data = torch.ones(L, L)
+        W = L // 2
+        for d in argmin1:
+            # rows = torch.arange(min(W, L - d))
+            rows = torch.arange(0, W)
+            cols = torch.arange(d, min(d + W, L))
+            data[rows, cols] += 1
+        for d in argmin2:
+            cols = torch.arange(0, W)
+            rows = torch.arange(d, min(d + W, L))
+            data[rows, cols] += 1
+        data = torch.log10(data)
+        fig = plt.figure(dpi=640)
+        plt.imshow(data, interpolation='nearest', cmap='hot')
+        plt.colorbar()
+        if title is not None:
+            plt.title(title)
+        fig.tight_layout()
+        # plt.savefig(f'argmin_umse_{i}.png')
+        plt.savefig(f'argmin_umse.png')
 
 
 def plot_chamfer_loss(title=None):
     argmins = getattr(chamfer_loss, 'argmins', None)
     if argmins is not None:
+        print('argmins', argmins[0].shape, argmins[1].shape)
         # print('argmins', argmins)
         from matplotlib import pyplot as plt
         for i, argmin in enumerate(argmins):
@@ -133,13 +167,31 @@ def plot_chamfer_loss(title=None):
             # data = torch.zeros(L, L)
             data = torch.ones(L, L)
             for d in argmin:
-                data[torch.arange(0, L), d] = data[torch.arange(0, L), d] + 1
+                # data[torch.arange(0, L), d] = data[torch.arange(0, L), d] + 1
+                data[torch.arange(L), d] += 1
             data = torch.log10(data)
             # print(data)
-            fig = plt.figure()
+            # fig = plt.figure()
+            fig = plt.figure(dpi=640)
             plt.imshow(data, interpolation='nearest', cmap='hot')
             plt.colorbar()
             if title is not None:
                 plt.title(title)
             fig.tight_layout()
             plt.savefig(f'argmin_{i}.png')
+        argmin1, argmin2 = argmins
+        argmin1 = argmin1.cpu()
+        argmin2 = argmin2.cpu()
+        data = torch.ones(L, L)
+        for d in argmin1:
+            data[torch.arange(L), d] += 1
+        for d in argmin2:
+            data[d, torch.arange(L)] += 1
+        data = torch.log10(data)
+        fig = plt.figure(dpi=640)
+        plt.imshow(data, interpolation='nearest', cmap='hot')
+        plt.colorbar()
+        if title is not None:
+            plt.title(title)
+        fig.tight_layout()
+        plt.savefig(f'argmin_chamfer.png')

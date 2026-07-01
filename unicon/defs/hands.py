@@ -1,23 +1,3 @@
-# yapf: disable
-
-inspire = dict(
-    NAME='inspire',
-    DOF_NAMES=[
-        'left_thumb_mcp_joint1',
-        'left_thumb_mcp_joint2',
-        'left_index_mcp_joint',
-        'left_middle_mcp_joint',
-        'left_ring_mcp_joint',
-        'left_pinky_mcp_joint',
-        'right_thumb_mcp_joint1',
-        'right_thumb_mcp_joint2',
-        'right_index_mcp_joint',
-        'right_middle_mcp_joint',
-        'right_ring_mcp_joint',
-        'right_pinky_mcp_joint',
-    ],
-)
-
 rohand_a001 = dict(
     NAME='rohand_a001',
     DOF_NAMES_STD=[
@@ -157,4 +137,71 @@ rh56 = dict(
     Q_CTRL_MIN=[0.] * 12,
     Q_CTRL_MAX=[1000.] * 12,
     Q_RESET=[1000.] * 12,
+)
+
+
+xhand1 = dict(
+    NAME='xhand1',
+    DOF_NAMES=[
+        'left_hand_thumb_bend_joint',
+        'left_hand_thumb_rota_joint1',
+        'left_hand_thumb_rota_joint2',
+        'left_hand_index_bend_joint',
+        'left_hand_index_joint1',
+        'left_hand_index_joint2',
+        'left_hand_mid_joint1',
+        'left_hand_mid_joint2',
+        'left_hand_ring_joint1',
+        'left_hand_ring_joint2',
+        'left_hand_pinky_joint1',
+        'left_hand_pinky_joint2',
+
+        'right_hand_thumb_bend_joint',
+        'right_hand_thumb_rota_joint1',
+        'right_hand_thumb_rota_joint2',
+        'right_hand_index_bend_joint',
+        'right_hand_index_joint1',
+        'right_hand_index_joint2',
+        'right_hand_mid_joint1',
+        'right_hand_mid_joint2',
+        'right_hand_ring_joint1',
+        'right_hand_ring_joint2',
+        'right_hand_pinky_joint1',
+        'right_hand_pinky_joint2',
+    ],
+    DOF_NAMES_STD={
+        'left_hand_thumb_bend_joint': 'left_thumb_cmc_abd',
+        'left_hand_thumb_rota_joint1': 'left_thumb_cmc_flx',
+        'left_hand_thumb_rota_joint2': 'left_thumb_mcp',
+        'left_hand_index_bend_joint': 'left_index_mcp_abd',
+        'left_hand_index_joint1': 'left_index_mcp',
+        'left_hand_index_joint2': 'left_index_pip',
+        'left_hand_mid_joint1': 'left_middle_mcp',
+        'left_hand_mid_joint2': 'left_middle_pip',
+        'left_hand_ring_joint1': 'left_ring_mcp',
+        'left_hand_ring_joint2': 'left_ring_pip',
+        'left_hand_pinky_joint1': 'left_pinky_mcp',
+        'left_hand_pinky_joint2': 'left_pinky_pip',
+        'right_hand_thumb_bend_joint': 'right_thumb_cmc_abd',
+        'right_hand_thumb_rota_joint1': 'right_thumb_cmc_flx',
+        'right_hand_thumb_rota_joint2': 'right_thumb_mcp',
+        'right_hand_index_bend_joint': 'right_index_mcp_abd',
+        'right_hand_index_joint1': 'right_index_mcp',
+        'right_hand_index_joint2': 'right_index_pip',
+        'right_hand_mid_joint1': 'right_middle_mcp',
+        'right_hand_mid_joint2': 'right_middle_pip',
+        'right_hand_ring_joint1': 'right_ring_mcp',
+        'right_hand_ring_joint2': 'right_ring_pip',
+        'right_hand_pinky_joint1': 'right_pinky_mcp',
+        'right_hand_pinky_joint2': 'right_pinky_pip',
+    },
+    Q_CTRL_MIN=[
+        0., -0.7, 0., -0.17, 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., -0.7, 0., -0.17, 0., 0., 0., 0., 0., 0., 0., 0.,
+    ],
+    Q_CTRL_MAX=[
+        1.8, 1.6, 1.6, 0.17, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9,
+        1.8, 1.6, 1.6, 0.17, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9,
+    ],
+    Q_RESET=[0.] * 24,
 )

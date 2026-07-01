@@ -886,11 +886,12 @@ def plot(args=None):
                     # print(name, traj_std, std, mean)
                     loss_all[k].append([traj_std, mean])
             for name in loss_fns:
-                print(name, [x[-1] for x in loss_all[name]])
+                print(name, [[np.round(xx, 3) for xx in x] for x in loss_all[name]])
             x = np.arange(num_elms) * num_pairs * 0.5
             width = 0.3  # the width of the bars
             labels = elm_names[:num_elms]
             labels = [x.replace('_joint', '') for x in labels]
+            print('elem labels', labels)
             for i, k in enumerate(loss_all):
                 ax = axes[i]
                 loss = loss_all[k]
@@ -1276,14 +1277,17 @@ def plot(args=None):
         ax2.set_ylim([q_min_lim, q_max_lim])
         ax3.set_ylim([q_min_lim, q_max_lim])
         ax4.set_ylim([-tau_max, tau_max])
-        fig.tight_layout()
         ax1.legend([
             'ref',
-        ] + rec_names, loc="lower right")
+        ] + rec_names, loc="lower right", title=DOF_NAMES[idx])
+        add_subtitle = False
         if not single_plot:
-            plt.suptitle(DOF_NAMES[idx])
+            if add_subtitle:
+                plt.suptitle(DOF_NAMES[idx])
+            plt.tight_layout()
             plt.savefig(plot_prefix + f'.{ext}')
             plt.close()
+        plt.tight_layout()
         if save_anim:
             # frame_step = int(1 // dt)
             frame_step = 1

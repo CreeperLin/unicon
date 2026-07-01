@@ -272,7 +272,9 @@ def run(args=None):
         load_run_path = infer_load_run[0]
         model_file = infer_load_run[1] if len(infer_load_run) > 1 else None
         _default_infer_root = os.environ.get('UNICON_INFER_ROOT')
-        if _default_infer_root is None:
+        if os.path.isabs(load_run_path):
+            root = load_run_path
+        elif _default_infer_root is None:
             from unicon.utils import find
             root = find(root='..', path=f'*{load_run_path}')
             if root is None:
@@ -430,7 +432,7 @@ def run(args=None):
         elif isinstance(img, dict):
             _img = img_defaults.copy()
             _img.update(img)
-            key, res, dtype = [_img.get(k) for k in ['key', 'res', 'dtype']]
+            key, res, dtype = [_img.get(k) for k in ['key', 'res', 'dtype']] 
         res = list(map(int, res.split('x'))) if isinstance(res, str) else res
         specs[key] = [res, dtype]
 
@@ -1008,12 +1010,15 @@ def run(args=None):
     if rec_output is not None:
         from unicon.general import cb_rec
         rec = {}
-        _cb_rec = cb_rec(
+        rec_states = dict(
             **states_ctrls,
             states_input=states_input,
             **states_props,
             **states_extras,
             **states_infer_extras,
+        )
+        _cb_rec = cb_rec(
+            **{k: v for k, v in rec_states.items() if v is not None},
             rec=rec,
         )
         if not rec_post_send:
@@ -1135,7 +1140,10 @@ def run(args=None):
     if env_cfg is not None and use_env_pd:
         nxs = []
         for x in [env_kps, env_kds, env_torque_limits]:
-            nx = {} if x is None else {dof_names_map.get(k, k): v for k, v in x.items()}
+            if x is None:
+                nx = None
+            else:
+                nx = {dof_names_map.get(k, k): v for k, v in x.items()}
             nxs.append(nx)
         env_kps, env_kds, env_torque_limits = nxs
         print('env_kps', env_kps)
@@ -1271,19 +1279,22 @@ def run(args=None):
                 asset_options = robot_def.get('ASSET_OPTIONS')
                 if asset_options is not None:
                     system_config.update({'asset_options': asset_options})
-            print('system_config', system_config)
         else:
             system_config = load_obj(sims_config)
         convert_mjcf = True
+        fix_base_link = system_config.get('fix_base_link', False) or args['sims_fixed_base']
+        compute_torque = system_config.get('compute_torque', False) or args['sims_compute_torque']
+        system_config['compute_torque'] = compute_torque
         if sims_type in ['sims.systems.mujoco', 'sims.systems.brax']:
             xml_path = robot_def.get('MJCF')
             if convert_mjcf and system_config.get('xml_path') is None:
                 import tempfile
                 from unicon.utils.urdf2mjcf import urdf2mjcf
-                xml_file = tempfile.NamedTemporaryFile(mode='w', delete=True)
+                xml_file = tempfile.NamedTemporaryFile(suffix='.mjcf', mode='w', delete=True)
                 xml_path = xml_file.name
                 no_collision_mesh = False
                 use_sensor = False
+                actuator_type = 'motor' if compute_torque else 'position'
                 urdf2mjcf(
                     urdf_path=urdf_path,
                     mjcf_path=xml_path,
@@ -1291,12 +1302,14 @@ def run(args=None):
                     copy_meshes=True,
                     no_frc_limit=True,
                     use_sensor=use_sensor,
+                    fix_base_link=fix_base_link,
+                    actuator_type=actuator_type,
+                    dump=True,
                 )
+                print('converted urdf to mjcf', xml_path)
             system_config['xml_path'] = xml_path
         sim_dof_names = DOF_NAMES
         system_config['realtime'] = False
-        fix_base_link = system_config.get('fix_base_link', False) or args['sims_fixed_base']
-        fix_base_link = fix_base_link or 'sample' in modes
         system_config['fix_base_link'] = fix_base_link
         sims_def_dof_pos = system_config.get('default_dof_pos', {})
         system_config['default_dof_pos'] = sims_def_dof_pos
@@ -1317,9 +1330,6 @@ def run(args=None):
             default_root_states[2] += 0.5
         if args['sims_headless']:
             system_config['headless'] = True
-        if args['sims_compute_torque']:
-            system_config['compute_torque'] = True
-        system_config['compute_torque'] = system_config.get('compute_torque', False)
         if use_env_pd:
             system_config['Kp'] = env_kps
             system_config['Kd'] = env_kds
@@ -1346,6 +1356,7 @@ def run(args=None):
         sims_wrapper_config = args['sims_wrapper_config']
         if sims_wrapper_config is not None:
             wrapper_config.extend([load_obj(c) for c in sims_wrapper_config])
+        print('system_config', system_config)
         sims_kwds = dict(
             system_config=system_config,
             wrapper_config=wrapper_config,

@@ -662,8 +662,10 @@ def parse_urdf(
     if compute_pd:
         kps = []
         kds = []
-        omega_n = 2 * np.pi * 10
+        freq_n = 10
+        omega_n = 2 * np.pi * freq_n
         zeta = 2.0
+        armature_ratio = 0.1
         for joint in joints:
             child_link = urdf.link_map[joint.child]
             # print(joint.name, child_link.name)
@@ -672,7 +674,7 @@ def parse_urdf(
             if child_link.inertial:
                 inertia = child_link.inertial.inertia
                 mass = child_link.inertial.mass
-                Ij = np.trace(inertia)
+                Ij = np.trace(inertia) * armature_ratio
                 kp = Ij * omega_n**2
                 kd = 2 * Ij * zeta * omega_n
                 # print('inertia', Ij)
