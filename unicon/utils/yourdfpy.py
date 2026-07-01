@@ -410,16 +410,18 @@ class URDF:
 
     def _parse_geometry(xml_element):
         geometry = Geometry()
-        if xml_element[0].tag == 'box':
-            geometry.box = URDF._parse_box(xml_element[0])
-        elif xml_element[0].tag == 'cylinder':
-            geometry.cylinder = URDF._parse_cylinder(xml_element[0])
-        elif xml_element[0].tag == 'sphere':
-            geometry.sphere = URDF._parse_sphere(xml_element[0])
-        elif xml_element[0].tag == 'mesh':
-            geometry.mesh = URDF._parse_mesh(xml_element[0])
+        elm = xml_element[0]
+        tag = elm.tag
+        if tag == 'box':
+            geometry.box = URDF._parse_box(elm)
+        elif tag == 'cylinder':
+            geometry.cylinder = URDF._parse_cylinder(elm)
+        elif tag == 'sphere':
+            geometry.sphere = URDF._parse_sphere(elm)
+        elif tag == 'mesh':
+            geometry.mesh = URDF._parse_mesh(elm)
         else:
-            raise ValueError(f'Unknown tag: {xml_element[0].tag}')
+            raise ValueError(f'Unknown tag: {tag}')
 
         return geometry
 

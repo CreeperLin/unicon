@@ -300,9 +300,9 @@ t1 = {
         'Left_Knee_Pitch': 0.55,
         # left-upper
         'Left_Elbow_Pitch': 0,
-        # 'Left_Elbow_Yaw': -1.6,
-        'Left_Elbow_Yaw': 0.,
-        'Left_Shoulder_Pitch': 0.5,
+        'Left_Elbow_Yaw': -1.57,
+        # 'Left_Elbow_Yaw': 0.,
+        'Left_Shoulder_Pitch': 0.,
         'Left_Shoulder_Roll': -1.4,
         # right-lower
         'Right_Ankle_Pitch': -0.29,
@@ -313,9 +313,9 @@ t1 = {
         'Right_Knee_Pitch': 0.55,
         # right-upper
         'Right_Elbow_Pitch': 0,
-        # 'Right_Elbow_Yaw': 1.6,
-        'Right_Elbow_Yaw': 0.,
-        'Right_Shoulder_Pitch': 0.5,
+        'Right_Elbow_Yaw': 1.57,
+        # 'Right_Elbow_Yaw': 0.,
+        'Right_Shoulder_Pitch': 0.,
         'Right_Shoulder_Roll': 1.4,
     },
 }
