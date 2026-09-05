@@ -16,6 +16,10 @@ def load_robot_pin(
         package_dirs=[os.path.dirname(urdf_path)],
         root_joint=None,
     )
+    model, data = robot_pin.model, robot_pin.data
+    print('pin', 'nq', model.nq, 'nv', model.nv, 'njoints', model.njoints, 'nframes', len(model.frames))
+    print('pin joints', [(model.names[i], j.idx_q, j.idx_v, j.nq, j.nv) for i, j in enumerate(model.joints)])
+    # print('pin frames', [f.name for f in model.frames])
     return robot_pin
 
 
@@ -44,14 +48,16 @@ def dedup_frames(model):
 
 def get_joint_names(robot_pin):
     model, data = robot_pin.model, robot_pin.data
-    nq = model.nq
-    names = [None for _ in range(nq + 1)]
-    for f in model.frames:
-        n = f.name
-        idx = model.getJointId(n)
-        if 0 < idx <= nq:
-            names[idx] = n
-    return names[1:]
+    names = [model.names[i] for i in range(model.njoints)]
+    return names[1:]  # skip universe joint
+    # nq = model.nq
+    # names = [None for _ in range(nq + 1)]
+    # for f in model.frames:
+    #     n = f.name
+    #     idx = model.getJointId(n)
+    #     if 0 < idx <= nq:
+    #         names[idx] = n
+    # return names[1:]
 
 
 def pin_fk(q, robot_pin=None, dof_names=None, link_names=None):

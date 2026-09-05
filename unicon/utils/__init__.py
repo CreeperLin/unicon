@@ -115,7 +115,7 @@ def pkill(*args, opts='-ef'):
     return os.system(_cmd)
 
 
-def find_import_ext(name, ext_dir=None):
+def find_import_ext(name, root='~', ext_dir=None):
     import sysconfig
     try:
         return __import__(name)
@@ -125,7 +125,7 @@ def find_import_ext(name, ext_dir=None):
         ext_suffix = sysconfig.get_config_var('EXT_SUFFIX')
         so_name = name + ext_suffix
         print('finding ext_dir', so_name)
-        ext_dir = os.path.dirname(find('~', name=so_name)[0])
+        ext_dir = os.path.dirname(find(root, name=so_name)[0])
     print('ext_dir', ext_dir)
     if ext_dir not in sys.path:
         sys.path.append(ext_dir)
@@ -643,6 +643,7 @@ def parse_urdf(
     min_z = -1.23 if min_z >= 0 else min_z
     print('min_z', min_z)
     joints = [j for j in joints if j.type != 'fixed']
+    # joints = [j for j in joints if j.mimic is None]
     link_names = [k.name for k in links]
     dof_names = [j.name for j in joints]
     joint_limits = [j.limit for j in joints]
@@ -731,9 +732,11 @@ def parse_robot_def(robot_def):
                 asset_dir = res[0]
         if asset_dir is not None:
             print('asset_dir', asset_dir)
-            rel_paths = {k: os.path.join(asset_dir, v) for k, v in rel_paths.items()}
-            asset_paths.update(rel_paths)
-            rel_paths = {}
+            for k, v in rel_paths.copy().items():
+                v = os.path.join(asset_dir, v)
+                if os.path.exists(v):
+                    asset_paths[k] = v
+                    rel_paths.pop(k)
     if len(rel_paths):
         for k, v in rel_paths.copy().items():
             res = find('~', path='*' + v)
@@ -968,6 +971,8 @@ def list2slice(lst):
     st, ed = lst[0], lst[-1]
     if len(lst) == (ed - st + 1) and tuple(sorted(lst)) == tuple(lst):
         lst = slice(st, ed + 1)
+    elif len(lst) == (st - ed + 1) and tuple(sorted(lst, reverse=True)) == tuple(lst):
+        lst = slice(st, ed - 1, -1)
     return lst
 
 

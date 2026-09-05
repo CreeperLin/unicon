@@ -16,17 +16,22 @@ def sampler_uniform(low, high, rng=None, num_samples=100, repeats=100, seed=1, *
             t += 1
 
 
-def sampler_sine(low, high, num_samples=100, freq=1, dt=0.02):
+def sampler_sine(low, high, num_samples=100, freq=(1,), ampl=(1,), phase=(0,), dt=0.02):
     low = np.array(low)
     high = np.array(high)
-    span = high - low
+    center = (low + high) / 2
+    half_span = (high - low) / 2
+    freq = np.atleast_1d(freq)
+    ampl = np.atleast_1d(ampl)
+    phase = np.atleast_1d(phase)
     freq = freq * dt * 2 * np.pi
     t = 0
     while True:
         if num_samples is not None and t >= num_samples:
             return
-        a = np.sin(t * freq)
-        v = low + span * (a + 1) * 0.5
+        a = np.sum(ampl * np.sin(t * freq + phase))
+        a = np.clip(a, -1.0, 1.0)
+        v = center + half_span * a
         yield v
         t += 1
 

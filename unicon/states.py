@@ -4,6 +4,7 @@ import inspect
 
 _states_arrs = {}
 _states_specs = {}
+_states_refs = {}
 _states_size = 0
 _states_shm = None
 _states_buf = None
@@ -28,6 +29,31 @@ _dtype2str = {
 _str2dtype = {v: k for k, v in _dtype2str.items()}
 
 
+class StateRef:
+    """Process-local state slot that replaces values by reference."""
+
+    __slots__ = ('_value',)
+
+    def __init__(self, value=None):
+        self._value = value
+
+    def get(self):
+        return self._value
+
+    def set(self, value):
+        self._value = value
+
+    def __getitem__(self, key):
+        if key != slice(None):
+            raise IndexError(key)
+        return self._value
+
+    def __setitem__(self, key, value):
+        if key != slice(None):
+            raise IndexError(key)
+        self._value = value
+
+
 def states_reset():
     global _states_size
     states_destroy(force=True)
@@ -36,10 +62,13 @@ def states_reset():
     _states_size = 0
 
 
-def states_new(name, shape, dtype=np.float32):
+def states_new(name, shape=None, dtype=np.float32):
+    if dtype == 'ref':
+        return states_new_ref(name)
     assert _states_buf is None
     global _states_size
     assert name not in _states_specs
+    assert name not in _states_refs
     shape = (shape,) if isinstance(shape, int) else shape
     numel = 1
     for x in shape:
@@ -51,6 +80,15 @@ def states_new(name, shape, dtype=np.float32):
     _states_specs[name] = (st, ed, numel, shape, dtype)
     _states_size += size
     return st
+
+
+def states_new_ref(name, value=None):
+    """Register a process-local object state and return its stable slot."""
+    assert name not in _states_specs
+    assert name not in _states_refs
+    ref = StateRef(value)
+    _states_refs[name] = ref
+    return ref
 
 
 def states_news(specs):
@@ -99,6 +137,9 @@ def states_create(size, use_shm=False, max_size=0, reuse=False, clear=False, nam
 
 def states_destroy(force=False):
     global _states_shm, _states_buf
+    for ref in _states_refs.values():
+        ref[:] = None
+    _states_refs.clear()
     if not force and _states_shm is None:
         return
     _states_buf = None
@@ -163,6 +204,8 @@ def states_init(save=True, load=False, states_name=_states_name, **kwds):
 
 
 def states_get(name=None):
+    if name in _states_refs:
+        return _states_refs[name]
     assert _states_buf is not None
     if name is None:
         return _states_buf
@@ -205,10 +248,12 @@ def autowired(func, *args, states=None, **kwds):
             skwds[k] = s
     states_var = sig.parameters.get('states')
     if states_var is not None and states_var.kind == states_var.VAR_KEYWORD:
+        ref_states = {states_prefix + k: v for k, v in _states_refs.items()}
         if states is not None:
             skwds.update(states)
         else:
             skwds.update({states_prefix + k: states_get(k) for k in _states_specs})
+        skwds.update(ref_states)
 
     def wrapped(*_args, **_kwds):
         return func(*_args, **_kwds, **skwds)

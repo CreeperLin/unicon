@@ -104,7 +104,8 @@ def quat2mat1(quat, w_first=False):
         w, x, y, z = quat.T
     else:
         x, y, z, w = quat.T
-    norm = np.linalg.norm(quat, axis=-1)
+    # norm = np.linalg.norm(quat, axis=-1)
+    norm = np.sum(quat * quat, axis=-1)
     norm[norm < 1e-4] = 1.
     s = 2.0 / norm
     X = x * s
@@ -169,8 +170,8 @@ def mat2rpy(m):
     else:
         m11 = m[..., 1, 1]
         m12 = m[..., 1, 2]
-        ax = np.atan2(-m12, m11)
-        ay = np.atan2(-m20, cy)
+        ax = np.arctan2(-m12, m11)
+        ay = np.arctan2(-m20, cy)
         az = 0.0
     return np.stack([ax, ay, az], axis=-1)
 
@@ -364,10 +365,10 @@ def mat4_slerp(mat1, mat2, t, inplace=True):
     if t >= 1:
         mat1[:] = mat2
         return mat1
-    t1 = mat1[:3, 3]
-    r1 = mat1[:3, :3]
-    t2 = mat2[:3, 3]
-    r2 = mat2[:3, :3]
-    mat1[:3, 3] = t1 * (1 - t) + t2 * t
-    mat1[:3, :3] = mat_slerp(r1, r2, t)
+    t1 = mat1[..., :3, 3]
+    r1 = mat1[..., :3, :3]
+    t2 = mat2[..., :3, 3]
+    r2 = mat2[..., :3, :3]
+    mat1[..., :3, 3] = t1 * (1 - t) + t2 * t
+    mat1[..., :3, :3] = mat_slerp(r1, r2, t)
     return mat1

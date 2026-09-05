@@ -13,12 +13,27 @@ def cb_sims_recv_send_close(
     dof_names=None,
     states_qd_ctrl=None,
     states_tau_ctrl=None,
+    states_x_ft=None,
     copy=False,
     sims_kwds=None,
 ):
     import numpy as np
     from sims.run import run
     from sims.utils import list2slice
+    from unicon.utils import get_ctx, pats2inds
+
+    if states_x_ft is not None:
+        ctx = get_ctx()
+        robot_def = ctx['robot_def']
+        LINK_NAMES = robot_def['LINK_NAMES']
+        system_config = sims_kwds['system_config']
+        link_ft_names = system_config.get('link_ft_names', [])
+        link_ft_keys = list(link_ft_names.keys()) if isinstance(link_ft_names, dict) else link_ft_names
+        ft_inds, ft_names, _ = pats2inds(link_ft_keys, LINK_NAMES)
+        print('ft_names', ft_names)
+        print('ft_inds', ft_inds)
+        if link_ft_names:
+            system_config['link_ft_names'] = {k: link_ft_names[k] for k in ft_names} if isinstance(link_ft_names, dict) else ft_names
 
     s = run(**({} if sims_kwds is None else sims_kwds), run_time=False)
     s.cb_init()
@@ -69,6 +84,8 @@ def cb_sims_recv_send_close(
         if states_lin_acc is not None:
             # print(imu[3:6])
             states_lin_acc[:] = imu[3:6]
+        if states_x_ft is not None and ft_inds:
+            states_x_ft[ft_inds] = recv_msg['link_ft']
 
     def cb_close():
         s.cb_recv(True)

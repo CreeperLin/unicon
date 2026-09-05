@@ -40,6 +40,7 @@ def get_plot_args(args=None):
     parser.add_argument('-sqe', '--states_q_extras', action='store_true')
     parser.add_argument('-sxe', '--states_x_extras', action='store_true')
     parser.add_argument('-sxe2', '--states_x_extras2', action='store_true')
+    parser.add_argument('-sxft', '--states_x_ft', action='store_true')
     parser.add_argument('-awf', '--acc_world_frame', action='store_true')
     parser.add_argument('-nd', '--no_dof_states', action='store_true')
     parser.add_argument('-g', '--g', type=float, default=-9.85)
@@ -99,6 +100,56 @@ def plot_states_x_extras2(
     return fig
 
 
+def plot_states_x_ft(
+    rec_names,
+    recs,
+    st,
+    ed,
+    robot_def,
+):
+    t = list(range(st, ed))
+    nplts = 6
+    LINK_NAMES = robot_def['LINK_NAMES']
+    num_links = len(LINK_NAMES)
+    links = list(range(num_links))
+    ft0 = recs[0]['states_x_ft'][st:ed]
+    # print(ft0.shape)
+    # print([np.sum(ft0[:, i]) for i in links])
+    max_l = np.max([np.max(np.abs(r['states_x_ft'][st:ed, :]), axis=(0, 2)) for r in recs], axis=0)
+    max_d = np.max([np.max(np.abs(r['states_x_ft'][st:ed, :]), axis=(0, 1)) for r in recs], axis=0)
+    links = [i for i in links if max_l[i] != 0]
+    print('max_l', max_l.shape, links, max_l[links])
+    print('max_d', max_d.shape, max_d)
+    num_links = len(links)
+    print('links', [LINK_NAMES[i] for i in links])
+    fig, axes = plt.subplots(num_links, nplts, figsize=(10 * nplts, 10 * num_links))
+    axes = axes.reshape(-1, nplts)
+    print('axes', axes.shape)
+    for k, (link_idx, axs) in enumerate(zip(links, axes)):
+        link_name = LINK_NAMES[link_idx]
+        ax1 = axs[0]
+        for i, rec in enumerate(recs):
+            ft = rec['states_x_ft'][st:ed, link_idx]
+
+            for d in range(6):
+                ax = axs[d]
+                if i == 0:
+                    ax.plot(t[0], ft[0, d])
+                ax.plot(t, ft[:, d])
+
+        # ax3.set_ylim([-x_max, x_max])
+        ax1.legend(['ref'] + rec_names, loc="lower right")
+        maxs = {
+            'Fx': 20, 'Fy': 20, 'Fz': 20, 'Mx': 1, 'My': 1, 'Mz': 1,
+        }
+        for i, (ax, name) in enumerate(zip(axs, ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz'])):
+            ax.set_title(link_name + ' ' + name)
+            y_max = max(maxs.get(name), max_d[i] * 1.1)
+            ax.set_ylim([-y_max, y_max])
+    fig.tight_layout()
+    return fig
+
+
 def plot(args=None):
     if args is None:
         args = get_plot_args()
@@ -108,6 +159,7 @@ def plot(args=None):
     states_q_extras = args.states_q_extras
     states_x_extras = args.states_x_extras
     states_x_extras2 = args.states_x_extras2
+    states_x_ft = args.states_x_ft
     eval_loss = args.eval_loss
     if eval_loss:
         import unicon.losses
@@ -199,7 +251,7 @@ def plot(args=None):
     print('offsets', offsets)
     for rec, ofs in zip(recs, offsets):
         for k in rec:
-            if k.startswith('states'):
+            if k.startswith('states_') and isinstance(k, np.ndarray):
                 rec[k] = rec[k][ofs:]
     states_q = rec['states_q']
     states_q_ctrl = rec['states_q_ctrl']
@@ -641,6 +693,13 @@ def plot(args=None):
         plot_dir = f'{plot_root}/'
         plot_prefix = plot_dir
         plt.savefig(plot_prefix + f'sxe2.{ext}')
+        plt.close()
+        return
+    if states_x_ft:
+        fig = plot_states_x_ft(rec_names, recs, st, ed, robot_def)
+        plot_dir = f'{plot_root}/'
+        plot_prefix = plot_dir
+        plt.savefig(plot_prefix + f'sxft.{ext}')
         plt.close()
         return
     if states_q_extras:

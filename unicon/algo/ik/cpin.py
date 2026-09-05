@@ -68,6 +68,8 @@ def cb_ik_cpin(
         print('fixed_dof_names', fixed_dof_names)
         reduced_robot = robot.buildReducedRobot(list_of_joints_to_lock=fixed_dof_names,)
         robot = reduced_robot
+        model = robot.model
+        print('reduced', 'nq', model.nq, 'nv', model.nv, 'njoints', model.njoints, 'nframes', len(model.frames))
         pin_dof_names = [n for n in pin_dof_names if n not in fixed_dof_names]
     print('pin_dof_names', pin_dof_names)
 

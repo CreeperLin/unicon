@@ -94,6 +94,7 @@ def get_args():
     parser.add_argument('-sqe', '--states_q_extras', action='store_true')
     parser.add_argument('-sxe', '--states_x_extras', action='store_true')
     parser.add_argument('-sxe2', '--states_x_extras2', action='store_true')
+    parser.add_argument('-sxft', '--states_x_ft', action='store_true')
     parser.add_argument('-scs', '--states_custom_specs', default=None)
     parser.add_argument('-tc', '--tau_ctrl', action='store_true')
     parser.add_argument('-cct', '--cb_ctrl_tau', default=None)
@@ -125,6 +126,7 @@ def get_args():
     parser.add_argument('-ht', '--hand_type', default='none')
     parser.add_argument('-xcn', '--x_ctrl_eef_names', default=None)
     parser.add_argument('-xcdn', '--x_ctrl_dof_names', default=None)
+    parser.add_argument('-xrst', '--x_reset_type', default='pin')
     parser.add_argument('-simgs', '--states_imgs', default=None)
     args, _ = parser.parse_known_args()
     return args
@@ -376,6 +378,7 @@ def run(args=None):
         })
     x_extras = args['states_x_extras']
     x_extras2 = args['states_x_extras2']
+    x_ft = args['states_x_ft']
     from unicon.utils import pats2inds
     NUM_LINKS = 0 if LINK_NAMES is None else len(LINK_NAMES)
     x_ctrl_eef_names = load_obj(args['x_ctrl_eef_names'])
@@ -397,7 +400,7 @@ def run(args=None):
     ctx['x_ctrl_dof_inds'] = x_ctrl_dof_inds
     print('x_ctrl_dof_names', len(x_ctrl_dof_names), x_ctrl_dof_names, x_ctrl_dof_inds)
 
-    if x_extras or x_extras2:
+    if x_extras:
         specs.update({
             'pos': 3,
             'lin_vel': 3,
@@ -408,6 +411,10 @@ def run(args=None):
             'x': [(NUM_LINKS, 4, 4)],
             'xd': [(NUM_LINKS, 6)],
             'J': [(NUM_LINKS, 6, NUM_DOFS)],
+        })
+    if NUM_LINKS and x_ft:
+        specs.update({
+            'x_ft': [(NUM_LINKS, 6)],
         })
     if num_x_ctrl:
         specs.update({
@@ -424,7 +431,7 @@ def run(args=None):
     }
     for img in imgs:
         if isinstance(img, str):
-            img = img.split(';')
+            img = img.split(',')
         if isinstance(img, (list, tuple)):
             key = img[0]
             res = img[1]
@@ -501,6 +508,7 @@ def run(args=None):
         'states_x': states_x,
         'states_xd': states_get('xd'),
         'states_x_ctrl': states_x_ctrl,
+        'states_x_ft': states_get('x_ft'),
     }
     states_extras = {k: v for k, v in states_extras.items() if v is not None}
     if HAND_NUM_DOFS:
@@ -571,22 +579,23 @@ def run(args=None):
     print('dof_src_map', dof_src_map)
     print('DOF_NAMES_extra', len(DOF_NAMES_extra), DOF_NAMES_extra)
 
-    q_boot = q_reset if Q_BOOT is None else Q_BOOT
+    q_boot = q_reset.copy() if Q_BOOT is None else Q_BOOT
 
     ctx['Q_RESET'] = q_reset
     print('q_reset', q_reset.tolist())
     print('q_boot', q_boot.tolist())
 
     if states_x_ctrl is not None or states_x is not None:
-        use_algo_fk = False
-        robot_pin = robot_def.get('robot_pin')
-        if use_algo_fk or robot_pin is None:
+        x_reset_type = args['x_reset_type']
+        if x_reset_type == 'algo':
             from unicon.algo.fk import cb_fk
             _states_x = np.zeros((NUM_LINKS, 4, 4), dtype=np.float32)
             _cb = cb_fk(states_q=q_reset, states_x=_states_x)
             _cb()
             x_reset = _states_x
-        elif robot_pin is not None:
+        elif x_reset_type == 'pin':
+            robot_pin = robot_def.get('robot_pin')
+            expect(robot_pin is not None)
             from unicon.utils.pin import pin_fk
             URDF_DOF_NAMES = robot_def.get('URDF_DOF_NAMES', DOF_NAMES)
             print('URDF_DOF_NAMES', URDF_DOF_NAMES)
@@ -696,18 +705,16 @@ def run(args=None):
 
             cb = cb_const
         elif m == 'sample':
-            num_steps = 1024 if num_steps == 0 else num_steps
-            states_q_target[:] = q_reset
             smpl_dof_map = args['sample_dofs']
             if smpl_dof_map is not None:
                 smpl_dof_map = load_obj(smpl_dof_map)
             if isinstance(smpl_dof_map, int):
                 smpl_dof_map = [int(smpl_dof_map)]
-            elif isinstance(smpl_dof_map, str):
-                smpl_dof_map = DOF_MAPS[smpl_dof_map]
-            elif isinstance(smpl_dof_map, list):
-                if isinstance(smpl_dof_map[0], str):
-                    smpl_dof_map = [DOF_NAMES.index(n) for n in smpl_dof_map]
+            if isinstance(smpl_dof_map, str):
+                smpl_dof_map = [smpl_dof_map]
+            if isinstance(smpl_dof_map, list) and isinstance(smpl_dof_map[0], str):
+                smpl_dof_map, smpl_dof_names, _ = pats2inds(smpl_dof_map, DOF_NAMES, DOF_NAMES_STD)
+                print('smpl_dof_names', smpl_dof_names)
             smpl_r = 0.3 if args['sample_r'] is None else load_obj(args['sample_r'])
             if isinstance(smpl_r, float):
                 print('mean', Q_CTRL_MAX + Q_CTRL_MIN)
@@ -727,6 +734,7 @@ def run(args=None):
                 q_smpl_max = q_min + q_rng * rng_r
             num_samples = args['num_samples']
             num_samples = 2**10 if num_samples is None else num_samples
+            num_steps = num_samples if num_steps == 0 else num_steps
             print('num_samples', num_samples)
             sampler_type = args['sampler_type']
             sampler_kwds = args['sampler_kwds']
@@ -785,6 +793,8 @@ def run(args=None):
                     inds=smpl_dof_map,
                     loop=replay_loop,
                 )
+            q_reset[smpl_dof_map] = frames[0]
+            states_q_target[:] = q_reset
         elif m == 'teleop':
             from unicon.teleop import cb_teleop_q
             cb = cb_teleop_q(
@@ -1041,7 +1051,7 @@ def run(args=None):
     chain = [cb]
 
     if args['system'] == 's':
-        args['no_wrap'] = True
+        args['no_wrap'] = not args['sims_fixed_base']
         args['no_wait_input'] = True
     wrapped = not args['no_wrap']
     if not NUM_DOFS:
@@ -1286,8 +1296,8 @@ def run(args=None):
         compute_torque = system_config.get('compute_torque', False) or args['sims_compute_torque']
         system_config['compute_torque'] = compute_torque
         if sims_type in ['sims.systems.mujoco', 'sims.systems.brax']:
-            xml_path = robot_def.get('MJCF')
-            if convert_mjcf and system_config.get('xml_path') is None:
+            xml_path = system_config.get('xml_path', robot_def.get('MJCF'))
+            if convert_mjcf and xml_path is None:
                 import tempfile
                 from unicon.utils.urdf2mjcf import urdf2mjcf
                 xml_file = tempfile.NamedTemporaryFile(suffix='.mjcf', mode='w', delete=True)
@@ -1461,7 +1471,9 @@ def run(args=None):
         for _ in range(pre_send):
             cb_send()
 
-    if ctrl_dt > dt:
+    if dt is None:
+        pass
+    elif ctrl_dt > dt:
         intv = int(ctrl_dt // dt)
         print('ctrl_intv', ctrl_dt, dt, intv)
         cb = seq[0] if len(seq) == 1 else cb_zip(*seq)
